@@ -1,0 +1,9 @@
+{
+  "name": "fetch-url",
+  "private": true,
+  "dependencies": {
+    "@mozilla/readability": "^0.5.0",
+    "jsdom": "^24.0.0",
+    "turndown": "^7.1.2"
+  }
+}

@@ -2,7 +2,7 @@
 
 ## Project overview
 
-This repository contains the **answer** and **web-search** pi extensions.
+This repository contains the **answer**, **fetch-url**, and **web-search** pi extensions.
 
 ## Key files
 
@@ -10,6 +10,10 @@ This repository contains the **answer** and **web-search** pi extensions.
 - `answer/utils.ts`: Shared helpers
 - `answer/README.md`: Usage/config docs
 - `answer/tests/utils.test.ts`: Unit tests
+- `fetch-url/index.ts`: Extension entry point
+- `fetch-url/utils.ts`: Shared helpers
+- `fetch-url/README.md`: Usage/config docs
+- `fetch-url/tests/utils.test.ts`: Unit tests
 - `web-search/index.ts`: Extension entry point
 - `web-search/utils.ts`: Shared helpers
 - `web-search/README.md`: Usage/config docs
@@ -29,6 +33,7 @@ This repository contains the **answer** and **web-search** pi extensions.
 - Run tests with:
   ```bash
   bun test answer/tests/utils.test.ts
+  bun test fetch-url/tests/utils.test.ts
   bun test web-search/tests/utils.test.ts
   ```
 - To load an extension locally, symlink its directory into `~/.pi/agent/extensions/<name>` and run `/reload` in pi.

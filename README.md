@@ -5,6 +5,7 @@ A collection of pi extensions. Each extension lives in its own directory with it
 ## Repository layout
 
 - `answer/` – Interactive Q&A extraction and answering extension
+- `fetch-url/` – Fetch URLs and extract main content as markdown
 - `web-search/` – Brave Search powered `web_search` tool extension
 
 ## Documentation
