@@ -2,16 +2,27 @@ import path from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
 import {
+	filterPullRequestsByHeadOwner,
 	formatContextPercent,
 	formatLoopMinutes,
 	formatModelLabel,
+	formatPullRequestLabel,
 	formatRepoLabel,
 	formatThinkingLevel,
+	isGitHubHost,
+	parseAllowedGitHubHosts,
+	parseGitRemoteRepo,
+	pickPullRequest,
+	type GitRemoteRepo,
+	type PullRequestSummary,
 } from "./utils";
 
 const STATUS_WIDGET_KEY = "status";
 const RUNNING_EMOJI = "♨️";
 const DONE_EMOJI = "✅";
+const REMOTE_REPO_CACHE_TTL_MS = 30_000;
+const PR_CACHE_TTL_MS = 30_000;
+const PR_POLL_INTERVAL_MS = 30_000;
 
 type StatusPayload = {
 	modelLabel: string;
@@ -20,6 +31,13 @@ type StatusPayload = {
 	contextUsage: number | null;
 	repoLabel: string;
 	loopMinutesLabel: string;
+	pullRequestLabel: string | null;
+};
+
+type WidgetUpdateOptions = {
+	forcePrRefresh?: boolean;
+	forceRepoRefresh?: boolean;
+	skipPullRequestLookup?: boolean;
 };
 
 const createStatusWidget = (payload: StatusPayload) => (_tui: unknown, theme: { fg: (name: string, text: string) => string }) => ({
@@ -30,8 +48,17 @@ const createStatusWidget = (payload: StatusPayload) => (_tui: unknown, theme: { 
 		const loopMinutesLabel = theme.fg("muted", payload.loopMinutesLabel);
 		const repoLabel = theme.fg("muted", payload.repoLabel);
 		const right = `${modelLabel} ${thinkingLabel} ${contextLabel} ${loopMinutesLabel}`;
-
-		return [renderAlignedLine(repoLabel, right, width, 1)];
+		const lines = [renderAlignedLine(repoLabel, right, width, 1)];
+		if (payload.pullRequestLabel) {
+			const prContent = payload.pullRequestLabel.replace(/^PR:\s*/, "").trim();
+			const prMatch = prContent.match(/^(\S+)(.*)$/);
+			const prPrefix = theme.fg("muted", "PR:");
+			const prLine = prMatch
+				? `${prPrefix} ${theme.fg("accent", prMatch[1])}${prMatch[2] ? theme.fg("muted", prMatch[2]) : ""}`
+				: `${prPrefix} ${theme.fg("accent", prContent)}`;
+			lines.push(padLine(truncateToWidth(prLine, Math.max(0, width - 2)), width, 1));
+		}
+		return lines;
 	},
 	invalidate: () => {},
 });
@@ -126,6 +153,144 @@ async function resolveGitBranch(pi: ExtensionAPI, cwd: string): Promise<string |
 	}
 }
 
+type RemoteRepoCacheEntry = {
+	checkedAt: number;
+	repo: GitRemoteRepo | null;
+};
+
+async function resolveGitRemoteRepo(
+	pi: ExtensionAPI,
+	cwd: string,
+	cache: Map<string, RemoteRepoCacheEntry>,
+	inFlight: Map<string, Promise<GitRemoteRepo | null>>,
+	forceRefresh: boolean,
+): Promise<GitRemoteRepo | null> {
+	const now = Date.now();
+	const cached = cache.get(cwd);
+	if (!forceRefresh && cached && now - cached.checkedAt < REMOTE_REPO_CACHE_TTL_MS) {
+		return cached.repo;
+	}
+
+	const pending = inFlight.get(cwd);
+	if (pending) {
+		return pending;
+	}
+
+	const request = (async () => {
+		const checkedAt = Date.now();
+		try {
+			const result = await pi.exec("git", ["config", "--get", "remote.origin.url"], { cwd, timeout: 1500 });
+			if (result.code !== 0) {
+				cache.set(cwd, { checkedAt, repo: null });
+				return null;
+			}
+			const repo = parseGitRemoteRepo(result.stdout);
+			cache.set(cwd, { checkedAt, repo });
+			return repo;
+		} catch {
+			cache.set(cwd, { checkedAt, repo: null });
+			return null;
+		}
+	})();
+
+	inFlight.set(cwd, request);
+	try {
+		return await request;
+	} finally {
+		inFlight.delete(cwd);
+	}
+}
+
+type PullRequestCacheEntry = {
+	checkedAt: number;
+	pr: PullRequestSummary | null;
+};
+
+function getCachedPullRequest(
+	repo: GitRemoteRepo | null,
+	branch: string | null,
+	cache: Map<string, PullRequestCacheEntry>,
+): PullRequestSummary | null {
+	if (!repo || !branch || branch === "detached") {
+		return null;
+	}
+	const cacheKey = `${repo.repoSelector}:${branch}`;
+	return cache.get(cacheKey)?.pr ?? null;
+}
+
+async function resolveGitPullRequest(
+	pi: ExtensionAPI,
+	cwd: string,
+	repo: GitRemoteRepo | null,
+	branch: string | null,
+	cache: Map<string, PullRequestCacheEntry>,
+	inFlight: Map<string, Promise<PullRequestSummary | null>>,
+	allowedGitHubHosts: ReadonlySet<string>,
+	forceRefresh: boolean,
+): Promise<PullRequestSummary | null> {
+	if (!repo || !branch || branch === "detached") {
+		return null;
+	}
+	if (!isGitHubHost(repo.host, allowedGitHubHosts)) {
+		return null;
+	}
+
+	const cacheKey = `${repo.repoSelector}:${branch}`;
+	const now = Date.now();
+	const cached = cache.get(cacheKey);
+	if (!forceRefresh && cached && now - cached.checkedAt < PR_CACHE_TTL_MS) {
+		return cached.pr;
+	}
+
+	const pending = inFlight.get(cacheKey);
+	if (pending) {
+		return pending;
+	}
+
+	const request = (async () => {
+		const checkedAt = Date.now();
+		try {
+			const result = await pi.exec(
+				"gh",
+				[
+					"pr",
+					"list",
+					"--repo",
+					repo.repoSelector,
+					"--state",
+					"all",
+					"--head",
+					branch,
+					"--limit",
+					"20",
+					"--json",
+					"url,state,updatedAt,headRefName,headRepositoryOwner",
+				],
+				{ cwd, timeout: 2500 },
+			);
+			if (result.code !== 0) {
+				cache.set(cacheKey, { checkedAt, pr: null });
+				return null;
+			}
+			const parsed = JSON.parse(result.stdout) as PullRequestSummary[];
+			const scoped = filterPullRequestsByHeadOwner(Array.isArray(parsed) ? parsed : [], branch, repo.owner);
+			const pr = pickPullRequest(scoped);
+			cache.set(cacheKey, { checkedAt, pr });
+			return pr;
+		} catch {
+			cache.set(cacheKey, { checkedAt, pr: null });
+			return null;
+		}
+	})();
+
+	inFlight.set(cacheKey, request);
+	try {
+		return await request;
+	} finally {
+		inFlight.delete(cacheKey);
+	}
+}
+
 export default function (pi: ExtensionAPI) {
 	let lastSignature = "";
 	let updateToken = 0;
@@ -139,6 +304,15 @@ export default function (pi: ExtensionAPI) {
 	let enabled = true;
 	let activeLoopStartedAt: number | null = null;
 	let lastLoopMinutes: number | null = null;
+	const allowedGitHubHosts = parseAllowedGitHubHosts(process.env.PI_STATUS_ALLOWED_GITHUB_HOSTS);
+	let remoteRepoCache = new Map<string, RemoteRepoCacheEntry>();
+	let remoteRepoRequestsInFlight = new Map<string, Promise<GitRemoteRepo | null>>();
+	let prCache = new Map<string, PullRequestCacheEntry>();
+	let prRequestsInFlight = new Map<string, Promise<PullRequestSummary | null>>();
+	let lastPeriodicPrRefreshAt = 0;
+	let pendingWidgetUpdateCtx: ExtensionContext | null = null;
+	let pendingWidgetUpdateOptions: WidgetUpdateOptions | null = null;
+	let widgetUpdateRunner: Promise<void> | null = null;
 
 	const getLoopMinutes = (): number | null => {
 		if (activeLoopStartedAt === null) {
@@ -156,7 +330,19 @@ export default function (pi: ExtensionAPI) {
 			return;
 		}
 		lastLoopMinutes = elapsedMinutes;
-		void updateWidget(ctx);
+		void requestWidgetUpdate(ctx);
+	};
+
+	const maybeRefreshPullRequest = (ctx: ExtensionContext) => {
+		if (!ctx.hasUI || !enabled) {
+			return;
+		}
+		const now = Date.now();
+		if (now - lastPeriodicPrRefreshAt < PR_POLL_INTERVAL_MS) {
+			return;
+		}
+		lastPeriodicPrRefreshAt = now;
+		void requestWidgetUpdate(ctx);
 	};
 
 	const refreshTitle = (ctx: ExtensionContext) => {
@@ -198,7 +384,7 @@ export default function (pi: ExtensionAPI) {
 			return;
 		}
 		lastThinkingLevel = current;
-		void updateWidget(ctx);
+		void requestWidgetUpdate(ctx);
 	};
 
 	const startTypingWatcher = (ctx: ExtensionContext) => {
@@ -216,10 +402,12 @@ export default function (pi: ExtensionAPI) {
 			updateTypingState(activeContext);
 			updateThinkingLevel(activeContext);
 			updateLoopMinutes(activeContext);
+			maybeRefreshPullRequest(activeContext);
 		}, 200);
 		updateTypingState(ctx);
 		updateThinkingLevel(ctx);
 		updateLoopMinutes(ctx);
+		maybeRefreshPullRequest(ctx);
 	};
 
 	const stopTypingWatcher = () => {
@@ -236,12 +424,37 @@ export default function (pi: ExtensionAPI) {
 		ctx.ui.setFooter(createEmptyFooter());
 	};
 
-	const updateWidget = async (ctx: ExtensionContext) => {
+	const updateWidget = async (ctx: ExtensionContext, options?: WidgetUpdateOptions) => {
 		if (!ctx.hasUI || !enabled) {
 			return;
 		}
 		const token = ++updateToken;
 		const branch = await resolveGitBranch(pi, ctx.cwd);
+		if (token !== updateToken) {
+			return;
+		}
+		const repo = await resolveGitRemoteRepo(
+			pi,
+			ctx.cwd,
+			remoteRepoCache,
+			remoteRepoRequestsInFlight,
+			options?.forceRepoRefresh ?? false,
+		);
+		if (token !== updateToken) {
+			return;
+		}
+		const pullRequest = options?.skipPullRequestLookup
+			? getCachedPullRequest(repo, branch, prCache)
+			: await resolveGitPullRequest(
+					pi,
+					ctx.cwd,
+					repo,
+					branch,
+					prCache,
+					prRequestsInFlight,
+					allowedGitHubHosts,
+					options?.forcePrRefresh ?? false,
+				);
 		if (token !== updateToken) {
 			return;
 		}
@@ -254,6 +467,7 @@ export default function (pi: ExtensionAPI) {
 			contextUsage: usage?.percent ?? null,
 			repoLabel: formatRepoLabel(ctx.cwd, branch),
 			loopMinutesLabel: formatLoopMinutes(getLoopMinutes()),
+			pullRequestLabel: formatPullRequestLabel(pullRequest),
 		};
 
 		const signature = JSON.stringify(payload);
@@ -264,6 +478,42 @@ export default function (pi: ExtensionAPI) {
 		ctx.ui.setWidget(STATUS_WIDGET_KEY, createStatusWidget(payload), { placement: "belowEditor" });
 	};
 
+	const mergeWidgetUpdateOptions = (base: WidgetUpdateOptions | null, next?: WidgetUpdateOptions): WidgetUpdateOptions => {
+		if (!base) {
+			return { ...next };
+		}
+		return {
+			forcePrRefresh: Boolean(base.forcePrRefresh || next?.forcePrRefresh),
+			forceRepoRefresh: Boolean(base.forceRepoRefresh || next?.forceRepoRefresh),
+			skipPullRequestLookup: Boolean((base.skipPullRequestLookup ?? false) && (next?.skipPullRequestLookup ?? false)),
+		};
+	};
+
+	const requestWidgetUpdate = (ctx: ExtensionContext, options?: WidgetUpdateOptions): Promise<void> => {
+		pendingWidgetUpdateCtx = ctx;
+		pendingWidgetUpdateOptions = mergeWidgetUpdateOptions(pendingWidgetUpdateOptions, options);
+		if (widgetUpdateRunner) {
+			return widgetUpdateRunner;
+		}
+
+		widgetUpdateRunner = (async () => {
+			while (pendingWidgetUpdateCtx) {
+				const nextCtx = pendingWidgetUpdateCtx;
+				const nextOptions = pendingWidgetUpdateOptions ?? {};
+				pendingWidgetUpdateCtx = null;
+				pendingWidgetUpdateOptions = null;
+				if (!nextCtx) {
+					continue;
+				}
+				await updateWidget(nextCtx, nextOptions);
+			}
+		})().finally(() => {
+			widgetUpdateRunner = null;
+		});
+
+		return widgetUpdateRunner;
+	};
+
 	const applyEnabledState = async (ctx: ExtensionContext) => {
 		if (!ctx.hasUI) {
 			return;
@@ -271,14 +521,28 @@ export default function (pi: ExtensionAPI) {
 		if (enabled) {
 			lastSignature = "";
 			lastThinkingLevel = formatThinkingLevel(pi.getThinkingLevel());
+			remoteRepoCache = new Map<string, RemoteRepoCacheEntry>();
+			remoteRepoRequestsInFlight = new Map<string, Promise<GitRemoteRepo | null>>();
+			prCache = new Map<string, PullRequestCacheEntry>();
+			prRequestsInFlight = new Map<string, Promise<PullRequestSummary | null>>();
+			pendingWidgetUpdateCtx = null;
+			pendingWidgetUpdateOptions = null;
+			lastPeriodicPrRefreshAt = 0;
 			disableDefaultFooter(ctx);
 			startTypingWatcher(ctx);
-			await updateWidget(ctx);
+			await requestWidgetUpdate(ctx);
 			refreshTitle(ctx);
 		} else {
 			ctx.ui.setWidget(STATUS_WIDGET_KEY, undefined, { placement: "belowEditor" });
 			ctx.ui.setFooter(undefined);
 			stopTypingWatcher();
+			remoteRepoCache = new Map<string, RemoteRepoCacheEntry>();
+			remoteRepoRequestsInFlight = new Map<string, Promise<GitRemoteRepo | null>>();
+			prCache = new Map<string, PullRequestCacheEntry>();
+			prRequestsInFlight = new Map<string, Promise<PullRequestSummary | null>>();
+			pendingWidgetUpdateCtx = null;
+			pendingWidgetUpdateOptions = null;
+			lastPeriodicPrRefreshAt = 0;
 			lastSignature = "";
 			lastThinkingLevel = "";
 			lastTitle = "";
@@ -306,16 +570,16 @@ export default function (pi: ExtensionAPI) {
 		if (!enabled) {
 			return;
 		}
-		await updateWidget(ctx);
+		await requestWidgetUpdate(ctx);
 	});
 
 	pi.on("input", async (_event, ctx) => {
 		updateTypingState(ctx);
-		await updateWidget(ctx);
+		await requestWidgetUpdate(ctx, { skipPullRequestLookup: true });
 	});
 
 	pi.on("user_bash", async (_event, ctx) => {
-		await updateWidget(ctx);
+		await requestWidgetUpdate(ctx, { forceRepoRefresh: true });
 	});
 
 	pi.on("agent_start", async (_event, ctx) => {
@@ -324,11 +588,11 @@ export default function (pi: ExtensionAPI) {
 		lastLoopMinutes = 0;
 		suppressDoneEmoji = false;
 		refreshTitle(ctx);
-		await updateWidget(ctx);
+		await requestWidgetUpdate(ctx);
 	});
 
 	pi.on("turn_end", async (_event, ctx) => {
-		await updateWidget(ctx);
+		await requestWidgetUpdate(ctx);
 	});
 
 	pi.on("agent_end", async (_event, ctx) => {
@@ -338,7 +602,7 @@ export default function (pi: ExtensionAPI) {
 		}
 		isRunning = false;
 		refreshTitle(ctx);
-		await updateWidget(ctx);
+		await requestWidgetUpdate(ctx);
 	});
 
 	pi.on("session_shutdown", async (_event, ctx) => {
