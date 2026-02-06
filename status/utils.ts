@@ -38,6 +38,13 @@ export function formatContextPercent(usage?: { percent: number } | null): string
 	return `${Math.round(usage.percent)}%`;
 }
 
+export function formatLoopMinutes(minutes?: number | null): string {
+	if (minutes === null || minutes === undefined || Number.isNaN(minutes) || minutes < 0) {
+		return UNKNOWN_VALUE;
+	}
+	return `${Math.floor(minutes)}min`;
+}
+
 export function normalizeGitBranch(branch?: string | null): string {
 	const trimmed = branch?.trim();
 	if (!trimmed) {

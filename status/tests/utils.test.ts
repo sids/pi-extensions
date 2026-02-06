@@ -3,6 +3,7 @@ import path from "node:path";
 import { describe, expect, test } from "bun:test";
 import {
 	formatContextPercent,
+	formatLoopMinutes,
 	formatModelLabel,
 	formatRepoLabel,
 	formatThinkingLevel,
@@ -45,6 +46,18 @@ describe("formatContextPercent", () => {
 
 	test("handles missing usage", () => {
 		expect(formatContextPercent(undefined)).toBe("--");
+	});
+});
+
+describe("formatLoopMinutes", () => {
+	test("formats minute count", () => {
+		expect(formatLoopMinutes(0)).toBe("0min");
+		expect(formatLoopMinutes(12.9)).toBe("12min");
+	});
+
+	test("handles missing values", () => {
+		expect(formatLoopMinutes(undefined)).toBe("--");
+		expect(formatLoopMinutes(null)).toBe("--");
 	});
 });
 

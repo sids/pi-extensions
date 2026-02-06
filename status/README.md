@@ -7,6 +7,7 @@ Shows a single-line status widget below the input editor with session context:
 - Current working directory
 - Current Git branch
 - Context usage percent
+- Latest agent loop runtime (e.g. `3min`)
 
 Also updates the terminal title to append an emoji indicating whether the harness is running (♨️) or done (✅). When you start typing, the done emoji is removed and stays hidden until the next run. The default footer widget is hidden while this extension is active.
 

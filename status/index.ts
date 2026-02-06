@@ -3,6 +3,7 @@ import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-age
 import { truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
 import {
 	formatContextPercent,
+	formatLoopMinutes,
 	formatModelLabel,
 	formatRepoLabel,
 	formatThinkingLevel,
@@ -18,6 +19,7 @@ type StatusPayload = {
 	contextPercent: string;
 	contextUsage: number | null;
 	repoLabel: string;
+	loopMinutesLabel: string;
 };
 
 const createStatusWidget = (payload: StatusPayload) => (_tui: unknown, theme: { fg: (name: string, text: string) => string }) => ({
@@ -25,8 +27,9 @@ const createStatusWidget = (payload: StatusPayload) => (_tui: unknown, theme: { 
 		const modelLabel = theme.fg("muted", payload.modelLabel);
 		const thinkingLabel = theme.fg(resolveThinkingColor(payload.thinkingLevel), `(${payload.thinkingLevel})`);
 		const contextLabel = theme.fg(resolveContextColor(payload.contextUsage), payload.contextPercent);
+		const loopMinutesLabel = theme.fg("muted", payload.loopMinutesLabel);
 		const repoLabel = theme.fg("muted", payload.repoLabel);
-		const right = `${modelLabel} ${thinkingLabel} ${contextLabel}`;
+		const right = `${modelLabel} ${thinkingLabel} ${contextLabel} ${loopMinutesLabel}`;
 
 		return [renderAlignedLine(repoLabel, right, width, 1)];
 	},
@@ -134,6 +137,27 @@ export default function (pi: ExtensionAPI) {
 	let activeContext: ExtensionContext | null = null;
 	let lastThinkingLevel = "";
 	let enabled = true;
+	let activeLoopStartedAt: number | null = null;
+	let lastLoopMinutes: number | null = null;
+
+	const getLoopMinutes = (): number | null => {
+		if (activeLoopStartedAt === null) {
+			return lastLoopMinutes;
+		}
+		return Math.max(0, Math.floor((Date.now() - activeLoopStartedAt) / 60_000));
+	};
+
+	const updateLoopMinutes = (ctx: ExtensionContext) => {
+		if (!isRunning || activeLoopStartedAt === null) {
+			return;
+		}
+		const elapsedMinutes = getLoopMinutes();
+		if (elapsedMinutes === null || elapsedMinutes === lastLoopMinutes) {
+			return;
+		}
+		lastLoopMinutes = elapsedMinutes;
+		void updateWidget(ctx);
+	};
 
 	const refreshTitle = (ctx: ExtensionContext) => {
 		if (!ctx.hasUI || !enabled) {
@@ -191,9 +215,11 @@ export default function (pi: ExtensionAPI) {
 			}
 			updateTypingState(activeContext);
 			updateThinkingLevel(activeContext);
+			updateLoopMinutes(activeContext);
 		}, 200);
 		updateTypingState(ctx);
 		updateThinkingLevel(ctx);
+		updateLoopMinutes(ctx);
 	};
 
 	const stopTypingWatcher = () => {
@@ -227,6 +253,7 @@ export default function (pi: ExtensionAPI) {
 			contextPercent: formatContextPercent(usage),
 			contextUsage: usage?.percent ?? null,
 			repoLabel: formatRepoLabel(ctx.cwd, branch),
+			loopMinutesLabel: formatLoopMinutes(getLoopMinutes()),
 		};
 
 		const signature = JSON.stringify(payload);
@@ -261,12 +288,16 @@ export default function (pi: ExtensionAPI) {
 
 	pi.on("session_start", async (_event, ctx) => {
 		isRunning = false;
+		activeLoopStartedAt = null;
+		lastLoopMinutes = null;
 		suppressDoneEmoji = false;
 		await applyEnabledState(ctx);
 	});
 
 	pi.on("session_switch", async (_event, ctx) => {
 		isRunning = false;
+		activeLoopStartedAt = null;
+		lastLoopMinutes = null;
 		suppressDoneEmoji = false;
 		await applyEnabledState(ctx);
 	});
@@ -289,6 +320,8 @@ export default function (pi: ExtensionAPI) {
 
 	pi.on("agent_start", async (_event, ctx) => {
 		isRunning = true;
+		activeLoopStartedAt = Date.now();
+		lastLoopMinutes = 0;
 		suppressDoneEmoji = false;
 		refreshTitle(ctx);
 		await updateWidget(ctx);
@@ -299,12 +332,20 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	pi.on("agent_end", async (_event, ctx) => {
+		if (activeLoopStartedAt !== null) {
+			lastLoopMinutes = Math.max(0, Math.floor((Date.now() - activeLoopStartedAt) / 60_000));
+			activeLoopStartedAt = null;
+		}
 		isRunning = false;
 		refreshTitle(ctx);
 		await updateWidget(ctx);
 	});
 
 	pi.on("session_shutdown", async (_event, ctx) => {
+		if (activeLoopStartedAt !== null) {
+			lastLoopMinutes = Math.max(0, Math.floor((Date.now() - activeLoopStartedAt) / 60_000));
+			activeLoopStartedAt = null;
+		}
 		isRunning = false;
 		stopTypingWatcher();
 		refreshTitle(ctx);
