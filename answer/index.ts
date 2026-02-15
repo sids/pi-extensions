@@ -41,16 +41,32 @@ import {
 	normalizeTemplates,
 	parseExtractionResult,
 	questionsMatch,
+	resolveNumericOptionShortcut,
 } from "./utils";
 
 const DRAFT_ENTRY_TYPE = "answer:draft";
-const DRAFT_VERSION = 1;
+const DRAFT_VERSION = 2;
+
+interface QuestionResponse {
+	selectedOptionIndex: number;
+	customText: string;
+	selectionTouched: boolean;
+	committed: boolean;
+}
+
+interface DraftResponse {
+	selectedOptionIndex: number;
+	customText: string;
+	selectionTouched?: boolean;
+	committed?: boolean;
+}
 
 interface AnswerDraft {
 	version: number;
 	sourceEntryId: string;
 	questions: ExtractedQuestion[];
 	answers: string[];
+	responses?: DraftResponse[];
 	updatedAt: number;
 	state: "draft" | "cleared";
 }
@@ -58,6 +74,132 @@ interface AnswerDraft {
 interface QnAResult {
 	text: string;
 	answers: string[];
+	responses: QuestionResponse[];
+}
+
+function getQuestionOptions(question: ExtractedQuestion) {
+	return question.options ?? [];
+}
+
+function formatResponseAnswer(question: ExtractedQuestion, response: QuestionResponse): string {
+	const options = getQuestionOptions(question);
+	if (options.length === 0) {
+		return response.customText;
+	}
+
+	const otherIndex = options.length;
+	if (response.selectedOptionIndex === otherIndex) {
+		return response.customText;
+	}
+
+	if (!response.selectionTouched) {
+		return "";
+	}
+
+	return options[response.selectedOptionIndex]?.label ?? "";
+}
+
+function normalizeResponseForQuestion(
+	question: ExtractedQuestion,
+	response: Partial<QuestionResponse> | undefined,
+	fallbackAnswer: string | undefined,
+	inferCommittedFromContent: boolean,
+): QuestionResponse {
+	const options = getQuestionOptions(question);
+	const rawFallback = fallbackAnswer ?? "";
+	const rawCustomText = response?.customText ?? rawFallback;
+	let selectedOptionIndex =
+		typeof response?.selectedOptionIndex === "number" && Number.isFinite(response.selectedOptionIndex)
+			? Math.trunc(response.selectedOptionIndex)
+			: undefined;
+	let selectionTouched = response?.selectionTouched ?? false;
+
+	if (options.length === 0) {
+		selectedOptionIndex = 0;
+		if (response?.selectionTouched === undefined && rawCustomText.trim().length > 0) {
+			selectionTouched = true;
+		}
+	} else if (selectedOptionIndex === undefined) {
+		const fallbackTrimmed = rawFallback.trim();
+		if (fallbackTrimmed.length === 0) {
+			selectedOptionIndex = 0;
+			if (response?.selectionTouched === undefined) {
+				selectionTouched = false;
+			}
+		} else {
+			const optionIndex = options.findIndex((option) => option.label === fallbackTrimmed);
+			selectedOptionIndex = optionIndex >= 0 ? optionIndex : options.length;
+			if (response?.selectionTouched === undefined) {
+				selectionTouched = true;
+			}
+		}
+	} else if (response?.selectionTouched === undefined) {
+		selectionTouched = response?.committed === true;
+		if (!selectionTouched) {
+			const fallbackTrimmed = rawFallback.trim();
+			if (fallbackTrimmed.length > 0) {
+				const optionIndex = options.findIndex((option) => option.label === fallbackTrimmed);
+				if (optionIndex >= 0) {
+					selectionTouched = optionIndex === selectedOptionIndex && optionIndex !== 0;
+				} else {
+					selectionTouched = selectedOptionIndex === options.length;
+				}
+			}
+		}
+	}
+
+	const maxIndex = options.length;
+	const normalizedIndex = Math.max(0, Math.min(maxIndex, selectedOptionIndex ?? 0));
+	const useCustomText = options.length === 0 || normalizedIndex === options.length;
+	const normalizedCustomText = useCustomText ? rawCustomText : "";
+
+	let committed = response?.committed ?? false;
+	if (response?.committed === undefined && inferCommittedFromContent) {
+		committed = formatResponseAnswer(question, {
+			selectedOptionIndex: normalizedIndex,
+			customText: normalizedCustomText,
+			selectionTouched,
+			committed: false,
+		}).trim().length > 0;
+	}
+
+	return {
+		selectedOptionIndex: normalizedIndex,
+		customText: normalizedCustomText,
+		selectionTouched,
+		committed,
+	};
+}
+
+function normalizeResponses(
+	questions: ExtractedQuestion[],
+	responses: Array<Partial<QuestionResponse>> | undefined,
+	fallbackAnswers: string[] | undefined,
+	inferCommittedFromContent: boolean,
+): QuestionResponse[] {
+	return questions.map((question, index) =>
+		normalizeResponseForQuestion(
+			question,
+			responses?.[index],
+			fallbackAnswers?.[index],
+			inferCommittedFromContent,
+		),
+	);
+}
+
+function cloneResponses(responses: QuestionResponse[]): QuestionResponse[] {
+	return responses.map((response) => ({ ...response }));
+}
+
+function normalizeDraftAnswersFromResponses(
+	questions: ExtractedQuestion[],
+	responses: QuestionResponse[],
+): string[] {
+	return questions.map((question, index) => formatResponseAnswer(question, responses[index]));
+}
+
+function hasResponseContent(question: ExtractedQuestion, response: QuestionResponse): boolean {
+	return formatResponseAnswer(question, response).trim().length > 0;
 }
 
 /**
@@ -123,10 +265,6 @@ async function loadAnswerSettings(ctx: ExtensionContext): Promise<AnswerSettings
 	return merged;
 }
 
-function normalizeDraftAnswers(answers: string[] | undefined, count: number): string[] {
-	return Array.from({ length: count }, (_, index) => answers?.[index] ?? "");
-}
-
 function getLatestDraft(
 	entries: Array<{ type: string; customType?: string; data?: unknown }>,
 	sourceEntryId: string,
@@ -164,19 +302,19 @@ function createDraftStore(
 ) {
 	if (!settings.enabled) {
 		return {
-			seed: (_answers: string[]) => {},
-			schedule: (_answers: string[]) => {},
+			seed: (_responses: QuestionResponse[]) => {},
+			schedule: (_responses: QuestionResponse[]) => {},
 			flush: () => {},
 			clear: () => {},
 		};
 	}
 
-	let lastAnswers = normalizeDraftAnswers([], base.questions.length);
+	let lastResponses = normalizeResponses(base.questions, undefined, undefined, false);
 	let timer: ReturnType<typeof setTimeout> | undefined;
 	let lastSignature = "";
 
-	const appendDraft = (answers: string[], state: AnswerDraft["state"], force: boolean = false) => {
-		const normalized = normalizeDraftAnswers(answers, base.questions.length);
+	const appendDraft = (responses: QuestionResponse[], state: AnswerDraft["state"], force: boolean = false) => {
+		const normalized = normalizeResponses(base.questions, responses, undefined, false);
 		const signature = `${state}:${JSON.stringify(normalized)}`;
 		if (!force && signature === lastSignature) {
 			return;
@@ -187,7 +325,16 @@ function createDraftStore(
 			version: DRAFT_VERSION,
 			sourceEntryId: base.sourceEntryId,
 			questions: base.questions,
-			answers: normalized,
+			answers: state === "cleared" ? [] : normalizeDraftAnswersFromResponses(base.questions, normalized),
+			responses:
+				state === "cleared"
+					? []
+					: normalized.map((response) => ({
+							selectedOptionIndex: response.selectedOptionIndex,
+							customText: response.customText,
+							selectionTouched: response.selectionTouched,
+							committed: response.committed,
+						})),
 			updatedAt: Date.now(),
 			state,
 		};
@@ -195,11 +342,11 @@ function createDraftStore(
 		pi.appendEntry(DRAFT_ENTRY_TYPE, payload);
 	};
 
-	const schedule = (answers: string[]) => {
-		lastAnswers = normalizeDraftAnswers(answers, base.questions.length);
+	const schedule = (responses: QuestionResponse[]) => {
+		lastResponses = normalizeResponses(base.questions, responses, undefined, false);
 
 		if (settings.autosaveMs <= 0) {
-			appendDraft(lastAnswers, "draft");
+			appendDraft(lastResponses, "draft");
 			return;
 		}
 
@@ -208,7 +355,7 @@ function createDraftStore(
 		}
 
 		timer = setTimeout(() => {
-			appendDraft(lastAnswers, "draft");
+			appendDraft(lastResponses, "draft");
 		}, settings.autosaveMs);
 	};
 
@@ -217,7 +364,7 @@ function createDraftStore(
 			clearTimeout(timer);
 			timer = undefined;
 		}
-		appendDraft(lastAnswers, "draft");
+		appendDraft(lastResponses, "draft");
 	};
 
 	const clear = () => {
@@ -228,8 +375,8 @@ function createDraftStore(
 		appendDraft([], "cleared", true);
 	};
 
-	const seed = (answers: string[]) => {
-		lastAnswers = normalizeDraftAnswers(answers, base.questions.length);
+	const seed = (responses: QuestionResponse[]) => {
+		lastResponses = normalizeResponses(base.questions, responses, undefined, false);
 	};
 
 	return { seed, schedule, flush, clear };
@@ -240,7 +387,7 @@ function createDraftStore(
  */
 class QnAComponent implements Component {
 	private questions: ExtractedQuestion[];
-	private answers: string[];
+	private responses: QuestionResponse[];
 	private currentIndex: number = 0;
 	private editor: Editor;
 	private tui: TUI;
@@ -248,19 +395,19 @@ class QnAComponent implements Component {
 	private showingConfirmation: boolean = false;
 	private templates: AnswerTemplate[];
 	private templateIndex: number = 0;
-	private onDraftChange?: (answers: string[]) => void;
+	private onDraftChange?: (responses: QuestionResponse[]) => void;
 
 	// Cache
 	private cachedWidth?: number;
 	private cachedLines?: string[];
 
-	// Colors - using proper reset sequences
-	private dim = (s: string) => `\x1b[2m${s}\x1b[0m`;
-	private bold = (s: string) => `\x1b[1m${s}\x1b[0m`;
-	private cyan = (s: string) => `\x1b[36m${s}\x1b[0m`;
-	private green = (s: string) => `\x1b[32m${s}\x1b[0m`;
-	private yellow = (s: string) => `\x1b[33m${s}\x1b[0m`;
-	private gray = (s: string) => `\x1b[90m${s}\x1b[0m`;
+	private dim = (s: string) => s;
+	private bold = (s: string) => s;
+	private italic = (s: string) => `\x1b[3m${s}\x1b[0m`;
+	private cyan = (s: string) => s;
+	private green = (s: string) => s;
+	private yellow = (s: string) => s;
+	private gray = (s: string) => s;
 
 	constructor(
 		questions: ExtractedQuestion[],
@@ -268,22 +415,35 @@ class QnAComponent implements Component {
 		onDone: (result: QnAResult | null) => void,
 		options?: {
 			templates?: AnswerTemplate[];
-			initialAnswers?: string[];
-			onDraftChange?: (answers: string[]) => void;
+			initialResponses?: QuestionResponse[];
+			onDraftChange?: (responses: QuestionResponse[]) => void;
+			accentColor?: (text: string) => string;
+			successColor?: (text: string) => string;
+			warningColor?: (text: string) => string;
+			mutedColor?: (text: string) => string;
+			dimColor?: (text: string) => string;
+			boldText?: (text: string) => string;
+			italicText?: (text: string) => string;
 		},
 	) {
 		this.questions = questions;
 		this.templates = options?.templates ?? [];
-		this.answers = questions.map((_, index) => options?.initialAnswers?.[index] ?? "");
+		this.responses = normalizeResponses(questions, options?.initialResponses, undefined, false);
 		this.tui = tui;
 		this.onDone = onDone;
 		this.onDraftChange = options?.onDraftChange;
+		this.cyan = options?.accentColor ?? this.cyan;
+		this.green = options?.successColor ?? this.green;
+		this.yellow = options?.warningColor ?? this.yellow;
+		this.gray = options?.mutedColor ?? this.gray;
+		this.dim = options?.dimColor ?? this.dim;
+		this.bold = options?.boldText ?? this.bold;
+		this.italic = options?.italicText ?? this.italic;
 
 		// Create a minimal theme for the editor
 		const editorTheme: EditorTheme = {
 			borderColor: this.dim,
 			selectList: {
-				selectedBg: (s: string) => `\x1b[44m${s}\x1b[0m`,
 				matchHighlight: this.cyan,
 				itemSecondary: this.gray,
 			},
@@ -294,31 +454,116 @@ class QnAComponent implements Component {
 		// We'll handle Enter ourselves to preserve the text
 		this.editor.disableSubmit = true;
 		this.editor.onChange = () => {
-			this.saveCurrentAnswer();
+			this.saveCurrentResponse();
 			this.invalidate();
 			this.tui.requestRender();
 		};
 
-		this.editor.setText(this.answers[this.currentIndex] || "");
+		this.loadEditorForCurrentQuestion();
+	}
+
+	private getCurrentQuestion(): ExtractedQuestion {
+		return this.questions[this.currentIndex];
+	}
+
+	private isPrintableInput(data: string): boolean {
+		if (data.length !== 1) {
+			return false;
+		}
+
+		const code = data.charCodeAt(0);
+		return code >= 32 && code !== 127;
+	}
+
+	private shouldUseEditor(index: number = this.currentIndex): boolean {
+		const question = this.questions[index];
+		const options = getQuestionOptions(question);
+		if (options.length === 0) {
+			return true;
+		}
+
+		return this.responses[index].selectedOptionIndex === options.length;
+	}
+
+	private getCurrentAnswerText(): string {
+		const question = this.getCurrentQuestion();
+		const response = this.responses[this.currentIndex];
+		return formatResponseAnswer(question, response);
+	}
+
+	private getAnswerText(index: number): string {
+		return formatResponseAnswer(this.questions[index], this.responses[index]);
+	}
+
+	private summarizeAnswer(text: string, maxLength: number = 60): string {
+		const singleLine = text.replace(/\s+/g, " ").trim();
+		if (singleLine.length <= maxLength) {
+			return singleLine;
+		}
+		return `${singleLine.slice(0, maxLength - 1)}…`;
 	}
 
 	private emitDraftChange(): void {
-		this.onDraftChange?.([...this.answers]);
+		this.onDraftChange?.(cloneResponses(this.responses));
 	}
 
-	private saveCurrentAnswer(emit: boolean = true): void {
-		this.answers[this.currentIndex] = this.editor.getText();
+	private loadEditorForCurrentQuestion(): void {
+		if (!this.shouldUseEditor()) {
+			this.editor.setText("");
+			return;
+		}
+
+		this.editor.setText(this.responses[this.currentIndex].customText ?? "");
+	}
+
+	private saveCurrentResponse(emit: boolean = true): void {
+		if (this.shouldUseEditor()) {
+			const text = this.editor.getText();
+			this.responses[this.currentIndex].customText = text;
+			const question = this.questions[this.currentIndex];
+			if (getQuestionOptions(question).length === 0 || text.trim().length > 0) {
+				this.responses[this.currentIndex].selectionTouched = true;
+			}
+		}
+
 		if (emit) {
 			this.emitDraftChange();
 		}
 	}
 
 	private navigateTo(index: number): void {
-		if (index < 0 || index >= this.questions.length) return;
-		this.saveCurrentAnswer();
+		if (index < 0 || index >= this.questions.length) {
+			return;
+		}
+
+		this.saveCurrentResponse();
 		this.currentIndex = index;
-		this.editor.setText(this.answers[index] || "");
+		this.showingConfirmation = false;
+		this.loadEditorForCurrentQuestion();
 		this.invalidate();
+	}
+
+	private selectOption(index: number): void {
+		const question = this.getCurrentQuestion();
+		const options = getQuestionOptions(question);
+		if (options.length === 0) {
+			return;
+		}
+
+		const maxIndex = options.length;
+		const normalized = Math.max(0, Math.min(maxIndex, index));
+		const currentResponse = this.responses[this.currentIndex];
+		if (normalized === currentResponse.selectedOptionIndex && currentResponse.selectionTouched) {
+			return;
+		}
+
+		this.saveCurrentResponse(false);
+		currentResponse.selectedOptionIndex = normalized;
+		currentResponse.selectionTouched = true;
+		this.loadEditorForCurrentQuestion();
+		this.emitDraftChange();
+		this.invalidate();
+		this.tui.requestRender();
 	}
 
 	private applyNextTemplate(): void {
@@ -326,41 +571,50 @@ class QnAComponent implements Component {
 			return;
 		}
 
+		const question = this.getCurrentQuestion();
+		const options = getQuestionOptions(question);
+		if (options.length > 0 && !this.shouldUseEditor()) {
+			this.selectOption(options.length);
+		}
+
 		const template = this.templates[this.templateIndex];
-		const question = this.questions[this.currentIndex];
 		const updated = applyTemplate(template.template, {
 			question: question.question,
 			context: question.context,
-			answer: this.editor.getText(),
+			answer: this.getCurrentAnswerText(),
 			index: this.currentIndex,
 			total: this.questions.length,
 		});
 
 		this.editor.setText(updated);
-		this.saveCurrentAnswer();
+		this.saveCurrentResponse();
 		this.templateIndex = (this.templateIndex + 1) % this.templates.length;
 		this.invalidate();
 		this.tui.requestRender();
 	}
 
 	private submit(): void {
-		this.saveCurrentAnswer();
+		this.saveCurrentResponse();
 
-		// Build the response text (omit unanswered entries)
+		const answers = normalizeDraftAnswersFromResponses(this.questions, this.responses);
 		const parts: string[] = [];
 		for (let i = 0; i < this.questions.length; i++) {
-			const q = this.questions[i];
-			const rawAnswer = this.answers[i] ?? "";
-			const trimmed = rawAnswer.trim();
-			if (trimmed.length === 0) {
+			const question = this.questions[i];
+			const rawAnswer = answers[i] ?? "";
+			if (rawAnswer.trim().length === 0) {
 				continue;
 			}
-			parts.push(`Q: ${q.question}`);
+
+			parts.push(`Q: ${question.question}`);
 			parts.push(`A: ${rawAnswer}`);
 			parts.push("");
 		}
 
-		this.onDone({ text: parts.join("\n").trim(), answers: [...this.answers] });
+		this.onDone({
+			text: parts.join("\n").trim(),
+			answers,
+			responses: cloneResponses(this.responses),
+		});
 	}
 
 	private cancel(): void {
@@ -373,13 +627,16 @@ class QnAComponent implements Component {
 	}
 
 	handleInput(data: string): void {
-		// Handle confirmation dialog
 		if (this.showingConfirmation) {
-			if (matchesKey(data, Key.enter) || data.toLowerCase() === "y") {
+			if (matchesKey(data, Key.enter)) {
 				this.submit();
 				return;
 			}
-			if (matchesKey(data, Key.escape) || matchesKey(data, Key.ctrl("c")) || data.toLowerCase() === "n") {
+			if (matchesKey(data, Key.ctrl("c"))) {
+				this.cancel();
+				return;
+			}
+			if (matchesKey(data, Key.escape)) {
 				this.showingConfirmation = false;
 				this.invalidate();
 				this.tui.requestRender();
@@ -388,8 +645,7 @@ class QnAComponent implements Component {
 			return;
 		}
 
-		// Global navigation and commands
-		if (matchesKey(data, Key.escape) || matchesKey(data, Key.ctrl("c"))) {
+		if (matchesKey(data, Key.ctrl("c"))) {
 			this.cancel();
 			return;
 		}
@@ -399,7 +655,6 @@ class QnAComponent implements Component {
 			return;
 		}
 
-		// Tab / Shift+Tab for navigation
 		if (matchesKey(data, Key.tab)) {
 			if (this.currentIndex < this.questions.length - 1) {
 				this.navigateTo(this.currentIndex + 1);
@@ -407,6 +662,7 @@ class QnAComponent implements Component {
 			}
 			return;
 		}
+
 		if (matchesKey(data, Key.shift("tab"))) {
 			if (this.currentIndex > 0) {
 				this.navigateTo(this.currentIndex - 1);
@@ -415,32 +671,44 @@ class QnAComponent implements Component {
 			return;
 		}
 
-		// Arrow up/down for question navigation when editor is empty
-		// (Editor handles its own cursor navigation when there's content)
-		if (matchesKey(data, Key.up) && this.editor.getText() === "") {
-			if (this.currentIndex > 0) {
-				this.navigateTo(this.currentIndex - 1);
-				this.tui.requestRender();
+		const question = this.getCurrentQuestion();
+		const options = getQuestionOptions(question);
+		const usingEditor = this.shouldUseEditor();
+		if (options.length > 0) {
+			const otherIndex = options.length;
+			const isOnOther = this.responses[this.currentIndex].selectedOptionIndex === otherIndex;
+			const canSwitchFromCustomInput = usingEditor && isOnOther && this.editor.getText().length === 0;
+			const allowOptionNavigation = !usingEditor || canSwitchFromCustomInput;
+
+			if (allowOptionNavigation && matchesKey(data, Key.up)) {
+				this.selectOption(this.responses[this.currentIndex].selectedOptionIndex - 1);
 				return;
 			}
-		}
-		if (matchesKey(data, Key.down) && this.editor.getText() === "") {
-			if (this.currentIndex < this.questions.length - 1) {
-				this.navigateTo(this.currentIndex + 1);
-				this.tui.requestRender();
+
+			if (allowOptionNavigation && matchesKey(data, Key.down)) {
+				this.selectOption(this.responses[this.currentIndex].selectedOptionIndex + 1);
+				return;
+			}
+
+			const selectedIndex = resolveNumericOptionShortcut(data, otherIndex, usingEditor);
+			if (selectedIndex !== null) {
+				this.selectOption(selectedIndex);
 				return;
 			}
 		}
 
-		// Handle Enter ourselves (editor's submit is disabled)
-		// Plain Enter moves to next question or shows confirmation on last question
-		// Shift+Enter adds a newline (handled by editor)
 		if (matchesKey(data, Key.enter) && !matchesKey(data, Key.shift("enter"))) {
-			this.saveCurrentAnswer();
+			const currentResponse = this.responses[this.currentIndex];
+			if (options.length > 0 && !this.shouldUseEditor() && !currentResponse.selectionTouched) {
+				currentResponse.selectionTouched = true;
+			}
+
+			this.saveCurrentResponse();
+			currentResponse.committed = true;
+			this.emitDraftChange();
 			if (this.currentIndex < this.questions.length - 1) {
 				this.navigateTo(this.currentIndex + 1);
 			} else {
-				// On last question - show confirmation
 				this.showingConfirmation = true;
 			}
 			this.invalidate();
@@ -448,10 +716,20 @@ class QnAComponent implements Component {
 			return;
 		}
 
-		// Pass to editor
-		this.editor.handleInput(data);
-		this.invalidate();
-		this.tui.requestRender();
+		if (this.shouldUseEditor()) {
+			this.editor.handleInput(data);
+			this.invalidate();
+			this.tui.requestRender();
+			return;
+		}
+
+		if (this.isPrintableInput(data)) {
+			this.selectOption(getQuestionOptions(question).length);
+			this.editor.handleInput(data);
+			this.saveCurrentResponse();
+			this.invalidate();
+			this.tui.requestRender();
+		}
 	}
 
 	render(width: number): string[] {
@@ -460,13 +738,11 @@ class QnAComponent implements Component {
 		}
 
 		const lines: string[] = [];
-		const boxWidth = Math.min(width - 4, 120); // Allow wider box
-		const contentWidth = boxWidth - 4; // 2 chars padding on each side
+		const boxWidth = Math.max(40, Math.min(width - 4, 120));
+		const contentWidth = boxWidth - 4;
 
-		// Helper to create horizontal lines (dim the whole thing at once)
 		const horizontalLine = (count: number) => "─".repeat(count);
 
-		// Helper to create a box line
 		const boxLine = (content: string, leftPad: number = 2): string => {
 			const paddedContent = " ".repeat(leftPad) + content;
 			const contentLen = visibleWidth(paddedContent);
@@ -483,17 +759,20 @@ class QnAComponent implements Component {
 			return line + " ".repeat(Math.max(0, width - len));
 		};
 
-		// Title
-		lines.push(padToWidth(this.dim("╭" + horizontalLine(boxWidth - 2) + "╮")));
-		const title = `${this.bold(this.cyan("Questions"))} ${this.dim(`(${this.currentIndex + 1}/${this.questions.length})`)}`;
-		lines.push(padToWidth(boxLine(title)));
-		lines.push(padToWidth(this.dim("├" + horizontalLine(boxWidth - 2) + "┤")));
+		const question = this.getCurrentQuestion();
+		const response = this.responses[this.currentIndex];
+		const options = getQuestionOptions(question);
+		const usesEditor = this.shouldUseEditor();
 
-		// Progress indicator
+		lines.push(padToWidth(this.dim(`╭${horizontalLine(boxWidth - 2)}╮`)));
+		const title = `Questions ${this.dim(`(${this.currentIndex + 1}/${this.questions.length})`)}`;
+		lines.push(padToWidth(boxLine(title)));
+		lines.push(padToWidth(this.dim(`├${horizontalLine(boxWidth - 2)}┤`)));
+
 		const progressParts: string[] = [];
 		for (let i = 0; i < this.questions.length; i++) {
-			const answered = (this.answers[i]?.trim() || "").length > 0;
 			const current = i === this.currentIndex;
+			const answered = hasResponseContent(this.questions[i], this.responses[i]);
 			if (current) {
 				progressParts.push(this.cyan("●"));
 			} else if (answered) {
@@ -503,60 +782,133 @@ class QnAComponent implements Component {
 			}
 		}
 		lines.push(padToWidth(boxLine(progressParts.join(" "))));
-		lines.push(padToWidth(emptyBoxLine()));
 
-		// Current question
-		const q = this.questions[this.currentIndex];
-		const questionText = `${this.bold("Q:")} ${q.question}`;
-		const wrappedQuestion = wrapTextWithAnsi(questionText, contentWidth);
-		for (const line of wrappedQuestion) {
-			lines.push(padToWidth(boxLine(line)));
-		}
-
-		// Context if present
-		if (q.context) {
+		if (!this.showingConfirmation) {
+			if (question.header) {
+				lines.push(padToWidth(boxLine(this.cyan(question.header))));
+			}
 			lines.push(padToWidth(emptyBoxLine()));
-			const contextText = this.gray(`> ${q.context}`);
-			const wrappedContext = wrapTextWithAnsi(contextText, contentWidth - 2);
-			for (const line of wrappedContext) {
+
+			const wrappedQuestion = wrapTextWithAnsi(`${this.bold("Q:")} ${this.bold(question.question)}`, contentWidth);
+			for (const line of wrappedQuestion) {
 				lines.push(padToWidth(boxLine(line)));
 			}
-		}
 
-		lines.push(padToWidth(emptyBoxLine()));
-
-		// Render the editor component (multi-line input) with padding
-		// Skip the first and last lines (editor's own border lines)
-		const answerPrefix = this.bold("A: ");
-		const editorWidth = contentWidth - 4 - 3; // Extra padding + space for "A: "
-		const editorLines = this.editor.render(editorWidth);
-		for (let i = 1; i < editorLines.length - 1; i++) {
-			if (i === 1) {
-				// First content line gets the "A: " prefix
-				lines.push(padToWidth(boxLine(answerPrefix + editorLines[i])));
-			} else {
-				// Subsequent lines get padding to align with the first line
-				lines.push(padToWidth(boxLine("   " + editorLines[i])));
+			if (question.context) {
+				lines.push(padToWidth(emptyBoxLine()));
+				for (const line of wrapTextWithAnsi(this.gray(`> ${question.context}`), contentWidth - 2)) {
+					lines.push(padToWidth(boxLine(line)));
+				}
 			}
+
+			if (options.length > 0) {
+				lines.push(padToWidth(emptyBoxLine()));
+				for (let i = 0; i <= options.length; i++) {
+					const isOther = i === options.length;
+					const optionLabel = isOther ? "Other" : options[i].label;
+					const description = isOther ? "Type your own answer" : options[i].description;
+					const selected = response.selectedOptionIndex === i;
+					const marker = selected ? "▶" : " ";
+					const optionPrefix = `${marker} ${i + 1}. `;
+					const line = `${optionPrefix}${optionLabel}`;
+					const styledLine = selected
+						? response.selectionTouched
+							? this.green(line)
+							: this.cyan(line)
+						: line;
+					lines.push(padToWidth(boxLine(truncateToWidth(styledLine, contentWidth))));
+
+					if (selected && description && description.trim().length > 0) {
+						const descriptionIndent = " ".repeat(visibleWidth(optionPrefix));
+						const wrappedDescription = wrapTextWithAnsi(
+							description,
+							Math.max(10, contentWidth - visibleWidth(descriptionIndent)),
+						);
+						for (const wrapped of wrappedDescription) {
+							lines.push(padToWidth(boxLine(`${descriptionIndent}${this.gray(wrapped)}`)));
+						}
+					}
+				}
+			}
+
+			lines.push(padToWidth(emptyBoxLine()));
+			if (usesEditor) {
+				const answerPrefix = this.bold("A: ");
+				const editorWidth = Math.max(20, contentWidth - 7);
+				const editorLines = this.editor.render(editorWidth);
+				for (let i = 1; i < editorLines.length - 1; i++) {
+					if (i === 1) {
+						lines.push(padToWidth(boxLine(answerPrefix + editorLines[i])));
+					} else {
+						lines.push(padToWidth(boxLine("   " + editorLines[i])));
+					}
+				}
+			} else {
+				const selectedLabel = response.selectionTouched
+					? options[response.selectedOptionIndex]?.label ?? ""
+					: this.dim("(select an option)");
+				lines.push(padToWidth(boxLine(`${this.bold("A:")} ${selectedLabel}`)));
+			}
+			lines.push(padToWidth(emptyBoxLine()));
 		}
 
-		lines.push(padToWidth(emptyBoxLine()));
-
-		// Confirmation dialog or footer with controls
 		if (this.showingConfirmation) {
-			lines.push(padToWidth(this.dim("├" + horizontalLine(boxWidth - 2) + "┤")));
-			const confirmMsg = `${this.yellow("Submit all answers?")} ${this.dim("(Enter/y to confirm, Esc/n to cancel)")}`;
+			lines.push(padToWidth(this.dim(`├${horizontalLine(boxWidth - 2)}┤`)));
+			lines.push(padToWidth(boxLine(this.bold("Review before submit:"))));
+			for (let i = 0; i < this.questions.length; i++) {
+				const summaryLabel = this.questions[i].header?.trim() || this.questions[i].question;
+				const answerText = this.getAnswerText(i);
+				const hasAnswer = answerText.trim().length > 0;
+				const answerPreview = hasAnswer
+					? this.green(this.summarizeAnswer(answerText))
+					: this.yellow("(no answer)");
+				const questionLine = `${this.bold(`${i + 1}.`)} ${this.cyan(summaryLabel)}`;
+				const answerLine = `   ${this.dim("Answer:")} ${answerPreview}`;
+				lines.push(padToWidth(boxLine(truncateToWidth(questionLine, contentWidth))));
+				lines.push(padToWidth(boxLine(truncateToWidth(answerLine, contentWidth))));
+			}
+			lines.push(padToWidth(emptyBoxLine()));
+			const confirmMsg = `${this.yellow("Submit all answers?")} ${this.dim("(Enter submit, Esc keep editing)")}`;
 			lines.push(padToWidth(boxLine(truncateToWidth(confirmMsg, contentWidth))));
+			const separator = this.cyan(" · ");
+			const formatHint = (shortcut: string, action: string) => `${this.bold(shortcut)} ${this.italic(action)}`;
+			const confirmControls = `${formatHint("Enter", "submit")}${separator}${formatHint("Esc", "back")}${separator}${formatHint("Ctrl+C", "cancel")}`;
+			lines.push(padToWidth(boxLine(truncateToWidth(confirmControls, contentWidth))));
 		} else {
-			lines.push(padToWidth(this.dim("├" + horizontalLine(boxWidth - 2) + "┤")));
-			const templateLabel =
-				this.templates.length > 0
-					? ` · ${this.dim("Ctrl+T")} template${this.templates.length > 1 ? `: ${this.templates[this.templateIndex].label}` : ""}`
-					: "";
-			const controls = `${this.dim("Tab/Enter")} next · ${this.dim("Shift+Tab")} prev · ${this.dim("Shift+Enter")} newline${templateLabel} · ${this.dim("Esc")} cancel`;
-			lines.push(padToWidth(boxLine(truncateToWidth(controls, contentWidth))));
+			lines.push(padToWidth(this.dim(`├${horizontalLine(boxWidth - 2)}┤`)));
+
+			const separator = this.cyan(" · ");
+			const formatHint = (shortcut: string, action: string) => `${this.bold(shortcut)} ${this.italic(action)}`;
+			const joinHints = (parts: string[]) => parts.join(separator);
+			const canFit = (parts: string[]) => visibleWidth(joinHints(parts)) <= contentWidth;
+
+			const tabHint = formatHint("Tab/⬆Tab", "next/prev");
+			const enterHint = formatHint("Enter", "commit + next");
+			const cancelHint = formatHint("Ctrl+C", "cancel");
+
+			const optionalHints: string[] = [];
+			if (options.length > 0 && !usesEditor) {
+				optionalHints.push(formatHint("↑/↓/1-9", "pick option"));
+			}
+			if (usesEditor) {
+				optionalHints.push(formatHint("⬆Enter", "newline"));
+			}
+			if (this.templates.length > 0) {
+				optionalHints.push(formatHint("Ctrl+T", "template"));
+			}
+
+			const trailingHints = [enterHint, tabHint, cancelHint];
+			const controls: string[] = [];
+			for (const hint of optionalHints) {
+				if (canFit([...controls, hint, ...trailingHints])) {
+					controls.push(hint);
+				}
+			}
+			controls.push(...trailingHints);
+
+			lines.push(padToWidth(boxLine(truncateToWidth(joinHints(controls), contentWidth))));
 		}
-		lines.push(padToWidth(this.dim("╰" + horizontalLine(boxWidth - 2) + "╯")));
+		lines.push(padToWidth(this.dim(`╰${horizontalLine(boxWidth - 2)}╯`)));
 
 		this.cachedWidth = width;
 		this.cachedLines = lines;
@@ -673,33 +1025,46 @@ export default function (pi: ExtensionAPI) {
 			draftSettings,
 		);
 
-		let initialAnswers = normalizeDraftAnswers([], extractionResult.questions.length);
+		let initialResponses = normalizeResponses(extractionResult.questions, undefined, undefined, false);
 		const draft = draftSettings.enabled
 			? getLatestDraft(branch, lastAssistantEntryId, extractionResult.questions)
 			: null;
 		if (draft) {
-			initialAnswers = normalizeDraftAnswers(draft.answers, extractionResult.questions.length);
-			const hasContent = initialAnswers.some((answer) => answer.trim().length > 0);
+			initialResponses = normalizeResponses(
+				extractionResult.questions,
+				draft.responses as QuestionResponse[] | undefined,
+				draft.answers,
+				true,
+			);
+			const hasContent = initialResponses.some((response, index) =>
+				hasResponseContent(extractionResult.questions[index], response),
+			);
 			if (hasContent && draftSettings.promptOnRestore) {
 				const resume = await ctx.ui.confirm(
 					"Resume draft answers?",
 					"Saved answers were found for this assistant message. Restore them?",
 				);
 				if (!resume) {
-					initialAnswers = normalizeDraftAnswers([], extractionResult.questions.length);
+					initialResponses = normalizeResponses(extractionResult.questions, undefined, undefined, false);
 					draftStore.clear();
 				}
 			}
 		}
 
-		draftStore.seed(initialAnswers);
+		draftStore.seed(initialResponses);
 
 		// Show the Q&A component
-		const answersResult = await ctx.ui.custom<QnAResult | null>((tui, _theme, _kb, done) => {
+		const answersResult = await ctx.ui.custom<QnAResult | null>((tui, theme, _kb, done) => {
 			return new QnAComponent(extractionResult.questions, tui, done, {
 				templates,
-				initialAnswers,
-				onDraftChange: (answers) => draftStore.schedule(answers),
+				initialResponses,
+				onDraftChange: (responses) => draftStore.schedule(responses),
+				accentColor: (text) => theme.fg("accent", text),
+				successColor: (text) => theme.fg("success", text),
+				warningColor: (text) => theme.fg("warning", text),
+				mutedColor: (text) => theme.fg("muted", text),
+				dimColor: (text) => theme.fg("dim", text),
+				boldText: (text) => theme.bold(text),
 			});
 		});
 

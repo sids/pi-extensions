@@ -4,6 +4,8 @@ import {
 	mergeAnswerSettings,
 	normalizeTemplates,
 	parseExtractionResult,
+	questionsMatch,
+	resolveNumericOptionShortcut,
 } from "../utils";
 
 describe("parseExtractionResult", () => {
@@ -11,6 +13,31 @@ describe("parseExtractionResult", () => {
 		const input = "```json\n{\n  \"questions\": [{ \"question\": \"Ready?\" }]\n}\n```";
 		const result = parseExtractionResult(input);
 		expect(result?.questions[0]?.question).toBe("Ready?");
+		expect(result?.questions[0]?.id).toBe("ready");
+	});
+
+	test("normalizes ids/options and leaves header optional", () => {
+		const input = JSON.stringify({
+			questions: [
+				{
+					question: "Should we ship now?",
+					options: [
+						{ label: "Yes", description: "Release this week." },
+						{ label: "No" },
+					],
+				},
+			],
+		});
+
+		const result = parseExtractionResult(input);
+		expect(result?.questions[0]).toEqual({
+			id: "should_we_ship_now",
+			question: "Should we ship now?",
+			options: [
+				{ label: "Yes", description: "Release this week." },
+				{ label: "No", description: "" },
+			],
+		});
 	});
 
 	test("returns null for invalid JSON", () => {
@@ -58,5 +85,96 @@ describe("mergeAnswerSettings", () => {
 		expect(merged.drafts?.enabled).toBe(false);
 		expect(merged.drafts?.autosaveMs).toBe(500);
 		expect(merged.drafts?.promptOnRestore).toBe(false);
+	});
+});
+
+describe("questionsMatch", () => {
+	test("allows non-semantic metadata drift", () => {
+		const left = [
+			{
+				id: "runtime",
+				header: "Runtime",
+				question: "What runtime?",
+				context: "Current service runs with Bun",
+				options: [
+					{ label: "Node", description: "Use Node.js" },
+					{ label: "Bun", description: "Use Bun" },
+				],
+			},
+		];
+		const right = [
+			{
+				id: "runtime",
+				header: "JS runtime",
+				question: "Which runtime should we use?",
+				context: "Current deployment uses Bun",
+				options: [
+					{ label: "Node", description: "Node.js for compatibility" },
+					{ label: "Bun", description: "Bun for speed" },
+				],
+			},
+		];
+
+		expect(questionsMatch(left, right)).toBe(true);
+		expect(
+			questionsMatch(
+				[{ id: "runtime_choice", question: "What runtime?" }],
+				[{ id: "js_runtime", question: "What runtime?" }],
+			),
+		).toBe(true);
+	});
+
+	test("still requires option shape compatibility", () => {
+		const left = [
+			{
+				id: "runtime",
+				question: "What runtime?",
+				options: [
+					{ label: "Node", description: "Use Node.js" },
+					{ label: "Bun", description: "Use Bun" },
+				],
+			},
+		];
+
+		expect(
+			questionsMatch(left, [
+				{
+					id: "runtime",
+					question: "What runtime?",
+					options: [{ label: "Node", description: "Use Node.js" }],
+				},
+			]),
+		).toBe(false);
+
+		expect(
+			questionsMatch(left, [
+				{
+					id: "runtime",
+					question: "What runtime?",
+					options: [
+						{ label: "Node", description: "Use Node.js" },
+						{ label: "Deno", description: "Use Deno" },
+					],
+				},
+			]),
+		).toBe(false);
+	});
+});
+
+describe("resolveNumericOptionShortcut", () => {
+	test("returns selected index in option mode", () => {
+		expect(resolveNumericOptionShortcut("1", 3, false)).toBe(0);
+		expect(resolveNumericOptionShortcut("4", 3, false)).toBe(3);
+	});
+
+	test("does not capture numeric input while editing custom answer", () => {
+		expect(resolveNumericOptionShortcut("1", 3, true)).toBeNull();
+		expect(resolveNumericOptionShortcut("9", 3, true)).toBeNull();
+	});
+
+	test("ignores invalid shortcut inputs", () => {
+		expect(resolveNumericOptionShortcut("0", 3, false)).toBeNull();
+		expect(resolveNumericOptionShortcut("x", 3, false)).toBeNull();
+		expect(resolveNumericOptionShortcut("9", 3, false)).toBeNull();
 	});
 });

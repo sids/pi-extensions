@@ -5,17 +5,25 @@ Interactive Q&A extraction for pi. Run `/answer` to extract questions from the l
 ## Usage
 
 1. Trigger with `/answer`.
-2. Answer extracted questions with the interactive editor.
-3. Submit to send the compiled Q/A message (unanswered questions are omitted).
+2. Review each extracted question.
+3. If options are available, choose one with **↑/↓** (or **1-9**) or switch to **Other** and type a custom answer.
+4. Press **Enter** to commit the current answer and move forward; use **Tab/Shift+Tab** to navigate without committing.
+5. On the last question, press **Enter** once to open confirmation and **Enter** again to submit.
 
 Note: The compiled response omits context lines and skips unanswered questions.
 
 Navigation:
-- **Tab / Enter**: next question
-- **Shift+Tab**: previous question
-- **Shift+Enter**: newline
+- **Tab**: next question (without committing current answer)
+- **Shift+Tab**: previous question (without committing current answer)
+- **Enter**: commit current answer and move to next question
+- **↑/↓**: select an option (when options are present and not editing custom text)
+- **1-9**: jump to option number (including Other, when not editing custom text)
+- **Type while an option is selected**: switch to custom answer input
+- **When editing Other**: clear the custom text, then use **↑/↓** to switch back to options
+- **Shift+Enter**: newline in custom answer input
 - **Ctrl+T**: apply the next answer template (if configured)
-- **Esc**: cancel
+- **Ctrl+C**: cancel
+- **Esc** (on submit confirmation): keep editing
 
 ## Configuration
 
