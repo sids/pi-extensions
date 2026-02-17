@@ -19,6 +19,52 @@ export function formatThinkingLevel(level?: string): string {
 	return level?.trim() ? level : "off";
 }
 
+export type TitleStatus = "waitingForInput" | "running" | "done" | null;
+
+export function pickTitleStatus(options: {
+	isWaitingForInput: boolean;
+	isRunning: boolean;
+	isTyping: boolean;
+	suppressDoneEmoji: boolean;
+}): TitleStatus {
+	if (options.isWaitingForInput) {
+		return "waitingForInput";
+	}
+	if (options.isRunning) {
+		return "running";
+	}
+	if (!options.suppressDoneEmoji && !options.isTyping) {
+		return "done";
+	}
+	return null;
+}
+
+export function applyTitleAttention(attentionIds: Set<string>, id: string, active: boolean): boolean {
+	const previousSize = attentionIds.size;
+	if (active) {
+		attentionIds.add(id);
+	} else {
+		attentionIds.delete(id);
+	}
+	return attentionIds.size !== previousSize;
+}
+
+export function clearTitleAttention(attentionIds: Set<string>): boolean {
+	if (attentionIds.size === 0) {
+		return false;
+	}
+	attentionIds.clear();
+	return true;
+}
+
+export function shouldPromoteLongRunningToolWarning(
+	toolCallId: string,
+	timers: ReadonlyMap<string, unknown>,
+	timerRef: unknown,
+): boolean {
+	return timers.get(toolCallId) === timerRef;
+}
+
 export function formatWorkingDirectory(cwd: string): string {
 	const home = os.homedir();
 	if (cwd === home) {

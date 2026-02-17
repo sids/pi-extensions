@@ -2,6 +2,8 @@ import os from "node:os";
 import path from "node:path";
 import { describe, expect, test } from "bun:test";
 import {
+	applyTitleAttention,
+	clearTitleAttention,
 	filterPullRequestsByHeadOwner,
 	formatContextPercent,
 	formatElapsedMinutes,
@@ -15,6 +17,8 @@ import {
 	parseAllowedGitHubHosts,
 	parseGitRemoteRepo,
 	pickPullRequest,
+	pickTitleStatus,
+	shouldPromoteLongRunningToolWarning,
 } from "../utils";
 
 describe("formatModelLabel", () => {
@@ -30,6 +34,93 @@ describe("formatModelLabel", () => {
 describe("formatThinkingLevel", () => {
 	test("uses fallback", () => {
 		expect(formatThinkingLevel(" ")).toBe("off");
+	});
+});
+
+describe("pickTitleStatus", () => {
+	test("prioritizes waiting for input", () => {
+		expect(
+			pickTitleStatus({
+				isWaitingForInput: true,
+				isRunning: true,
+				isTyping: false,
+				suppressDoneEmoji: false,
+			}),
+		).toBe("waitingForInput");
+	});
+
+	test("returns running when active and not waiting", () => {
+		expect(
+			pickTitleStatus({
+				isWaitingForInput: false,
+				isRunning: true,
+				isTyping: false,
+				suppressDoneEmoji: false,
+			}),
+		).toBe("running");
+	});
+
+	test("returns done when idle and emoji is not suppressed", () => {
+		expect(
+			pickTitleStatus({
+				isWaitingForInput: false,
+				isRunning: false,
+				isTyping: false,
+				suppressDoneEmoji: false,
+			}),
+		).toBe("done");
+	});
+
+	test("returns null when done emoji should stay hidden", () => {
+		expect(
+			pickTitleStatus({
+				isWaitingForInput: false,
+				isRunning: false,
+				isTyping: true,
+				suppressDoneEmoji: true,
+			}),
+		).toBeNull();
+	});
+});
+
+describe("applyTitleAttention", () => {
+	test("adds and removes attention ids with change detection", () => {
+		const ids = new Set<string>();
+
+		expect(applyTitleAttention(ids, "answer:1", true)).toBeTrue();
+		expect(ids.has("answer:1")).toBeTrue();
+		expect(applyTitleAttention(ids, "answer:1", true)).toBeFalse();
+
+		expect(applyTitleAttention(ids, "answer:1", false)).toBeTrue();
+		expect(ids.has("answer:1")).toBeFalse();
+		expect(applyTitleAttention(ids, "answer:1", false)).toBeFalse();
+	});
+});
+
+describe("clearTitleAttention", () => {
+	test("clears all attention ids and reports whether anything changed", () => {
+		const ids = new Set<string>(["answer:1", "answer:2"]);
+
+		expect(clearTitleAttention(ids)).toBeTrue();
+		expect(ids.size).toBe(0);
+		expect(clearTitleAttention(ids)).toBeFalse();
+	});
+});
+
+describe("shouldPromoteLongRunningToolWarning", () => {
+	test("only promotes when timer ref still matches active timer", () => {
+		const timers = new Map<string, unknown>();
+		const activeTimer = Symbol("active");
+		timers.set("tool-1", activeTimer);
+
+		expect(shouldPromoteLongRunningToolWarning("tool-1", timers, activeTimer)).toBeTrue();
+
+		timers.delete("tool-1");
+		expect(shouldPromoteLongRunningToolWarning("tool-1", timers, activeTimer)).toBeFalse();
+
+		const replacedTimer = Symbol("replaced");
+		timers.set("tool-1", replacedTimer);
+		expect(shouldPromoteLongRunningToolWarning("tool-1", timers, activeTimer)).toBeFalse();
 	});
 });
 

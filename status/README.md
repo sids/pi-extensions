@@ -12,7 +12,7 @@ Shows a status widget below the input editor with session context (plus an optio
 
 Time values use a compact `d/h/m` format (`XdYhZm`, `YhZm`, or `Zm`) and are separated with a center dot (`·`).
 
-Also updates the terminal title to append an emoji indicating whether the harness is running (♨️) or done (✅). When you start typing, the done emoji is removed and stays hidden until the next run. The default footer widget is hidden while this extension is active.
+Also updates the terminal title to append an emoji indicating whether the harness is running (♨️), done (✅), or waiting on attention-worthy states (⚠️): user input from `request_user_input`, any non-`bash` tool call running longer than 5 seconds, and extension-driven attention events on `status:title_attention`. When you start typing, the done emoji is removed and stays hidden until the next run. The default footer widget is hidden while this extension is active.
 
 ## Usage
 
