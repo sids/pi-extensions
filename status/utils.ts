@@ -38,11 +38,29 @@ export function formatContextPercent(usage?: { percent: number | null } | null):
 	return `${Math.round(usage.percent)}%`;
 }
 
-export function formatLoopMinutes(minutes?: number | null): string {
+export function formatElapsedMinutes(minutes?: number | null): string {
 	if (minutes === null || minutes === undefined || Number.isNaN(minutes) || minutes < 0) {
 		return UNKNOWN_VALUE;
 	}
-	return `${Math.floor(minutes)}min`;
+
+	const totalMinutes = Math.floor(minutes);
+	const dayMinutes = 24 * 60;
+
+	if (totalMinutes >= dayMinutes) {
+		const days = Math.floor(totalMinutes / dayMinutes);
+		const remainingMinutes = totalMinutes % dayMinutes;
+		const hours = Math.floor(remainingMinutes / 60);
+		const mins = remainingMinutes % 60;
+		return `${days}d${hours}h${mins}m`;
+	}
+
+	if (totalMinutes >= 60) {
+		const hours = Math.floor(totalMinutes / 60);
+		const mins = totalMinutes % 60;
+		return `${hours}h${mins}m`;
+	}
+
+	return `${totalMinutes}m`;
 }
 
 export function normalizeGitBranch(branch?: string | null): string {

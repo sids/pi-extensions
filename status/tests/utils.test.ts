@@ -4,7 +4,7 @@ import { describe, expect, test } from "bun:test";
 import {
 	filterPullRequestsByHeadOwner,
 	formatContextPercent,
-	formatLoopMinutes,
+	formatElapsedMinutes,
 	formatModelLabel,
 	formatPullRequestLabel,
 	formatRepoLabel,
@@ -59,15 +59,26 @@ describe("formatContextPercent", () => {
 	});
 });
 
-describe("formatLoopMinutes", () => {
-	test("formats minute count", () => {
-		expect(formatLoopMinutes(0)).toBe("0min");
-		expect(formatLoopMinutes(12.9)).toBe("12min");
+describe("formatElapsedMinutes", () => {
+	test("formats minutes only", () => {
+		expect(formatElapsedMinutes(0)).toBe("0m");
+		expect(formatElapsedMinutes(12.9)).toBe("12m");
+		expect(formatElapsedMinutes(59)).toBe("59m");
+	});
+
+	test("formats hours and minutes", () => {
+		expect(formatElapsedMinutes(60)).toBe("1h0m");
+		expect(formatElapsedMinutes(75)).toBe("1h15m");
+	});
+
+	test("formats days, hours, and minutes", () => {
+		expect(formatElapsedMinutes(1440)).toBe("1d0h0m");
+		expect(formatElapsedMinutes(1505)).toBe("1d1h5m");
 	});
 
 	test("handles missing values", () => {
-		expect(formatLoopMinutes(undefined)).toBe("--");
-		expect(formatLoopMinutes(null)).toBe("--");
+		expect(formatElapsedMinutes(undefined)).toBe("--");
+		expect(formatElapsedMinutes(null)).toBe("--");
 	});
 });
 

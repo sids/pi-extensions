@@ -7,8 +7,10 @@ Shows a status widget below the input editor with session context (plus an optio
 - Current working directory
 - Current Git branch
 - Context usage percent
-- Latest agent loop runtime (e.g. `3min`)
+- Last loop, agent, and session times (`<loop> loop · <agent> agent · <session> session`)
 - Current GitHub PR URL for the active branch (includes `(merged)` / `(closed)` when not open)
+
+Time values use a compact `d/h/m` format (`XdYhZm`, `YhZm`, or `Zm`) and are separated with a center dot (`·`).
 
 Also updates the terminal title to append an emoji indicating whether the harness is running (♨️) or done (✅). When you start typing, the done emoji is removed and stays hidden until the next run. The default footer widget is hidden while this extension is active.
 

@@ -4,7 +4,7 @@ import { truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
 import {
 	filterPullRequestsByHeadOwner,
 	formatContextPercent,
-	formatLoopMinutes,
+	formatElapsedMinutes,
 	formatModelLabel,
 	formatPullRequestLabel,
 	formatRepoLabel,
@@ -31,6 +31,8 @@ type StatusPayload = {
 	contextUsage: number | null;
 	repoLabel: string;
 	loopMinutesLabel: string;
+	agentMinutesLabel: string;
+	sessionMinutesLabel: string;
 	pullRequestLabel: string | null;
 };
 
@@ -45,9 +47,12 @@ const createStatusWidget = (payload: StatusPayload) => (_tui: unknown, theme: { 
 		const modelLabel = theme.fg("muted", payload.modelLabel);
 		const thinkingLabel = theme.fg(resolveThinkingColor(payload.thinkingLevel), `(${payload.thinkingLevel})`);
 		const contextLabel = theme.fg(resolveContextColor(payload.contextUsage), payload.contextPercent);
-		const loopMinutesLabel = theme.fg("muted", payload.loopMinutesLabel);
+		const timingLabel = theme.fg(
+			"muted",
+			`· ${payload.loopMinutesLabel} loop · ${payload.agentMinutesLabel} agent · ${payload.sessionMinutesLabel} session`,
+		);
 		const repoLabel = theme.fg("muted", payload.repoLabel);
-		const right = `${modelLabel} ${thinkingLabel} ${contextLabel} ${loopMinutesLabel}`;
+		const right = `${modelLabel} ${thinkingLabel} ${contextLabel} ${timingLabel}`;
 		const lines = [renderAlignedLine(repoLabel, right, width, 1)];
 		if (payload.pullRequestLabel) {
 			const prContent = payload.pullRequestLabel.replace(/^PR:\s*/, "").trim();
@@ -302,8 +307,12 @@ export default function (pi: ExtensionAPI) {
 	let activeContext: ExtensionContext | null = null;
 	let lastThinkingLevel = "";
 	let enabled = true;
+	let sessionStartedAt: number | null = Date.now();
 	let activeLoopStartedAt: number | null = null;
-	let lastLoopMinutes: number | null = null;
+	let lastLoopDurationMs: number | null = null;
+	let activeTurnStartedAt: number | null = null;
+	let completedTurnDurationMs = 0;
+	let lastTimingSignature = "";
 	const allowedGitHubHosts = parseAllowedGitHubHosts(process.env.PI_STATUS_ALLOWED_GITHUB_HOSTS);
 	let remoteRepoCache = new Map<string, RemoteRepoCacheEntry>();
 	let remoteRepoRequestsInFlight = new Map<string, Promise<GitRemoteRepo | null>>();
@@ -314,23 +323,80 @@ export default function (pi: ExtensionAPI) {
 	let pendingWidgetUpdateOptions: WidgetUpdateOptions | null = null;
 	let widgetUpdateRunner: Promise<void> | null = null;
 
-	const getLoopMinutes = (): number | null => {
-		if (activeLoopStartedAt === null) {
-			return lastLoopMinutes;
-		}
-		return Math.max(0, Math.floor((Date.now() - activeLoopStartedAt) / 60_000));
+	const resetTimingState = (now = Date.now()) => {
+		sessionStartedAt = now;
+		activeLoopStartedAt = null;
+		lastLoopDurationMs = null;
+		activeTurnStartedAt = null;
+		completedTurnDurationMs = 0;
+		lastTimingSignature = "";
 	};
 
-	const updateLoopMinutes = (ctx: ExtensionContext) => {
-		if (!isRunning || activeLoopStartedAt === null) {
+	const finalizeActiveLoop = (now = Date.now()): boolean => {
+		if (activeLoopStartedAt === null) {
+			return false;
+		}
+		lastLoopDurationMs = Math.max(0, now - activeLoopStartedAt);
+		activeLoopStartedAt = null;
+		lastTimingSignature = "";
+		return true;
+	};
+
+	const beginLoop = (now = Date.now()) => {
+		if (activeLoopStartedAt !== null) {
+			finalizeActiveLoop(now);
+		}
+		activeLoopStartedAt = now;
+		lastLoopDurationMs = 0;
+		lastTimingSignature = "";
+	};
+
+	const finalizeActiveTurn = (now = Date.now()): boolean => {
+		if (activeTurnStartedAt === null) {
+			return false;
+		}
+		const durationMs = Math.max(0, now - activeTurnStartedAt);
+		completedTurnDurationMs += durationMs;
+		activeTurnStartedAt = null;
+		lastTimingSignature = "";
+		return true;
+	};
+
+	const beginTurn = (now = Date.now()) => {
+		if (activeTurnStartedAt !== null) {
+			finalizeActiveTurn(now);
+		}
+		activeTurnStartedAt = now;
+		lastTimingSignature = "";
+	};
+
+	const getLoopMinutes = (now = Date.now()): number | null => {
+		if (activeLoopStartedAt === null) {
+			return lastLoopDurationMs === null ? null : lastLoopDurationMs / 60_000;
+		}
+		return Math.max(0, (now - activeLoopStartedAt) / 60_000);
+	};
+
+	const getTimingMinutes = (now = Date.now()): { loop: number | null; agent: number | null; session: number | null } => {
+		const loop = getLoopMinutes(now);
+		const activeTurnDurationMs = activeTurnStartedAt === null ? 0 : Math.max(0, now - activeTurnStartedAt);
+		const agent = (completedTurnDurationMs + activeTurnDurationMs) / 60_000;
+		const session = sessionStartedAt === null ? null : Math.max(0, (now - sessionStartedAt) / 60_000);
+		return { loop, agent, session };
+	};
+
+	const getTimingSignature = (now = Date.now()): string => {
+		const timings = getTimingMinutes(now);
+		return `${formatElapsedMinutes(timings.loop)}|${formatElapsedMinutes(timings.agent)}|${formatElapsedMinutes(timings.session)}`;
+	};
+
+	const updateTimingMetrics = (ctx: ExtensionContext) => {
+		const nextSignature = getTimingSignature();
+		if (nextSignature === lastTimingSignature) {
 			return;
 		}
-		const elapsedMinutes = getLoopMinutes();
-		if (elapsedMinutes === null || elapsedMinutes === lastLoopMinutes) {
-			return;
-		}
-		lastLoopMinutes = elapsedMinutes;
-		void requestWidgetUpdate(ctx);
+		lastTimingSignature = nextSignature;
+		void requestWidgetUpdate(ctx, { skipPullRequestLookup: true });
 	};
 
 	const maybeRefreshPullRequest = (ctx: ExtensionContext) => {
@@ -401,12 +467,12 @@ export default function (pi: ExtensionAPI) {
 			}
 			updateTypingState(activeContext);
 			updateThinkingLevel(activeContext);
-			updateLoopMinutes(activeContext);
+			updateTimingMetrics(activeContext);
 			maybeRefreshPullRequest(activeContext);
 		}, 200);
 		updateTypingState(ctx);
 		updateThinkingLevel(ctx);
-		updateLoopMinutes(ctx);
+		updateTimingMetrics(ctx);
 		maybeRefreshPullRequest(ctx);
 	};
 
@@ -460,13 +526,16 @@ export default function (pi: ExtensionAPI) {
 		}
 
 		const usage = ctx.getContextUsage();
+		const timings = getTimingMinutes();
 		const payload: StatusPayload = {
 			modelLabel: formatModelLabel(ctx.model),
 			thinkingLevel: formatThinkingLevel(pi.getThinkingLevel()),
 			contextPercent: formatContextPercent(usage),
 			contextUsage: usage?.percent ?? null,
 			repoLabel: formatRepoLabel(ctx.cwd, branch),
-			loopMinutesLabel: formatLoopMinutes(getLoopMinutes()),
+			loopMinutesLabel: formatElapsedMinutes(timings.loop),
+			agentMinutesLabel: formatElapsedMinutes(timings.agent),
+			sessionMinutesLabel: formatElapsedMinutes(timings.session),
 			pullRequestLabel: formatPullRequestLabel(pullRequest),
 		};
 
@@ -520,6 +589,7 @@ export default function (pi: ExtensionAPI) {
 		}
 		if (enabled) {
 			lastSignature = "";
+			lastTimingSignature = "";
 			lastThinkingLevel = formatThinkingLevel(pi.getThinkingLevel());
 			remoteRepoCache = new Map<string, RemoteRepoCacheEntry>();
 			remoteRepoRequestsInFlight = new Map<string, Promise<GitRemoteRepo | null>>();
@@ -544,6 +614,7 @@ export default function (pi: ExtensionAPI) {
 			pendingWidgetUpdateOptions = null;
 			lastPeriodicPrRefreshAt = 0;
 			lastSignature = "";
+			lastTimingSignature = "";
 			lastThinkingLevel = "";
 			lastTitle = "";
 			ctx.ui.setTitle(getBaseTitle(ctx.cwd, pi.getSessionName()));
@@ -552,16 +623,14 @@ export default function (pi: ExtensionAPI) {
 
 	pi.on("session_start", async (_event, ctx) => {
 		isRunning = false;
-		activeLoopStartedAt = null;
-		lastLoopMinutes = null;
+		resetTimingState();
 		suppressDoneEmoji = false;
 		await applyEnabledState(ctx);
 	});
 
 	pi.on("session_switch", async (_event, ctx) => {
 		isRunning = false;
-		activeLoopStartedAt = null;
-		lastLoopMinutes = null;
+		resetTimingState();
 		suppressDoneEmoji = false;
 		await applyEnabledState(ctx);
 	});
@@ -588,32 +657,33 @@ export default function (pi: ExtensionAPI) {
 
 	pi.on("agent_start", async (_event, ctx) => {
 		isRunning = true;
-		activeLoopStartedAt = Date.now();
-		lastLoopMinutes = 0;
+		beginLoop();
 		suppressDoneEmoji = false;
 		refreshTitle(ctx);
 		await requestWidgetUpdate(ctx);
 	});
 
+	pi.on("turn_start", async (_event, ctx) => {
+		beginTurn();
+		await requestWidgetUpdate(ctx, { skipPullRequestLookup: true });
+	});
+
 	pi.on("turn_end", async (_event, ctx) => {
-		await requestWidgetUpdate(ctx);
+		finalizeActiveTurn();
+		await requestWidgetUpdate(ctx, { skipPullRequestLookup: true });
 	});
 
 	pi.on("agent_end", async (_event, ctx) => {
-		if (activeLoopStartedAt !== null) {
-			lastLoopMinutes = Math.max(0, Math.floor((Date.now() - activeLoopStartedAt) / 60_000));
-			activeLoopStartedAt = null;
-		}
+		finalizeActiveTurn();
+		finalizeActiveLoop();
 		isRunning = false;
 		refreshTitle(ctx);
-		await requestWidgetUpdate(ctx);
+		await requestWidgetUpdate(ctx, { skipPullRequestLookup: true });
 	});
 
 	pi.on("session_shutdown", async (_event, ctx) => {
-		if (activeLoopStartedAt !== null) {
-			lastLoopMinutes = Math.max(0, Math.floor((Date.now() - activeLoopStartedAt) / 60_000));
-			activeLoopStartedAt = null;
-		}
+		finalizeActiveTurn();
+		finalizeActiveLoop();
 		isRunning = false;
 		stopTypingWatcher();
 		refreshTitle(ctx);
