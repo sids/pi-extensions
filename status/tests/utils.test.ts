@@ -53,6 +53,10 @@ describe("formatContextPercent", () => {
 	test("handles missing usage", () => {
 		expect(formatContextPercent(undefined)).toBe("--");
 	});
+
+	test("handles unknown percent", () => {
+		expect(formatContextPercent({ percent: null })).toBe("--");
+	});
 });
 
 describe("formatLoopMinutes", () => {

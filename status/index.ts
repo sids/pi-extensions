@@ -578,6 +578,10 @@ export default function (pi: ExtensionAPI) {
 		await requestWidgetUpdate(ctx, { skipPullRequestLookup: true });
 	});
 
+	pi.on("session_compact", async (_event, ctx) => {
+		await requestWidgetUpdate(ctx, { skipPullRequestLookup: true });
+	});
+
 	pi.on("user_bash", async (_event, ctx) => {
 		await requestWidgetUpdate(ctx, { forceRepoRefresh: true });
 	});

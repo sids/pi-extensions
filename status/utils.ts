@@ -31,8 +31,8 @@ export function formatWorkingDirectory(cwd: string): string {
 	return cwd;
 }
 
-export function formatContextPercent(usage?: { percent: number } | null): string {
-	if (!usage || Number.isNaN(usage.percent)) {
+export function formatContextPercent(usage?: { percent: number | null } | null): string {
+	if (!usage || usage.percent === null || Number.isNaN(usage.percent)) {
 		return UNKNOWN_VALUE;
 	}
 	return `${Math.round(usage.percent)}%`;
