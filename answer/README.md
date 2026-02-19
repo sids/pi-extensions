@@ -78,4 +78,5 @@ Run the utility tests with bun:
 
 ```bash
 bun test answer/tests/utils.test.ts
+bun test answer/tests/qna-adapter.test.ts
 ```

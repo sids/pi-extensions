@@ -2,14 +2,16 @@
 
 ## Project overview
 
-This repository contains the **answer**, **fetch-url**, **web-search**, **status**, and **skill-paths** pi extensions.
+This repository contains the **answer**, **fetch-url**, **web-search**, **status**, **skill-paths**, and **plan-mode** pi extensions.
 
 ## Key files
 
 - `answer/index.ts`: Extension entry point
-- `answer/utils.ts`: Shared helpers
+- `answer/qna-adapter.ts`: Draft state + compiled answer helpers
+- `answer/utils.ts`: Shared helpers and settings parsing
 - `answer/README.md`: Usage/config docs
 - `answer/tests/utils.test.ts`: Unit tests
+- `answer/tests/qna-adapter.test.ts`: Unit tests
 - `fetch-url/index.ts`: Extension entry point
 - `fetch-url/utils.ts`: Shared helpers
 - `fetch-url/README.md`: Usage/config docs
@@ -26,6 +28,14 @@ This repository contains the **answer**, **fetch-url**, **web-search**, **status
 - `skill-paths/utils.ts`: Shared helpers
 - `skill-paths/README.md`: Usage/config docs
 - `skill-paths/tests/utils.test.ts`: Unit tests
+- `plan-mode/index.ts`: Extension entry point
+- `plan-mode/flow.ts`: `/plan-mode` command flow
+- `plan-mode/plan-files.ts`: Plan file path + movement helpers
+- `plan-mode/request-user-input.ts`: `request_user_input` tool behavior
+- `plan-mode/subagents.ts`: `subagents` / `steer_subagent` tool behavior
+- `plan-mode/README.md`: Usage docs
+- `plan-mode/tests/*.test.ts`: Unit tests
+- `shared/qna-tui.ts`: Shared Q&A TUI component
 
 ## Adding new extensions
 
@@ -41,9 +51,16 @@ This repository contains the **answer**, **fetch-url**, **web-search**, **status
 - Run tests with:
   ```bash
   bun test answer/tests/utils.test.ts
+  bun test answer/tests/qna-adapter.test.ts
   bun test fetch-url/tests/utils.test.ts
   bun test web-search/tests/utils.test.ts
   bun test status/tests/utils.test.ts
   bun test skill-paths/tests/utils.test.ts
+  bun test plan-mode/tests/utils.test.ts
+  bun test plan-mode/tests/state.test.ts
+  bun test plan-mode/tests/plan-files.test.ts
+  bun test plan-mode/tests/flow.test.ts
+  bun test plan-mode/tests/request-user-input.test.ts
+  bun test plan-mode/tests/subagents.test.ts
   ```
 - To load an extension locally, symlink its directory into `~/.pi/agent/extensions/<name>` and run `/reload` in pi.

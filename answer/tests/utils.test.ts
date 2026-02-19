@@ -7,6 +7,7 @@ import {
 	questionsMatch,
 	resolveNumericOptionShortcut,
 } from "../utils";
+import { formatResponseAnswer, normalizeResponses } from "../../shared/qna-tui";
 
 describe("parseExtractionResult", () => {
 	test("extracts JSON from code blocks", () => {
@@ -176,5 +177,34 @@ describe("resolveNumericOptionShortcut", () => {
 		expect(resolveNumericOptionShortcut("0", 3, false)).toBeNull();
 		expect(resolveNumericOptionShortcut("x", 3, false)).toBeNull();
 		expect(resolveNumericOptionShortcut("9", 3, false)).toBeNull();
+	});
+});
+
+describe("shared qna helpers", () => {
+	test("normalizes fallback answers into option selection", () => {
+		const questions = [
+			{
+				question: "Preferred runtime?",
+				options: [
+					{ label: "Node", description: "Use Node.js" },
+					{ label: "Bun", description: "Use Bun" },
+				],
+			},
+		];
+
+		const responses = normalizeResponses(questions, undefined, ["Bun"], false);
+		expect(formatResponseAnswer(questions[0], responses[0])).toBe("Bun");
+	});
+
+	test("treats non-option fallback as custom answer", () => {
+		const questions = [
+			{
+				question: "Notes",
+				options: [{ label: "No", description: "Skip" }],
+			},
+		];
+
+		const responses = normalizeResponses(questions, undefined, ["Need more context"], false);
+		expect(formatResponseAnswer(questions[0], responses[0])).toBe("Need more context");
 	});
 });
