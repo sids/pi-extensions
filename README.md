@@ -8,7 +8,6 @@ A collection of pi extensions. Each extension lives in its own directory with it
 - `fetch-url/` – Fetch URLs and extract main content as markdown
 - `web-search/` – Brave Search powered `web_search` tool extension
 - `status/` – Status widget and title indicator extension
-- `skill-paths/` – Adds `.agents/skills/` and `~/.agent/skills/` to skill discovery
 - `plan-mode/` – Branched-session planning mode with subagent research workflow
 
 ## Documentation

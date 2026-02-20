@@ -2,7 +2,7 @@
 
 ## Project overview
 
-This repository contains the **answer**, **fetch-url**, **web-search**, **status**, **skill-paths**, and **plan-mode** pi extensions.
+This repository contains the **answer**, **fetch-url**, **web-search**, **status**, and **plan-mode** pi extensions.
 
 ## Key files
 
@@ -24,10 +24,6 @@ This repository contains the **answer**, **fetch-url**, **web-search**, **status
 - `status/utils.ts`: Shared helpers
 - `status/README.md`: Usage/config docs
 - `status/tests/utils.test.ts`: Unit tests
-- `skill-paths/index.ts`: Extension entry point
-- `skill-paths/utils.ts`: Shared helpers
-- `skill-paths/README.md`: Usage/config docs
-- `skill-paths/tests/utils.test.ts`: Unit tests
 - `plan-mode/index.ts`: Extension entry point
 - `plan-mode/flow.ts`: `/plan-mode` command flow
 - `plan-mode/plan-files.ts`: Plan file path + movement helpers
@@ -55,7 +51,6 @@ This repository contains the **answer**, **fetch-url**, **web-search**, **status
   bun test fetch-url/tests/utils.test.ts
   bun test web-search/tests/utils.test.ts
   bun test status/tests/utils.test.ts
-  bun test skill-paths/tests/utils.test.ts
   bun test plan-mode/tests/utils.test.ts
   bun test plan-mode/tests/state.test.ts
   bun test plan-mode/tests/plan-files.test.ts
