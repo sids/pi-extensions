@@ -2,7 +2,7 @@
 
 ## Project overview
 
-This repository contains the **answer**, **fetch-url**, **web-search**, **status**, and **plan-mode** pi extensions.
+This repository contains the **answer**, **fetch-url**, **web-search**, **status**, **plan-mode**, and **review** pi extensions.
 
 ## Key files
 
@@ -31,6 +31,16 @@ This repository contains the **answer**, **fetch-url**, **web-search**, **status
 - `plan-mode/subagents.ts`: `subagents` / `steer_subagent` tool behavior
 - `plan-mode/README.md`: Usage docs
 - `plan-mode/tests/*.test.ts`: Unit tests
+- `review/index.ts`: Extension entry point
+- `review/flow.ts`: `/review` start/end orchestration
+- `review/state.ts`: Review mode state + tool gating/banner
+- `review/comments.ts`: `add_review_comment` tool behavior + persistence
+- `review/target-selector.ts`: Target parsing/selection + PR checkout flow
+- `review/prompts.ts`: Review rubric + target prompt builders
+- `review/triage-tui.ts`: End-of-review triage UI + state helpers
+- `review/utils.ts`: Shared parsing/normalization helpers
+- `review/README.md`: Usage docs
+- `review/tests/*.test.ts`: Unit tests
 - `shared/qna-tui.ts`: Shared Q&A TUI component
 
 ## Adding new extensions
@@ -57,5 +67,11 @@ This repository contains the **answer**, **fetch-url**, **web-search**, **status
   bun test plan-mode/tests/flow.test.ts
   bun test plan-mode/tests/request-user-input.test.ts
   bun test plan-mode/tests/subagents.test.ts
+  bun test review/tests/utils.test.ts
+  bun test review/tests/state.test.ts
+  bun test review/tests/comments.test.ts
+  bun test review/tests/flow.test.ts
+  bun test review/tests/triage-tui.test.ts
+  bun test review/tests/target-selector.test.ts
   ```
 - To load an extension locally, symlink its directory into `~/.pi/agent/extensions/<name>` and run `/reload` in pi.

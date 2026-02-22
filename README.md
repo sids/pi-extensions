@@ -9,6 +9,7 @@ A collection of pi extensions. Each extension lives in its own directory with it
 - `web-search/` – Brave Search powered `web_search` tool extension
 - `status/` – Status widget and title indicator extension
 - `plan-mode/` – Branched-session planning mode with subagent research workflow
+- `review/` – Review mode with structured findings capture and triage
 
 ## Documentation
 
