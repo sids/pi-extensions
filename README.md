@@ -8,6 +8,7 @@ A collection of pi extensions. Each extension lives in its own directory with it
 - `fetch-url/` – Fetch URLs and extract main content as markdown
 - `web-search/` – Brave Search powered `web_search` tool extension
 - `status/` – Status widget and title indicator extension
+- `mention-skills/` – `$skill-name` autocomplete and input transform for skill references
 - `plan-mode/` – Branched-session planning mode with subagent research workflow
 - `review/` – Review mode with structured findings capture and triage
 

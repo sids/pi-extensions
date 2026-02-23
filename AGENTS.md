@@ -2,7 +2,7 @@
 
 ## Project overview
 
-This repository contains the **answer**, **fetch-url**, **web-search**, **status**, **plan-mode**, and **review** pi extensions.
+This repository contains the **answer**, **fetch-url**, **web-search**, **status**, **plan-mode**, **review**, and **mention-skills** pi extensions.
 
 ## Key files
 
@@ -41,6 +41,10 @@ This repository contains the **answer**, **fetch-url**, **web-search**, **status
 - `review/utils.ts`: Shared parsing/normalization helpers
 - `review/README.md`: Usage docs
 - `review/tests/*.test.ts`: Unit tests
+- `mention-skills/index.ts`: Extension entry point
+- `mention-skills/utils.ts`: Skill discovery, mention detection, replacement, and autocomplete provider helpers
+- `mention-skills/README.md`: Usage docs
+- `mention-skills/tests/utils.test.ts`: Unit tests
 - `shared/qna-tui.ts`: Shared Q&A TUI component
 
 ## Adding new extensions
@@ -73,5 +77,6 @@ This repository contains the **answer**, **fetch-url**, **web-search**, **status
   bun test review/tests/flow.test.ts
   bun test review/tests/triage-tui.test.ts
   bun test review/tests/target-selector.test.ts
+  bun test mention-skills/tests/utils.test.ts
   ```
 - To load an extension locally, symlink its directory into `~/.pi/agent/extensions/<name>` and run `/reload` in pi.
