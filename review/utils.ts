@@ -203,6 +203,9 @@ export function formatReviewSummaryMessage(options: {
 		if (finding.note?.trim()) {
 			lines.push(`   Note: ${finding.note.trim()}`);
 		}
+		if (i < options.kept.length - 1) {
+			lines.push("");
+		}
 	}
 
 	return lines.join("\n");

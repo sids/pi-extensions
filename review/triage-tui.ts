@@ -353,6 +353,18 @@ class ReviewTriageComponent implements TuiComponent {
 			const truncated = truncateToWidth(line, lineWidth);
 			return `${margin}${truncated}${" ".repeat(Math.max(0, lineWidth - visibleWidth(truncated)))}`;
 		};
+		const wrapMultiline = (text: string, maxWidth: number): string[] => {
+			const wrappedLines: string[] = [];
+			for (const part of text.split(/\r?\n/)) {
+				const wrappedPart = wrapTextWithAnsi(part, Math.max(1, maxWidth));
+				if (wrappedPart.length === 0) {
+					wrappedLines.push("");
+					continue;
+				}
+				wrappedLines.push(...wrappedPart);
+			}
+			return wrappedLines;
+		};
 
 		lines.push("");
 		if (this.comments.length === 0) {
@@ -386,7 +398,13 @@ class ReviewTriageComponent implements TuiComponent {
 			} else {
 				for (let i = 0; i < keptComments.length; i++) {
 					const comment = keptComments[i];
-					lines.push(padLine(`${i + 1}. ${this.accent(`[${comment.priority}]`)} ${comment.comment}`));
+					const wrappedCommentLines = wrapMultiline(
+						`${i + 1}. ${this.accent(`[${comment.priority}]`)} ${comment.comment}`,
+						contentWidth,
+					);
+					for (const line of wrappedCommentLines) {
+						lines.push(padLine(line));
+					}
 
 					if (comment.references.length > 0) {
 						lines.push(padLine(this.muted("   References:")));
@@ -396,7 +414,20 @@ class ReviewTriageComponent implements TuiComponent {
 					}
 
 					if (comment.note?.trim()) {
-						lines.push(padLine(`${this.muted("   Note:")} ${comment.note.trim()}`));
+						const notePrefix = "   Note: ";
+						const wrappedNoteLines = wrapMultiline(
+							comment.note.trim(),
+							Math.max(10, contentWidth - visibleWidth(notePrefix)),
+						);
+						if (wrappedNoteLines.length === 0) {
+							lines.push(padLine(this.muted(notePrefix.trimEnd())));
+						} else {
+							lines.push(padLine(`${this.muted(notePrefix)}${wrappedNoteLines[0]}`));
+							const noteContinuation = " ".repeat(visibleWidth(notePrefix));
+							for (let noteIndex = 1; noteIndex < wrappedNoteLines.length; noteIndex++) {
+								lines.push(padLine(`${noteContinuation}${wrappedNoteLines[noteIndex]}`));
+							}
+						}
 					}
 
 					if (i < keptComments.length - 1) {
@@ -435,7 +466,7 @@ class ReviewTriageComponent implements TuiComponent {
 
 		const status = current.keep ? this.success("keep") : this.warning("discard");
 
-		for (const line of wrapTextWithAnsi(current.comment, contentWidth)) {
+		for (const line of wrapMultiline(`${this.accent(`[${current.priority}]`)} ${current.comment}`, contentWidth)) {
 			lines.push(padLine(line));
 		}
 
@@ -447,11 +478,9 @@ class ReviewTriageComponent implements TuiComponent {
 			lines.push(padLine(""));
 		}
 
-		const notePrefix = `${status} ${this.muted("•")} ${this.accent(current.priority)} ${this.muted("•")} ${this.muted("Note:")} `;
+		lines.push(padLine(`${status} ${this.muted("•")} ${this.accent(current.priority)} ${this.muted("• Note:")}`));
 		const editorLines = this.editor.render(Math.max(20, contentWidth));
-		const firstEditorLine = editorLines.length > 2 ? editorLines[1] : "";
-		lines.push(padLine(`${notePrefix}${firstEditorLine}`));
-		for (let i = 2; i < editorLines.length - 1; i++) {
+		for (let i = 1; i < editorLines.length - 1; i++) {
 			lines.push(padLine(editorLines[i]));
 		}
 

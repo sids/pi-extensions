@@ -146,4 +146,31 @@ describe("formatReviewSummaryMessage", () => {
 		expect(message).not.toContain("Kept:");
 		expect(message).not.toContain("Kept findings:");
 	});
+
+	test("inserts a blank line between kept comments", () => {
+		const message = formatReviewSummaryMessage({
+			kept: [
+				{
+					id: "c1",
+					keep: true,
+					priority: "P1",
+					comment: "First finding",
+					references: [],
+					originalPriority: "P1",
+				},
+				{
+					id: "c2",
+					keep: true,
+					priority: "P2",
+					comment: "Second finding",
+					references: [],
+					originalPriority: "P2",
+				},
+			],
+			discardedCount: 0,
+			totalCount: 2,
+		});
+
+		expect(message).toContain("1. [P1] First finding\n\n2. [P2] Second finding");
+	});
 });
