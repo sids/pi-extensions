@@ -2,8 +2,11 @@ import os from "node:os";
 import path from "node:path";
 import { describe, expect, test } from "bun:test";
 import {
+	activeAgentDurationMs,
 	applyTitleAttention,
+	carryForwardTimingDurations,
 	clearTitleAttention,
+	elapsedDurationMs,
 	filterPullRequestsByHeadOwner,
 	formatContextPercent,
 	formatElapsedMinutes,
@@ -123,6 +126,50 @@ describe("formatElapsedMinutes", () => {
 	test("handles missing values", () => {
 		expect(formatElapsedMinutes(undefined)).toBe("--");
 		expect(formatElapsedMinutes(null)).toBe("--");
+	});
+});
+
+describe("elapsedDurationMs", () => {
+	test("returns elapsed milliseconds for valid start times", () => {
+		expect(elapsedDurationMs(1_000, 2_500)).toBe(1_500);
+	});
+
+	test("returns zero for null or backward times", () => {
+		expect(elapsedDurationMs(null, 2_500)).toBe(0);
+		expect(elapsedDurationMs(3_000, 2_500)).toBe(0);
+	});
+});
+
+describe("activeAgentDurationMs", () => {
+	test("combines completed and active turn duration", () => {
+		expect(activeAgentDurationMs(2_000, 5_000, 8_500)).toBe(5_500);
+	});
+
+	test("falls back to completed duration when no active turn", () => {
+		expect(activeAgentDurationMs(2_000, null, 8_500)).toBe(2_000);
+	});
+});
+
+describe("carryForwardTimingDurations", () => {
+	test("accumulates session and agent durations across resets", () => {
+		const carried = carryForwardTimingDurations(5_000, 3_000, 10_000, 2_000, 11_000, 14_000);
+		expect(carried).toEqual({
+			sessionDurationCarryMs: 9_000,
+			agentDurationCarryMs: 8_000,
+		});
+
+		const afterSecondReset = carryForwardTimingDurations(
+			carried.sessionDurationCarryMs,
+			carried.agentDurationCarryMs,
+			14_000,
+			0,
+			null,
+			18_000,
+		);
+		expect(afterSecondReset).toEqual({
+			sessionDurationCarryMs: 13_000,
+			agentDurationCarryMs: 8_000,
+		});
 	});
 });
 

@@ -7,10 +7,10 @@ Shows a status widget below the input editor with session context (plus an optio
 - Current working directory
 - Current Git branch
 - Context usage percent
-- Last loop, agent, and session times (`<loop> loop · <agent> agent · <session> session`)
+- Last loop time plus cumulative agent and session times (`<loop> loop · <agent> agent · <session> session`)
 - Current GitHub PR URL for the active branch (includes `(merged)` / `(closed)` when not open)
 
-Time values use a compact `d/h/m` format (`XdYhZm`, `YhZm`, or `Zm`) and are separated with a center dot (`·`).
+Time values use a compact `d/h/m` format (`XdYhZm`, `YhZm`, or `Zm`) and are separated with a center dot (`·`). Session and agent timers are monotonic and carry forward across session/branch switches.
 
 Also updates the terminal title with a prefix indicating state:
 

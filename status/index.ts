@@ -2,6 +2,11 @@ import path from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
 import {
+	activeAgentDurationMs,
+	applyTitleAttention,
+	carryForwardTimingDurations,
+	clearTitleAttention,
+	elapsedDurationMs,
 	filterPullRequestsByHeadOwner,
 	formatContextPercent,
 	formatElapsedMinutes,
@@ -13,8 +18,6 @@ import {
 	parseAllowedGitHubHosts,
 	parseGitRemoteRepo,
 	pickPullRequest,
-	applyTitleAttention,
-	clearTitleAttention,
 	shouldPromoteLongRunningToolWarning,
 	type GitRemoteRepo,
 	type PullRequestSummary,
@@ -350,6 +353,8 @@ export default function (pi: ExtensionAPI) {
 	let lastLoopDurationMs: number | null = null;
 	let activeTurnStartedAt: number | null = null;
 	let completedTurnDurationMs = 0;
+	let carriedSessionDurationMs = 0;
+	let carriedAgentDurationMs = 0;
 	let lastTimingSignature = "";
 	const allowedGitHubHosts = parseAllowedGitHubHosts(process.env.PI_STATUS_ALLOWED_GITHUB_HOSTS);
 	let remoteRepoCache = new Map<string, RemoteRepoCacheEntry>();
@@ -361,7 +366,19 @@ export default function (pi: ExtensionAPI) {
 	let pendingWidgetUpdateOptions: WidgetUpdateOptions | null = null;
 	let widgetUpdateRunner: Promise<void> | null = null;
 
-	const resetTimingState = (now = Date.now()) => {
+	const resetTimingState = (now = Date.now(), preserveTotals = false) => {
+		if (preserveTotals) {
+			const carried = carryForwardTimingDurations(
+				carriedSessionDurationMs,
+				carriedAgentDurationMs,
+				sessionStartedAt,
+				completedTurnDurationMs,
+				activeTurnStartedAt,
+				now,
+			);
+			carriedSessionDurationMs = carried.sessionDurationCarryMs;
+			carriedAgentDurationMs = carried.agentDurationCarryMs;
+		}
 		sessionStartedAt = now;
 		activeLoopStartedAt = null;
 		lastLoopDurationMs = null;
@@ -417,10 +434,14 @@ export default function (pi: ExtensionAPI) {
 
 	const getTimingMinutes = (now = Date.now()): { loop: number | null; agent: number | null; session: number | null } => {
 		const loop = getLoopMinutes(now);
-		const activeTurnDurationMs = activeTurnStartedAt === null ? 0 : Math.max(0, now - activeTurnStartedAt);
-		const agent = (completedTurnDurationMs + activeTurnDurationMs) / 60_000;
-		const session = sessionStartedAt === null ? null : Math.max(0, (now - sessionStartedAt) / 60_000);
-		return { loop, agent, session };
+		const agentDurationMs =
+			carriedAgentDurationMs + activeAgentDurationMs(completedTurnDurationMs, activeTurnStartedAt, now);
+		const sessionDurationMs = carriedSessionDurationMs + elapsedDurationMs(sessionStartedAt, now);
+		return {
+			loop,
+			agent: agentDurationMs / 60_000,
+			session: sessionDurationMs / 60_000,
+		};
 	};
 
 	const getTimingSignature = (now = Date.now()): string => {
@@ -817,7 +838,7 @@ export default function (pi: ExtensionAPI) {
 		isRunning = false;
 		hasFailureAttention = false;
 		hasCompletedRun = false;
-		resetTimingState();
+		resetTimingState(Date.now(), true);
 		clearToolTitleWarnings();
 		clearExternalTitleAttention();
 		await applyEnabledState(ctx);
@@ -827,7 +848,7 @@ export default function (pi: ExtensionAPI) {
 		isRunning = false;
 		hasFailureAttention = false;
 		hasCompletedRun = false;
-		resetTimingState();
+		resetTimingState(Date.now(), true);
 		clearToolTitleWarnings();
 		clearExternalTitleAttention();
 		await applyEnabledState(ctx);

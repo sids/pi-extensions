@@ -89,6 +89,38 @@ export function formatElapsedMinutes(minutes?: number | null): string {
 	return `${totalMinutes}m`;
 }
 
+export function elapsedDurationMs(startedAt: number | null, now = Date.now()): number {
+	if (startedAt === null || Number.isNaN(startedAt)) {
+		return 0;
+	}
+	return Math.max(0, now - startedAt);
+}
+
+export function activeAgentDurationMs(
+	completedTurnDurationMs: number,
+	activeTurnStartedAt: number | null,
+	now = Date.now(),
+): number {
+	const completed = Number.isNaN(completedTurnDurationMs) ? 0 : Math.max(0, completedTurnDurationMs);
+	return completed + elapsedDurationMs(activeTurnStartedAt, now);
+}
+
+export function carryForwardTimingDurations(
+	sessionDurationCarryMs: number,
+	agentDurationCarryMs: number,
+	sessionStartedAt: number | null,
+	completedTurnDurationMs: number,
+	activeTurnStartedAt: number | null,
+	now = Date.now(),
+): { sessionDurationCarryMs: number; agentDurationCarryMs: number } {
+	const safeSessionCarry = Number.isNaN(sessionDurationCarryMs) ? 0 : Math.max(0, sessionDurationCarryMs);
+	const safeAgentCarry = Number.isNaN(agentDurationCarryMs) ? 0 : Math.max(0, agentDurationCarryMs);
+	return {
+		sessionDurationCarryMs: safeSessionCarry + elapsedDurationMs(sessionStartedAt, now),
+		agentDurationCarryMs: safeAgentCarry + activeAgentDurationMs(completedTurnDurationMs, activeTurnStartedAt, now),
+	};
+}
+
 export function normalizeGitBranch(branch?: string | null): string {
 	const trimmed = branch?.trim();
 	if (!trimmed) {
