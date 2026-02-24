@@ -19,26 +19,6 @@ export function formatThinkingLevel(level?: string): string {
 	return level?.trim() ? level : "off";
 }
 
-export type TitleStatus = "waitingForInput" | "running" | "done" | null;
-
-export function pickTitleStatus(options: {
-	isWaitingForInput: boolean;
-	isRunning: boolean;
-	isTyping: boolean;
-	suppressDoneEmoji: boolean;
-}): TitleStatus {
-	if (options.isWaitingForInput) {
-		return "waitingForInput";
-	}
-	if (options.isRunning) {
-		return "running";
-	}
-	if (!options.suppressDoneEmoji && !options.isTyping) {
-		return "done";
-	}
-	return null;
-}
-
 export function applyTitleAttention(attentionIds: Set<string>, id: string, active: boolean): boolean {
 	const previousSize = attentionIds.size;
 	if (active) {

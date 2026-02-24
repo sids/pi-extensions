@@ -12,7 +12,6 @@ import {
 	isGitHubHost,
 	parseAllowedGitHubHosts,
 	parseGitRemoteRepo,
-	pickTitleStatus,
 	pickPullRequest,
 	applyTitleAttention,
 	clearTitleAttention,
@@ -22,11 +21,12 @@ import {
 } from "./utils";
 
 const STATUS_WIDGET_KEY = "status";
-const WAITING_FOR_INPUT_EMOJI = "⚠️";
-const RUNNING_EMOJI = "♨️";
-const DONE_EMOJI = "✅";
-const WAITING_FOR_INPUT_TOOL_NAMES = new Set(["request_user_input"]);
-const LONG_RUNNING_TITLE_THRESHOLD_MS = 5_000;
+const TITLE_WARNING_PREFIX = "⚠️";
+const TITLE_DONE_PREFIX = "✔";
+const BRAILLE_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+const TITLE_SPINNER_INTERVAL_MS = 80;
+const EDITOR_ACTIVITY_POLL_INTERVAL_MS = 250;
+const LONG_RUNNING_TITLE_THRESHOLD_MS = 10_000;
 const TITLE_ATTENTION_EVENT_CHANNEL = "status:title_attention";
 const REMOTE_REPO_CACHE_TTL_MS = 30_000;
 const PR_CACHE_TTL_MS = 30_000;
@@ -332,14 +332,16 @@ export default function (pi: ExtensionAPI) {
 	let lastSignature = "";
 	let updateToken = 0;
 	let isRunning = false;
-	let isTyping = false;
-	let suppressDoneEmoji = false;
-	let waitingForInputToolCallIds = new Set<string>();
+	let hasFailureAttention = false;
+	let hasCompletedRun = false;
 	let longRunningToolCallIds = new Set<string>();
 	let externalAttentionIds = new Set<string>();
 	let longRunningToolTimers = new Map<string, ReturnType<typeof setTimeout>>();
 	let lastTitle = "";
+	let titleSpinnerTimer: ReturnType<typeof setInterval> | null = null;
+	let titleFrameIndex = 0;
 	let typingTimer: ReturnType<typeof setInterval> | null = null;
+	let lastEditorText = "";
 	let activeContext: ExtensionContext | null = null;
 	let lastThinkingLevel = "";
 	let enabled = true;
@@ -447,26 +449,15 @@ export default function (pi: ExtensionAPI) {
 		void requestWidgetUpdate(ctx);
 	};
 
-	const refreshTitle = (ctx: ExtensionContext) => {
-		if (!ctx.hasUI || !enabled) {
-			return;
-		}
-		const baseTitle = getBaseTitle(ctx.cwd, pi.getSessionName());
-		const titleStatus = pickTitleStatus({
-			isWaitingForInput:
-				waitingForInputToolCallIds.size > 0 || longRunningToolCallIds.size > 0 || externalAttentionIds.size > 0,
-			isRunning,
-			isTyping,
-			suppressDoneEmoji,
-		});
-		let title = baseTitle;
-		if (titleStatus === "waitingForInput") {
-			title = `${baseTitle} ${WAITING_FOR_INPUT_EMOJI}`;
-		} else if (titleStatus === "running") {
-			title = `${baseTitle} ${RUNNING_EMOJI}`;
-		} else if (titleStatus === "done") {
-			title = `${baseTitle} ${DONE_EMOJI}`;
-		}
+	const hasTitleAttention = (): boolean => {
+		return hasFailureAttention || longRunningToolCallIds.size > 0 || externalAttentionIds.size > 0;
+	};
+
+	const titleWithPrefix = (ctx: ExtensionContext, prefix: string): string => {
+		return `${prefix} ${getBaseTitle(ctx.cwd, pi.getSessionName())}`;
+	};
+
+	const setTitle = (ctx: ExtensionContext, title: string) => {
 		if (title === lastTitle) {
 			return;
 		}
@@ -474,25 +465,74 @@ export default function (pi: ExtensionAPI) {
 		ctx.ui.setTitle(title);
 	};
 
+	const stopTitleSpinner = () => {
+		if (titleSpinnerTimer) {
+			clearInterval(titleSpinnerTimer);
+			titleSpinnerTimer = null;
+		}
+		titleFrameIndex = 0;
+	};
+
+	const renderTitleSpinnerFrame = (ctx: ExtensionContext) => {
+		const frame = BRAILLE_FRAMES[titleFrameIndex % BRAILLE_FRAMES.length];
+		setTitle(ctx, titleWithPrefix(ctx, frame));
+		titleFrameIndex++;
+	};
+
+	const startTitleSpinner = (ctx: ExtensionContext) => {
+		stopTitleSpinner();
+		renderTitleSpinnerFrame(ctx);
+		titleSpinnerTimer = setInterval(() => {
+			if (!activeContext || !activeContext.hasUI || !enabled) {
+				return;
+			}
+			if (!isRunning || hasTitleAttention()) {
+				stopTitleSpinner();
+				return;
+			}
+			renderTitleSpinnerFrame(activeContext);
+		}, TITLE_SPINNER_INTERVAL_MS);
+	};
+
+	const refreshTitle = (ctx: ExtensionContext) => {
+		if (!ctx.hasUI || !enabled) {
+			return;
+		}
+		activeContext = ctx;
+
+		if (hasTitleAttention()) {
+			stopTitleSpinner();
+			setTitle(ctx, titleWithPrefix(ctx, TITLE_WARNING_PREFIX));
+			return;
+		}
+
+		if (isRunning) {
+			if (!titleSpinnerTimer) {
+				startTitleSpinner(ctx);
+			}
+			return;
+		}
+
+		stopTitleSpinner();
+		if (!hasCompletedRun) {
+			setTitle(ctx, getBaseTitle(ctx.cwd, pi.getSessionName()));
+			return;
+		}
+		setTitle(ctx, titleWithPrefix(ctx, TITLE_DONE_PREFIX));
+	};
+
 	const shouldTrackLongRunningTool = (toolName: string): boolean => {
-		return toolName !== "bash";
+		const normalizedName = toolName.trim().toLowerCase();
+		if (normalizedName === "bash") {
+			return false;
+		}
+		if (normalizedName.includes("agent")) {
+			return false;
+		}
+		return true;
 	};
 
-	const setToolWaitingForInput = (ctx: ExtensionContext, toolCallId: string, toolName: string) => {
-		if (!WAITING_FOR_INPUT_TOOL_NAMES.has(toolName)) {
-			return;
-		}
-		const previousSize = waitingForInputToolCallIds.size;
-		waitingForInputToolCallIds.add(toolCallId);
-		if (waitingForInputToolCallIds.size !== previousSize) {
-			refreshTitle(ctx);
-		}
-	};
-
-	const scheduleLongRunningToolWarning = (ctx: ExtensionContext, toolCallId: string, toolName: string) => {
-		if (!shouldTrackLongRunningTool(toolName)) {
-			return;
-		}
+	const scheduleLongRunningToolWarning = (ctx: ExtensionContext, toolCallId: string) => {
 		const existingTimer = longRunningToolTimers.get(toolCallId);
 		if (existingTimer) {
 			clearTimeout(existingTimer);
@@ -511,19 +551,7 @@ export default function (pi: ExtensionAPI) {
 		longRunningToolTimers.set(toolCallId, timer);
 	};
 
-	const clearToolWaitingForInput = (ctx: ExtensionContext, toolCallId: string, toolName: string) => {
-		if (!WAITING_FOR_INPUT_TOOL_NAMES.has(toolName)) {
-			return;
-		}
-		if (waitingForInputToolCallIds.delete(toolCallId)) {
-			refreshTitle(ctx);
-		}
-	};
-
-	const clearLongRunningToolWarning = (ctx: ExtensionContext, toolCallId: string, toolName: string) => {
-		if (!shouldTrackLongRunningTool(toolName)) {
-			return;
-		}
+	const clearLongRunningToolWarning = (ctx: ExtensionContext, toolCallId: string) => {
 		const timer = longRunningToolTimers.get(toolCallId);
 		if (timer) {
 			clearTimeout(timer);
@@ -535,22 +563,23 @@ export default function (pi: ExtensionAPI) {
 	};
 
 	const clearToolTitleWarnings = (ctx?: ExtensionContext) => {
-		const hadWarnings = waitingForInputToolCallIds.size > 0 || longRunningToolCallIds.size > 0;
+		const hadWarnings = longRunningToolCallIds.size > 0;
 		for (const timer of longRunningToolTimers.values()) {
 			clearTimeout(timer);
 		}
 		longRunningToolTimers = new Map<string, ReturnType<typeof setTimeout>>();
-		waitingForInputToolCallIds = new Set<string>();
 		longRunningToolCallIds = new Set<string>();
 		if (hadWarnings && ctx) {
 			refreshTitle(ctx);
 		}
 	};
 
-	const setExternalTitleAttention = (ctx: ExtensionContext, id: string, active: boolean) => {
-		if (applyTitleAttention(externalAttentionIds, id, active)) {
-			refreshTitle(ctx);
+	const setFailureAttention = (ctx: ExtensionContext, active: boolean) => {
+		if (hasFailureAttention === active) {
+			return;
 		}
+		hasFailureAttention = active;
+		refreshTitle(ctx);
 	};
 
 	const clearExternalTitleAttention = (ctx?: ExtensionContext) => {
@@ -575,19 +604,26 @@ export default function (pi: ExtensionAPI) {
 		}
 	});
 
-	const updateTypingState = (ctx: ExtensionContext) => {
+	const markEditorActivity = (ctx: ExtensionContext) => {
+		if (!enabled || !hasCompletedRun) {
+			return;
+		}
+		hasCompletedRun = false;
+		if (!isRunning && !hasTitleAttention()) {
+			refreshTitle(ctx);
+		}
+	};
+
+	const updateEditorActivity = (ctx: ExtensionContext) => {
 		if (!ctx.hasUI || !enabled) {
 			return;
 		}
-		const hasText = ctx.ui.getEditorText().length > 0;
-		if (hasText === isTyping) {
+		const currentText = ctx.ui.getEditorText();
+		if (currentText === lastEditorText) {
 			return;
 		}
-		isTyping = hasText;
-		if (hasText) {
-			suppressDoneEmoji = true;
-		}
-		refreshTitle(ctx);
+		lastEditorText = currentText;
+		markEditorActivity(ctx);
 	};
 
 	const updateThinkingLevel = (ctx: ExtensionContext) => {
@@ -604,6 +640,7 @@ export default function (pi: ExtensionAPI) {
 			return;
 		}
 		activeContext = ctx;
+		lastEditorText = ctx.ui.getEditorText();
 		if (typingTimer) {
 			clearInterval(typingTimer);
 		}
@@ -611,12 +648,13 @@ export default function (pi: ExtensionAPI) {
 			if (!activeContext || !activeContext.hasUI || !enabled) {
 				return;
 			}
-			updateTypingState(activeContext);
+			if (hasCompletedRun) {
+				updateEditorActivity(activeContext);
+			}
 			updateThinkingLevel(activeContext);
 			updateTimingMetrics(activeContext);
 			maybeRefreshPullRequest(activeContext);
-		}, 200);
-		updateTypingState(ctx);
+		}, EDITOR_ACTIVITY_POLL_INTERVAL_MS);
 		updateThinkingLevel(ctx);
 		updateTimingMetrics(ctx);
 		maybeRefreshPullRequest(ctx);
@@ -627,6 +665,7 @@ export default function (pi: ExtensionAPI) {
 			clearInterval(typingTimer);
 			typingTimer = null;
 		}
+		lastEditorText = "";
 	};
 
 	const disableDefaultFooter = (ctx: ExtensionContext) => {
@@ -735,6 +774,8 @@ export default function (pi: ExtensionAPI) {
 		}
 		if (enabled) {
 			clearToolTitleWarnings();
+			hasFailureAttention = false;
+			stopTitleSpinner();
 			lastSignature = "";
 			lastTimingSignature = "";
 			lastThinkingLevel = formatThinkingLevel(pi.getThinkingLevel());
@@ -751,7 +792,9 @@ export default function (pi: ExtensionAPI) {
 			refreshTitle(ctx);
 		} else {
 			clearToolTitleWarnings();
+			hasFailureAttention = false;
 			clearExternalTitleAttention();
+			stopTitleSpinner();
 			ctx.ui.setWidget(STATUS_WIDGET_KEY, undefined, { placement: "belowEditor" });
 			ctx.ui.setFooter(undefined);
 			stopTypingWatcher();
@@ -772,8 +815,9 @@ export default function (pi: ExtensionAPI) {
 
 	pi.on("session_start", async (_event, ctx) => {
 		isRunning = false;
+		hasFailureAttention = false;
+		hasCompletedRun = false;
 		resetTimingState();
-		suppressDoneEmoji = false;
 		clearToolTitleWarnings();
 		clearExternalTitleAttention();
 		await applyEnabledState(ctx);
@@ -781,8 +825,9 @@ export default function (pi: ExtensionAPI) {
 
 	pi.on("session_switch", async (_event, ctx) => {
 		isRunning = false;
+		hasFailureAttention = false;
+		hasCompletedRun = false;
 		resetTimingState();
-		suppressDoneEmoji = false;
 		clearToolTitleWarnings();
 		clearExternalTitleAttention();
 		await applyEnabledState(ctx);
@@ -796,7 +841,10 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	pi.on("input", async (_event, ctx) => {
-		updateTypingState(ctx);
+		if (ctx.hasUI) {
+			lastEditorText = ctx.ui.getEditorText();
+		}
+		markEditorActivity(ctx);
 		await requestWidgetUpdate(ctx, { skipPullRequestLookup: true });
 	});
 
@@ -812,22 +860,23 @@ export default function (pi: ExtensionAPI) {
 		if (!enabled) {
 			return;
 		}
-		setToolWaitingForInput(ctx, event.toolCallId, event.toolName);
-		scheduleLongRunningToolWarning(ctx, event.toolCallId, event.toolName);
+		if (!shouldTrackLongRunningTool(event.toolName)) {
+			return;
+		}
+		scheduleLongRunningToolWarning(ctx, event.toolCallId);
 	});
 
 	pi.on("tool_execution_end", async (event, ctx) => {
 		if (!enabled) {
 			return;
 		}
-		clearToolWaitingForInput(ctx, event.toolCallId, event.toolName);
-		clearLongRunningToolWarning(ctx, event.toolCallId, event.toolName);
+		clearLongRunningToolWarning(ctx, event.toolCallId);
 	});
 
 	pi.on("agent_start", async (_event, ctx) => {
 		isRunning = true;
+		hasFailureAttention = false;
 		beginLoop();
-		suppressDoneEmoji = false;
 		clearToolTitleWarnings();
 		refreshTitle(ctx);
 		await requestWidgetUpdate(ctx);
@@ -843,12 +892,28 @@ export default function (pi: ExtensionAPI) {
 		await requestWidgetUpdate(ctx, { skipPullRequestLookup: true });
 	});
 
-	pi.on("agent_end", async (_event, ctx) => {
+	pi.on("agent_end", async (event, ctx) => {
 		finalizeActiveTurn();
 		finalizeActiveLoop();
 		isRunning = false;
 		clearToolTitleWarnings();
-		refreshTitle(ctx);
+		const hadAgentFailure = event.messages.some((message) => {
+			if (message.role !== "assistant" || !("stopReason" in message)) {
+				return false;
+			}
+			return message.stopReason === "error" || message.stopReason === "aborted";
+		});
+		if (!hadAgentFailure && !hasFailureAttention) {
+			hasCompletedRun = true;
+			if (ctx.hasUI) {
+				lastEditorText = ctx.ui.getEditorText();
+			}
+		}
+		if (hadAgentFailure) {
+			setFailureAttention(ctx, true);
+		} else {
+			refreshTitle(ctx);
+		}
 		await requestWidgetUpdate(ctx, { skipPullRequestLookup: true });
 	});
 
@@ -856,10 +921,14 @@ export default function (pi: ExtensionAPI) {
 		finalizeActiveTurn();
 		finalizeActiveLoop();
 		isRunning = false;
+		hasFailureAttention = false;
 		clearToolTitleWarnings();
 		clearExternalTitleAttention();
 		stopTypingWatcher();
-		refreshTitle(ctx);
+		stopTitleSpinner();
+		activeContext = null;
+		lastTitle = "";
+		ctx.ui.setTitle(getBaseTitle(ctx.cwd, pi.getSessionName()));
 		removeTitleAttentionListener();
 	});
 
@@ -871,8 +940,7 @@ export default function (pi: ExtensionAPI) {
 				return;
 			}
 			if (enabled) {
-				suppressDoneEmoji = false;
-				isTyping = false;
+				hasFailureAttention = false;
 				await applyEnabledState(ctx);
 				ctx.ui.notify("Custom status enabled", "info");
 				return;

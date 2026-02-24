@@ -12,7 +12,13 @@ Shows a status widget below the input editor with session context (plus an optio
 
 Time values use a compact `d/h/m` format (`XdYhZm`, `YhZm`, or `Zm`) and are separated with a center dot (`·`).
 
-Also updates the terminal title to append an emoji indicating whether the harness is running (♨️), done (✅), or waiting on attention-worthy states (⚠️): user input from `request_user_input`, any non-`bash` tool call running longer than 5 seconds, and extension-driven attention events on `status:title_attention`. When you start typing, the done emoji is removed and stays hidden until the next run. The default footer widget is hidden while this extension is active.
+Also updates the terminal title with a prefix indicating state:
+
+- Braille spinner frame while the agent is running (same animation style as `examples/extensions/titlebar-spinner.ts`)
+- `✔` when the agent is done (after at least one completed run, cleared on next editor activity)
+- `⚠️` when attention is needed
+
+Attention mode is triggered when an agent run ends with `stopReason: "error"` or `stopReason: "aborted"` (timeouts typically surface as `aborted`), any non-`bash` tool whose name does not include `agent` running longer than 10 seconds (proxy for waiting on user input), and extension-driven attention events on `status:title_attention`. The default footer widget is hidden while this extension is active.
 
 ## Usage
 

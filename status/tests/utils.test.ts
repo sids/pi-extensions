@@ -17,7 +17,6 @@ import {
 	parseAllowedGitHubHosts,
 	parseGitRemoteRepo,
 	pickPullRequest,
-	pickTitleStatus,
 	shouldPromoteLongRunningToolWarning,
 } from "../utils";
 
@@ -34,52 +33,6 @@ describe("formatModelLabel", () => {
 describe("formatThinkingLevel", () => {
 	test("uses fallback", () => {
 		expect(formatThinkingLevel(" ")).toBe("off");
-	});
-});
-
-describe("pickTitleStatus", () => {
-	test("prioritizes waiting for input", () => {
-		expect(
-			pickTitleStatus({
-				isWaitingForInput: true,
-				isRunning: true,
-				isTyping: false,
-				suppressDoneEmoji: false,
-			}),
-		).toBe("waitingForInput");
-	});
-
-	test("returns running when active and not waiting", () => {
-		expect(
-			pickTitleStatus({
-				isWaitingForInput: false,
-				isRunning: true,
-				isTyping: false,
-				suppressDoneEmoji: false,
-			}),
-		).toBe("running");
-	});
-
-	test("returns done when idle and emoji is not suppressed", () => {
-		expect(
-			pickTitleStatus({
-				isWaitingForInput: false,
-				isRunning: false,
-				isTyping: false,
-				suppressDoneEmoji: false,
-			}),
-		).toBe("done");
-	});
-
-	test("returns null when done emoji should stay hidden", () => {
-		expect(
-			pickTitleStatus({
-				isWaitingForInput: false,
-				isRunning: false,
-				isTyping: true,
-				suppressDoneEmoji: true,
-			}),
-		).toBeNull();
 	});
 });
 
