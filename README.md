@@ -1,5 +1,7 @@
 # pi-extensions
 
+> ⚠️ **Warning:** The code in this repo is complete Vibeslop, written by clankers and _not_ reviewed by me. Use at your own risk. I do use all these extensions all the time.
+
 A collection of pi extensions. Each extension lives in its own directory with its own README.
 
 ## Repository layout
