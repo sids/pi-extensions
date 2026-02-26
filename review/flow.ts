@@ -176,6 +176,11 @@ async function restoreModelAndThinkingIfNeeded(pi: ExtensionAPI, ctx: ExtensionC
 	}
 }
 
+function canOfferEmptyBranchStart(ctx: ExtensionContext, originLeafId: string | undefined): boolean {
+	const firstUserMessageId = getFirstUserMessageId(ctx);
+	return Boolean(originLeafId && firstUserMessageId && firstUserMessageId !== originLeafId);
+}
+
 export async function startReviewMode(
 	pi: ExtensionAPI,
 	ctx: ExtensionContext,
@@ -200,10 +205,10 @@ export async function startReviewMode(
 	const shouldRetryTargetSelection = rawArgs.length === 0;
 	let resolveArgs = rawArgs;
 	const originLeafId = ctx.sessionManager.getLeafId() ?? undefined;
-	const messageCount = ctx.sessionManager.getEntries().filter((entry) => entry.type === "message").length;
+	const canStartFromEmptyBranch = canOfferEmptyBranchStart(ctx, originLeafId);
 	let useFreshBranch = false;
 
-	if (messageCount > 0) {
+	if (canStartFromEmptyBranch) {
 		const choice = await ctx.ui.select("Start review in:", [...REVIEW_MODE_START_OPTIONS]);
 		if (choice === undefined) {
 			ctx.ui.notify("Review cancelled.", "info");

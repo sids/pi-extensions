@@ -242,3 +242,115 @@ describe("/plan-mode continue planning", () => {
 		]);
 	});
 });
+
+describe("/plan-mode start location prompt", () => {
+	test("skips empty-vs-current selection when there is no prior history", async () => {
+		const tmpDir = await mkdtemp(path.join(os.tmpdir(), "plan-mode-flow-"));
+		tempDirs.push(tmpDir);
+		const planFilePath = path.join(tmpDir, "session-1.plan.md");
+
+		const startCalls: Array<{ originLeafId?: string; planFilePath: string }> = [];
+		let state = {
+			version: 1,
+			active: false,
+			planFilePath,
+			lastPlanLeafId: undefined,
+		};
+		const handler = createRegisteredHandler({
+			getState: () => state,
+			setState: (_ctx, nextState) => {
+				state = nextState;
+			},
+			startPlanMode: (_ctx, options) => {
+				startCalls.push(options);
+			},
+		});
+
+		const selectCalls: Array<{ prompt: string; choices: string[] }> = [];
+		await handler("", {
+			cwd: tmpDir,
+			hasUI: true,
+			waitForIdle: async () => {},
+			ui: {
+				select: async (prompt: string, choices: string[]) => {
+					selectCalls.push({ prompt, choices });
+					return "Current branch";
+				},
+				notify: () => {},
+			},
+			sessionManager: {
+				getLeafId: () => "leaf-1",
+				getEntries: () => [{ id: "leaf-1", type: "message", message: { role: "user" } }],
+				getSessionFile: () => undefined,
+				getSessionDir: () => tmpDir,
+				getSessionId: () => "session-1",
+			},
+		});
+
+		expect(selectCalls).toEqual([]);
+		expect(startCalls).toEqual([
+			{
+				originLeafId: "leaf-1",
+				planFilePath,
+			},
+		]);
+	});
+
+	test("offers start-fresh without branch chooser when an existing plan is present", async () => {
+		const tmpDir = await mkdtemp(path.join(os.tmpdir(), "plan-mode-flow-"));
+		tempDirs.push(tmpDir);
+		const planFilePath = path.join(tmpDir, "session-1.plan.md");
+		await writeFile(planFilePath, "# Existing plan\n", "utf8");
+
+		const startCalls: Array<{ originLeafId?: string; planFilePath: string }> = [];
+		let state = {
+			version: 1,
+			active: false,
+			planFilePath,
+			lastPlanLeafId: undefined,
+		};
+		const handler = createRegisteredHandler({
+			getState: () => state,
+			setState: (_ctx, nextState) => {
+				state = nextState;
+			},
+			startPlanMode: (_ctx, options) => {
+				startCalls.push(options);
+			},
+		});
+
+		const selectCalls: Array<{ prompt: string; choices: string[] }> = [];
+		await handler("", {
+			cwd: tmpDir,
+			hasUI: true,
+			waitForIdle: async () => {},
+			ui: {
+				select: async (prompt: string, choices: string[]) => {
+					selectCalls.push({ prompt, choices });
+					return "Start fresh";
+				},
+				notify: () => {},
+			},
+			sessionManager: {
+				getLeafId: () => "leaf-1",
+				getEntries: () => [{ id: "leaf-1", type: "message", message: { role: "user" } }],
+				getSessionFile: () => undefined,
+				getSessionDir: () => tmpDir,
+				getSessionId: () => "session-1",
+			},
+		});
+
+		expect(selectCalls).toEqual([
+			{
+				prompt: `Start planning:\nPlan file: ${planFilePath}`,
+				choices: ["Continue planning", "Start fresh"],
+			},
+		]);
+		expect(startCalls).toHaveLength(1);
+		expect(startCalls[0]).toEqual({
+			originLeafId: "leaf-1",
+			planFilePath: expect.any(String),
+		});
+		expect(startCalls[0].planFilePath).not.toBe(planFilePath);
+	});
+});

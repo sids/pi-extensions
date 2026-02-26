@@ -89,8 +89,11 @@ describe("/review inactive", () => {
 			model: { provider: "anthropic", id: "claude-sonnet" },
 			waitForIdle: async () => {},
 			sessionManager: {
-				getLeafId: () => "leaf-1",
-				getEntries: () => [{ type: "message", message: { role: "user" } }],
+				getLeafId: () => "leaf-2",
+				getEntries: () => [
+					{ id: "user-1", type: "message", message: { role: "user" } },
+					{ id: "leaf-2", type: "message", message: { role: "assistant" } },
+				],
 			},
 			ui: {
 				select: async () => {
@@ -105,7 +108,7 @@ describe("/review inactive", () => {
 		expect(callOrder).toEqual(["select-start-location", "resolve-target"]);
 		expect(startCalls).toEqual([
 			{
-				originLeafId: "leaf-1",
+				originLeafId: "leaf-2",
 				runId: expect.any(String),
 				targetHint: "current changes",
 				reviewInstructionsPrompt: "review instructions",
@@ -156,8 +159,11 @@ describe("/review inactive", () => {
 			cwd: "/tmp/project",
 			waitForIdle: async () => {},
 			sessionManager: {
-				getLeafId: () => "leaf-1",
-				getEntries: () => [{ type: "message", message: { role: "user" } }],
+				getLeafId: () => "leaf-2",
+				getEntries: () => [
+					{ id: "user-1", type: "message", message: { role: "user" } },
+					{ id: "leaf-2", type: "message", message: { role: "assistant" } },
+				],
 			},
 			ui: {
 				select: async () => undefined,
@@ -167,6 +173,52 @@ describe("/review inactive", () => {
 
 		expect(resolveCalls).toEqual([]);
 		expect(notifications).toContainEqual({ message: "Review cancelled.", level: "info" });
+	});
+
+	test("skips start-location prompt when there is no prior history", async () => {
+		const startCalls: any[] = [];
+		const resolveCalls: string[] = [];
+		const selectCalls: Array<{ prompt: string; choices: string[] }> = [];
+		const { handler } = createRegisteredReviewHandler({
+			stateManager: {
+				getState: () => ({ version: 1, active: false }),
+				setState: () => {},
+				startReviewMode: (_ctx, options) => startCalls.push(options),
+			},
+			flow: {
+				isGitRepository: async () => true,
+				resolveTarget: async () => {
+					resolveCalls.push("resolve");
+					return { type: "uncommitted" };
+				},
+				buildInstructionsPrompt: async () => "review instructions",
+				buildEditorPrompt: async () => "review target prompt",
+				describeTarget: () => "current changes",
+			},
+		});
+
+		await handler("", {
+			hasUI: true,
+			cwd: "/tmp/project",
+			waitForIdle: async () => {},
+			sessionManager: {
+				getLeafId: () => "leaf-1",
+				getEntries: () => [{ id: "leaf-1", type: "message", message: { role: "user" } }],
+			},
+			ui: {
+				select: async (prompt: string, choices: string[]) => {
+					selectCalls.push({ prompt, choices });
+					return "Empty branch";
+				},
+				notify: () => {},
+				setEditorText: () => {},
+			},
+		});
+
+		expect(selectCalls).toEqual([]);
+		expect(resolveCalls).toEqual(["resolve"]);
+		expect(startCalls).toHaveLength(1);
+		expect(startCalls[0].originLeafId).toBe("leaf-1");
 	});
 
 	test("does not checkout PR when empty-branch navigation is cancelled", async () => {
@@ -257,8 +309,11 @@ describe("/review inactive", () => {
 			cwd: "/tmp/project",
 			waitForIdle: async () => {},
 			sessionManager: {
-				getLeafId: () => "leaf-1",
-				getEntries: () => [{ type: "message", message: { role: "user" } }],
+				getLeafId: () => "leaf-2",
+				getEntries: () => [
+					{ id: "user-1", type: "message", message: { role: "user" } },
+					{ id: "leaf-2", type: "message", message: { role: "assistant" } },
+				],
 			},
 			ui: {
 				select: async () => "Current branch",

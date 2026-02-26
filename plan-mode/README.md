@@ -5,13 +5,13 @@ Branch-based planning workflow for pi.
 ## What it does
 
 - `/plan-mode` starts planning when inactive and opens plan-mode actions when already active.
-- Start location picker:
+- Start location picker (shown when the session has branchable history):
   - `Empty branch` (jumps to a clean branch point)
   - `Current branch` (stays where you are)
 - If a session plan already exists with content, startup offers:
   - `Continue planning`
-  - `Empty branch`
-  - `Current branch`
+  - `Empty branch` / `Current branch` when branchable history is available
+  - `Start fresh` when no branchable history is available
 - `/plan-mode` accepts an optional location argument:
   - file path → use that exact file as the plan file
   - directory path → create `<timestamp>-<sessionId>.plan.md` in that directory

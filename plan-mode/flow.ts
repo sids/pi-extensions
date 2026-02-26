@@ -316,6 +316,11 @@ async function endPlanMode(
 	await exitPlanMode(ctx, stateManager, wantsSummary, onPlanModeExited);
 }
 
+function canOfferEmptyBranchStart(ctx: ExtensionContext, originLeafId: string | undefined): boolean {
+	const firstUserMessageId = getFirstUserMessageId(ctx);
+	return Boolean(originLeafId && firstUserMessageId && firstUserMessageId !== originLeafId);
+}
+
 export function registerPlanModeCommand(
 	pi: ExtensionAPI,
 	dependencies: {
@@ -367,7 +372,7 @@ export function registerPlanModeCommand(
 			}
 
 			const originLeafId = ctx.sessionManager.getLeafId();
-			const messageCount = ctx.sessionManager.getEntries().filter((entry) => entry.type === "message").length;
+			const canStartFromEmptyBranch = canOfferEmptyBranchStart(ctx, originLeafId);
 			const currentState = dependencies.stateManager.getState();
 			const sessionPlanFilePath = resolveActivePlanFilePath(ctx, currentState.planFilePath);
 			const existingSessionPlanText = (await readPlanFile(sessionPlanFilePath))?.trim();
@@ -380,10 +385,11 @@ export function registerPlanModeCommand(
 			if (ctx.hasUI) {
 				if (existingSessionPlanText) {
 					const continueOption = "Continue planning";
-					const choice = await ctx.ui.select(
-						`Start planning:\nPlan file: ${sessionPlanFilePath}`,
-						[continueOption, ...PLAN_MODE_START_OPTIONS],
-					);
+					const startFreshOption = "Start fresh";
+					const choices = canStartFromEmptyBranch
+						? [continueOption, ...PLAN_MODE_START_OPTIONS]
+						: [continueOption, startFreshOption];
+					const choice = await ctx.ui.select(`Start planning:\nPlan file: ${sessionPlanFilePath}`, choices);
 					if (choice === undefined) {
 						ctx.ui.notify("Plan mode activation cancelled.", "info");
 						return;
@@ -395,7 +401,7 @@ export function registerPlanModeCommand(
 					} else {
 						startIntent = "current-branch";
 					}
-				} else if (messageCount > 0) {
+				} else if (canStartFromEmptyBranch) {
 					const choice = await ctx.ui.select("Start planning in:", [...PLAN_MODE_START_OPTIONS]);
 					if (choice === undefined) {
 						ctx.ui.notify("Plan mode activation cancelled.", "info");
