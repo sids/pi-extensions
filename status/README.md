@@ -14,15 +14,15 @@ Time values use a compact `d/h/m` format (`XdYhZm`, `YhZm`, or `Zm`) and are sep
 
 Also updates the terminal title with a prefix indicating state:
 
-- Braille spinner frame while the agent is running (same animation style as `examples/extensions/titlebar-spinner.ts`)
+- Braille spinner frame while the agent is running
 - `✔` when the agent is done (after at least one completed run, cleared on next editor activity)
 - `⚠️` when attention is needed
 
-Attention mode is triggered when an agent run ends with `stopReason: "error"` or `stopReason: "aborted"` (timeouts typically surface as `aborted`), any non-`bash` tool whose name does not include `agent` running longer than 10 seconds (proxy for waiting on user input), and extension-driven attention events on `status:title_attention`. The default footer widget is hidden while this extension is active.
+Attention mode is triggered when a run ends with `stopReason: "error"` or `stopReason: "aborted"`, when a non-`bash` tool whose name does not include `agent` runs longer than 10 seconds, or when an extension emits `status:title_attention`. The default footer widget is hidden while this extension is active.
 
 ## Usage
 
-Load the extension (e.g. symlink the folder into `~/.pi/agent/extensions/status` and run `/reload`). The status line updates automatically during session events.
+Load the extension (for example, symlink the folder into `~/.pi/agent/extensions/status` and run `/reload`). The status line updates automatically during session events.
 
 PR detection requires GitHub CLI (`gh`) and valid auth (`gh auth status`). By default, the PR line is resolved only for `github.com`. You can allow additional GitHub Enterprise hosts with `PI_STATUS_ALLOWED_GITHUB_HOSTS` (comma-separated exact hostnames).
 
@@ -33,3 +33,7 @@ Toggle the behavior with `/custom-status`.
 ```bash
 bun test status/tests/utils.test.ts
 ```
+
+## Acknowledgements
+
+The terminal title behavior is inspired by the approach used in the pi-mono repo.
