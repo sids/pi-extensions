@@ -513,6 +513,83 @@ describe("/review active", () => {
 		expect(notifications.length).toBe(0);
 	});
 
+	test("does not post a summary when all triaged comments are discarded", async () => {
+		let state = {
+			version: 1,
+			active: true,
+			runId: "run-1",
+		};
+		const setStateCalls: any[] = [];
+		const notifications: Array<{ message: string; level: string }> = [];
+		const editorPrefills: string[] = [];
+
+		const { handler, sentMessages } = createRegisteredReviewHandler({
+			stateManager: {
+				getState: () => state,
+				setState: (_ctx, next) => {
+					setStateCalls.push(next);
+					state = next;
+				},
+				startReviewMode: () => {},
+			},
+			flow: {
+				getCommentsForRun: () => [
+					{
+						version: 1,
+						id: "c1",
+						runId: "run-1",
+						priority: "P1",
+						comment: "discarded finding",
+						references: [],
+						createdAt: 1,
+					},
+				],
+				runTriage: async () => ({
+					comments: [
+						{
+							id: "c1",
+							keep: false,
+							priority: "P1",
+							comment: "discarded finding",
+							references: [],
+							originalPriority: "P1",
+						},
+					],
+					keptCount: 0,
+					discardedCount: 1,
+				}),
+			},
+		});
+
+		await handler("", {
+			hasUI: true,
+			cwd: "/tmp/project",
+			waitForIdle: async () => {},
+			sessionManager: {
+				getLeafId: () => "review-leaf",
+				getEntries: () => [],
+			},
+			ui: {
+				notify: (message: string, level: string) => notifications.push({ message, level }),
+				setEditorText: (text: string) => editorPrefills.push(text),
+			},
+		});
+
+		expect(setStateCalls.at(-1)).toEqual({
+			version: 1,
+			active: false,
+			lastReviewLeafId: "review-leaf",
+		});
+		expect(sentMessages).toEqual([]);
+		expect(editorPrefills).toEqual([]);
+		expect(notifications).toEqual([
+			{
+				message: "Review mode ended. No review comments were collected.",
+				level: "info",
+			},
+		]);
+	});
+
 	test("restores model and thinking after review mode ends", async () => {
 		let state = {
 			version: 1,

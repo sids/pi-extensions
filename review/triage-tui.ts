@@ -478,7 +478,7 @@ class ReviewTriageComponent implements TuiComponent {
 			lines.push(padLine(""));
 		}
 
-		lines.push(padLine(`${status} ${this.muted("•")} ${this.accent(current.priority)} ${this.muted("• Note:")}`));
+		lines.push(padLine(`${status} ${this.muted("• Note:")}`));
 		const editorLines = this.editor.render(Math.max(20, contentWidth));
 		for (let i = 1; i < editorLines.length - 1; i++) {
 			lines.push(padLine(editorLines[i]));

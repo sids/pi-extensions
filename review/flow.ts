@@ -349,7 +349,7 @@ export async function endReviewMode(
 		discardedCount: triageResult.discardedCount,
 		totalCount: triageResult.comments.length,
 	};
-	if (summary.totalCount === 0) {
+	if (summary.kept.length === 0) {
 		ctx.ui.notify("Review mode ended. No review comments were collected.", "info");
 		onReviewEnded?.(summary);
 		return;
