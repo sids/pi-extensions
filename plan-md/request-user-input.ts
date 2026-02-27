@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import type { AgentToolResult } from "@mariozechner/pi-agent-core";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { QnATuiComponent, type QnAResponse, type QnAResult } from "../shared/qna-tui";
+import { QnATuiComponent, type QnAResponse, type QnAResult } from "@siddr/pi-shared-qna";
 import type {
 	NormalizedRequestUserInputQuestion,
 	PlanModeState,

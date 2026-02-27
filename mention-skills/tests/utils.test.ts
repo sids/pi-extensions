@@ -26,7 +26,7 @@ describe("collectDiscoveredSkills", () => {
 	test("ignores non-skill commands", () => {
 		const commands: SlashCommandInfo[] = [
 			{ name: "review", source: "extension" },
-			{ name: "plan-mode", source: "extension" },
+			{ name: "plan-md", source: "extension" },
 			{ name: "skill:git", source: "skill", path: "/skills/git/SKILL.md" },
 		];
 		const result = collectDiscoveredSkills(commands);

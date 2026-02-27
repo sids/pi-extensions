@@ -1,0 +1,22 @@
+{
+  "name": "@siddr/pi-shared-qna",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Shared Q&A TUI helpers for siddr pi extensions",
+  "license": "MIT",
+  "main": "./qna-tui.ts",
+  "exports": {
+    ".": "./qna-tui.ts"
+  },
+  "files": [
+    "qna-tui.ts",
+    "README.md"
+  ],
+  "peerDependencies": {
+    "@mariozechner/pi-tui": "*"
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/",
+    "access": "public"
+  }
+}

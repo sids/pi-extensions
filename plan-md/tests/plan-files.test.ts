@@ -41,7 +41,7 @@ describe("buildTimestampedPlanFilename", () => {
 
 describe("resolvePlanLocationInput", () => {
 	test("keeps explicit file path", async () => {
-		const tmpDir = await mkdtemp(path.join(os.tmpdir(), "plan-mode-files-"));
+		const tmpDir = await mkdtemp(path.join(os.tmpdir(), "plan-md-files-"));
 		tempDirs.push(tmpDir);
 		const ctx = createCtx(tmpDir, "session-1");
 
@@ -50,7 +50,7 @@ describe("resolvePlanLocationInput", () => {
 	});
 
 	test("creates timestamped file for directory input", async () => {
-		const tmpDir = await mkdtemp(path.join(os.tmpdir(), "plan-mode-files-"));
+		const tmpDir = await mkdtemp(path.join(os.tmpdir(), "plan-md-files-"));
 		tempDirs.push(tmpDir);
 		const plansDir = path.join(tmpDir, "plans");
 		await mkdir(plansDir, { recursive: true });

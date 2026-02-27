@@ -1,8 +1,8 @@
 {
-  "name": "@siddr/pi-fetch-url",
+  "name": "pi-mention-skills",
   "version": "0.1.0",
   "type": "module",
-  "description": "Readable content fetch tool extension for pi",
+  "description": "Skill mention autocomplete and expansion extension for pi",
   "license": "MIT",
   "keywords": ["pi-package"],
   "pi": {
@@ -10,13 +10,7 @@
   },
   "peerDependencies": {
     "@mariozechner/pi-coding-agent": "*",
-    "@mariozechner/pi-tui": "*",
-    "@sinclair/typebox": "*"
-  },
-  "dependencies": {
-    "@mozilla/readability": "^0.5.0",
-    "jsdom": "^24.0.0",
-    "turndown": "^7.1.2"
+    "@mariozechner/pi-tui": "*"
   },
   "publishConfig": {
     "registry": "https://registry.npmjs.org/",

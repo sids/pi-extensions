@@ -49,7 +49,7 @@ async function navigateToFreshPlanningBranch(
 	try {
 		const navigateResult = await ctx.navigateTree(firstUserMessageId, {
 			summarize: false,
-			label: "plan-mode",
+			label: "plan-md",
 		});
 		if (navigateResult.cancelled) {
 			ctx.ui.notify(cancelMessage, "info");
@@ -89,7 +89,7 @@ async function navigateToSavedPlanningBranch(
 	try {
 		const navigateResult = await ctx.navigateTree(options.savedLeafId, {
 			summarize: false,
-			label: "plan-mode",
+			label: "plan-md",
 		});
 		if (navigateResult.cancelled) {
 			ctx.ui.notify(options.cancelMessage, "info");
@@ -241,7 +241,7 @@ async function exitPlanMode(
 			});
 
 			if (result === null) {
-				ctx.ui.notify("Summarization cancelled. Use /plan-mode to try again.", "info");
+				ctx.ui.notify("Summarization cancelled. Use /plan-md to try again.", "info");
 				return false;
 			}
 			if (result.error) {
@@ -249,14 +249,14 @@ async function exitPlanMode(
 				return false;
 			}
 			if (result.cancelled) {
-				ctx.ui.notify("Returning from plan mode was cancelled. Use /plan-mode to try again.", "info");
+				ctx.ui.notify("Returning from plan mode was cancelled. Use /plan-md to try again.", "info");
 				return false;
 			}
 		} else {
 			try {
 				const navigateResult = await ctx.navigateTree(originLeafId, { summarize: false });
 				if (navigateResult.cancelled) {
-					ctx.ui.notify("Returning from plan mode was cancelled. Use /plan-mode to try again.", "info");
+					ctx.ui.notify("Returning from plan mode was cancelled. Use /plan-md to try again.", "info");
 					return false;
 				}
 			} catch (error) {
@@ -328,8 +328,8 @@ export function registerPlanModeCommand(
 		onPlanModeExited?: (summary: PlanModeExitSummary) => void;
 	},
 ) {
-	pi.registerCommand("plan-mode", {
-		description: "Start plan mode, end it, or pass a plan file location.",
+	pi.registerCommand("plan-md", {
+		description: "Start /plan-md, end it, or pass a plan file location.",
 		handler: async (args, ctx) => {
 			const rawLocation = args.trim();
 			const state = dependencies.stateManager.getState();

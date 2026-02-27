@@ -40,14 +40,14 @@ function createRegisteredHandler(stateManager: {
 	);
 
 	if (!handler) {
-		throw new Error("Failed to register /plan-mode handler");
+		throw new Error("Failed to register /plan-md handler");
 	}
 	return handler;
 }
 
-describe("/plan-mode continue planning", () => {
+describe("/plan-md continue planning", () => {
 	test("navigates to saved planning leaf before activating plan mode", async () => {
-		const tmpDir = await mkdtemp(path.join(os.tmpdir(), "plan-mode-flow-"));
+		const tmpDir = await mkdtemp(path.join(os.tmpdir(), "plan-md-flow-"));
 		tempDirs.push(tmpDir);
 		const planFilePath = path.join(tmpDir, "session-1.plan.md");
 		await writeFile(planFilePath, "# Existing plan\n", "utf8");
@@ -98,7 +98,7 @@ describe("/plan-mode continue planning", () => {
 				entryId: "planning-leaf",
 				options: {
 					summarize: false,
-					label: "plan-mode",
+					label: "plan-md",
 				},
 			},
 		]);
@@ -111,7 +111,7 @@ describe("/plan-mode continue planning", () => {
 	});
 
 	test("shows an info notification when continue resumes saved planning branch in UI mode", async () => {
-		const tmpDir = await mkdtemp(path.join(os.tmpdir(), "plan-mode-flow-"));
+		const tmpDir = await mkdtemp(path.join(os.tmpdir(), "plan-md-flow-"));
 		tempDirs.push(tmpDir);
 		const planFilePath = path.join(tmpDir, "session-1.plan.md");
 		await writeFile(planFilePath, "# Existing plan\n", "utf8");
@@ -166,7 +166,7 @@ describe("/plan-mode continue planning", () => {
 				entryId: "planning-leaf",
 				options: {
 					summarize: false,
-					label: "plan-mode",
+					label: "plan-md",
 				},
 			},
 		]);
@@ -183,7 +183,7 @@ describe("/plan-mode continue planning", () => {
 	});
 
 	test("falls back to current leaf when saved planning leaf is unavailable", async () => {
-		const tmpDir = await mkdtemp(path.join(os.tmpdir(), "plan-mode-flow-"));
+		const tmpDir = await mkdtemp(path.join(os.tmpdir(), "plan-md-flow-"));
 		tempDirs.push(tmpDir);
 		const planFilePath = path.join(tmpDir, "session-1.plan.md");
 		await writeFile(planFilePath, "# Existing plan\n", "utf8");
@@ -243,9 +243,9 @@ describe("/plan-mode continue planning", () => {
 	});
 });
 
-describe("/plan-mode start location prompt", () => {
+describe("/plan-md start location prompt", () => {
 	test("skips empty-vs-current selection when there is no prior history", async () => {
-		const tmpDir = await mkdtemp(path.join(os.tmpdir(), "plan-mode-flow-"));
+		const tmpDir = await mkdtemp(path.join(os.tmpdir(), "plan-md-flow-"));
 		tempDirs.push(tmpDir);
 		const planFilePath = path.join(tmpDir, "session-1.plan.md");
 
@@ -297,7 +297,7 @@ describe("/plan-mode start location prompt", () => {
 	});
 
 	test("offers start-fresh without branch chooser when an existing plan is present", async () => {
-		const tmpDir = await mkdtemp(path.join(os.tmpdir(), "plan-mode-flow-"));
+		const tmpDir = await mkdtemp(path.join(os.tmpdir(), "plan-md-flow-"));
 		tempDirs.push(tmpDir);
 		const planFilePath = path.join(tmpDir, "session-1.plan.md");
 		await writeFile(planFilePath, "# Existing plan\n", "utf8");

@@ -30,7 +30,7 @@ interface PlanModeExitDetails {
 	planText?: string;
 }
 
-const PLAN_MODE_EXIT_ENTRY_TYPE = "plan-mode:exit";
+const PLAN_MODE_EXIT_ENTRY_TYPE = "plan-md:exit";
 
 export default function (pi: ExtensionAPI) {
 	const stateManager = createPlanModeStateManager(pi);

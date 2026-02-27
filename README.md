@@ -6,7 +6,7 @@ A collection of pi extensions. Each extension lives in its own directory with it
 
 ## Repository layout
 
-- [`plan-mode/`](plan-mode/) – Branch-based planning workflow with subagent research and persisted plan files
+- [`plan-md/`](plan-md/) – Branch-based planning workflow with subagent research and persisted plan files
 - [`review/`](review/) – Interactive review mode with target selection, structured findings capture, and triage
 - [`answer/`](answer/) – Interactive Q&A workflow for extracting questions and sending compiled answers
 - [`mention-skills/`](mention-skills/) – `$skill-name` autocomplete with submit-time expansion to `SKILL.md` paths

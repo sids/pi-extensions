@@ -7,7 +7,7 @@ import {
 	QnATuiComponent,
 	type QnAResponse,
 	type QnAResult,
-} from "../shared/qna-tui";
+} from "@siddr/pi-shared-qna";
 import {
 	applyTemplate,
 	type AnswerDraftSettings,

@@ -1,0 +1,9 @@
+{
+  "name": "pi-extensions-workspace",
+  "private": true,
+  "workspaces": [
+    "shared",
+    "answer",
+    "plan-md"
+  ]
+}

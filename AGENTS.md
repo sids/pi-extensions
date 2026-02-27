@@ -2,10 +2,11 @@
 
 ## Project overview
 
-This repository contains the **answer**, **fetch-url**, **web-search**, **status**, **plan-mode**, **review**, and **mention-skills** pi extensions.
+This repository contains the **answer**, **fetch-url**, **web-search**, **status**, **plan-md**, **review**, and **mention-skills** pi extensions.
 
 ## Key files
 
+- `package.json`: npm workspace manifest for local linking of `shared`, `answer`, and `plan-md`
 - `answer/index.ts`: Extension entry point
 - `answer/qna-adapter.ts`: Draft state + compiled answer helpers
 - `answer/utils.ts`: Shared helpers and settings parsing
@@ -24,13 +25,13 @@ This repository contains the **answer**, **fetch-url**, **web-search**, **status
 - `status/utils.ts`: Shared helpers
 - `status/README.md`: Usage/config docs
 - `status/tests/utils.test.ts`: Unit tests
-- `plan-mode/index.ts`: Extension entry point
-- `plan-mode/flow.ts`: `/plan-mode` command flow
-- `plan-mode/plan-files.ts`: Plan file path + movement helpers
-- `plan-mode/request-user-input.ts`: `request_user_input` tool behavior
-- `plan-mode/subagents.ts`: `subagents` / `steer_subagent` tool behavior
-- `plan-mode/README.md`: Usage docs
-- `plan-mode/tests/*.test.ts`: Unit tests
+- `plan-md/index.ts`: Extension entry point
+- `plan-md/flow.ts`: `/plan-md` command flow
+- `plan-md/plan-files.ts`: Plan file path + movement helpers
+- `plan-md/request-user-input.ts`: `request_user_input` tool behavior
+- `plan-md/subagents.ts`: `subagents` / `steer_subagent` tool behavior
+- `plan-md/README.md`: Usage docs
+- `plan-md/tests/*.test.ts`: Unit tests
 - `review/index.ts`: Extension entry point
 - `review/flow.ts`: `/review` start/end orchestration
 - `review/state.ts`: Review mode state + tool gating/banner
@@ -46,6 +47,8 @@ This repository contains the **answer**, **fetch-url**, **web-search**, **status
 - `mention-skills/README.md`: Usage docs
 - `mention-skills/tests/utils.test.ts`: Unit tests
 - `shared/qna-tui.ts`: Shared Q&A TUI component
+- `shared/package.json`: npm package manifest for `@siddr/pi-shared-qna`
+- `shared/README.md`: shared package usage notes
 
 ## Adding new extensions
 
@@ -57,6 +60,7 @@ This repository contains the **answer**, **fetch-url**, **web-search**, **status
 ## Development notes
 
 - Always add/update tests when making changes.
+- Run `npm install` at repo root before testing or local extension runs. This links workspace dependencies (notably `@siddr/pi-shared-qna` used by `answer` and `plan-md`).
 - Always run tests after making changes.
 - Run tests with:
   ```bash
@@ -65,12 +69,12 @@ This repository contains the **answer**, **fetch-url**, **web-search**, **status
   bun test fetch-url/tests/utils.test.ts
   bun test web-search/tests/utils.test.ts
   bun test status/tests/utils.test.ts
-  bun test plan-mode/tests/utils.test.ts
-  bun test plan-mode/tests/state.test.ts
-  bun test plan-mode/tests/plan-files.test.ts
-  bun test plan-mode/tests/flow.test.ts
-  bun test plan-mode/tests/request-user-input.test.ts
-  bun test plan-mode/tests/subagents.test.ts
+  bun test plan-md/tests/utils.test.ts
+  bun test plan-md/tests/state.test.ts
+  bun test plan-md/tests/plan-files.test.ts
+  bun test plan-md/tests/flow.test.ts
+  bun test plan-md/tests/request-user-input.test.ts
+  bun test plan-md/tests/subagents.test.ts
   bun test review/tests/utils.test.ts
   bun test review/tests/state.test.ts
   bun test review/tests/comments.test.ts

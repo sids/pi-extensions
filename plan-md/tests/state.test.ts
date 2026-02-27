@@ -21,19 +21,19 @@ describe("getLatestState", () => {
 				getEntries: () => [
 					{
 						type: "custom",
-						customType: "plan-mode:state",
+						customType: "plan-md:state",
 						data: { version: 1, active: true, planFilePath: "/tmp/old.plan.md", lastPlanLeafId: "leaf-old" },
 					},
 					{
 						type: "custom",
-						customType: "plan-mode:state",
+						customType: "plan-md:state",
 						data: { version: 1, active: false, planFilePath: "/tmp/new.plan.md", lastPlanLeafId: "leaf-new" },
 					},
 				],
 				getBranch: () => [
 					{
 						type: "custom",
-						customType: "plan-mode:state",
+						customType: "plan-md:state",
 						data: { version: 1, active: true, planFilePath: "/tmp/old.plan.md" },
 					},
 				],
@@ -60,7 +60,7 @@ describe("createPlanModeStateManager tool visibility", () => {
 		} as any;
 	}
 
-	test("adds plan-mode tools when plan mode starts", () => {
+	test("adds plan mode tools when plan mode starts", () => {
 		let activeTools = ["read", "bash", "edit", "write"];
 		const setActiveToolsCalls: string[][] = [];
 
@@ -82,7 +82,7 @@ describe("createPlanModeStateManager tool visibility", () => {
 		]);
 	});
 
-	test("removes plan-mode tools when refreshed state is inactive", () => {
+	test("removes plan mode tools when refreshed state is inactive", () => {
 		let activeTools = ["read", "bash", "set_plan", "subagents", "steer_subagent", "request_user_input"];
 		const setActiveToolsCalls: string[][] = [];
 
@@ -99,7 +99,7 @@ describe("createPlanModeStateManager tool visibility", () => {
 			createContext([
 				{
 					type: "custom",
-					customType: "plan-mode:state",
+					customType: "plan-md:state",
 					data: { version: 1, active: false, planFilePath: "/tmp/session.plan.md" },
 				},
 			]),

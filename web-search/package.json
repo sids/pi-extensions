@@ -1,8 +1,8 @@
 {
-  "name": "@siddr/pi-fetch-url",
+  "name": "@siddr/pi-web-search",
   "version": "0.1.0",
   "type": "module",
-  "description": "Readable content fetch tool extension for pi",
+  "description": "Brave web search tool extension for pi",
   "license": "MIT",
   "keywords": ["pi-package"],
   "pi": {
@@ -12,11 +12,6 @@
     "@mariozechner/pi-coding-agent": "*",
     "@mariozechner/pi-tui": "*",
     "@sinclair/typebox": "*"
-  },
-  "dependencies": {
-    "@mozilla/readability": "^0.5.0",
-    "jsdom": "^24.0.0",
-    "turndown": "^7.1.2"
   },
   "publishConfig": {
     "registry": "https://registry.npmjs.org/",
