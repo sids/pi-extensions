@@ -2,6 +2,12 @@
 
 Branch-based planning workflow for pi.
 
+## Install
+
+```bash
+pi install npm:pi-plan-md
+```
+
 ## What it does
 
 - `/plan-md` starts planning when inactive and opens plan mode actions when already active.

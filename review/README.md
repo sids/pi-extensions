@@ -2,6 +2,12 @@
 
 Interactive code-review mode for pi.
 
+## Install
+
+```bash
+pi install npm:@siddr/pi-review
+```
+
 ## What it does
 
 - `/review` toggles review mode:

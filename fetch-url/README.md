@@ -2,18 +2,10 @@
 
 Adds a `fetch_url` tool that fetches a URL and returns the main readable content. By default, it extracts the primary content and converts it to Markdown. You can request raw HTML or extracted HTML if needed. Metadata (title, author/byline, site name, published time when available) is included in the output header.
 
-## Install locally
+## Install
 
 ```bash
-cd /path/to/pi-extensions/fetch-url
-bun install
-ln -sfn /path/to/pi-extensions/fetch-url ~/.pi/agent/extensions/fetch-url
-```
-
-Then in pi:
-
-```
-/reload
+pi install npm:@siddr/pi-fetch-url
 ```
 
 ## Tool

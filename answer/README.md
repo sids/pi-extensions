@@ -2,6 +2,12 @@
 
 Interactive Q&A extraction for pi. Run `/answer` to extract questions from the last assistant message, answer them in a TUI, and send the compiled answers back into the chat.
 
+## Install
+
+```bash
+pi install npm:pi-answer
+```
+
 ## Usage
 
 1. Trigger with `/answer`.

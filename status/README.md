@@ -20,9 +20,15 @@ Also updates the terminal title with a prefix indicating state:
 
 Attention mode is triggered when a run ends with `stopReason: "error"` or `stopReason: "aborted"`, when a non-`bash` tool whose name does not include `agent` runs longer than 10 seconds, or when an extension emits `status:title_attention`. The default footer widget is hidden while this extension is active.
 
+## Install
+
+```bash
+pi install npm:@siddr/pi-status
+```
+
 ## Usage
 
-Load the extension (for example, symlink the folder into `~/.pi/agent/extensions/status` and run `/reload`). The status line updates automatically during session events.
+The status line updates automatically during session events.
 
 PR detection requires GitHub CLI (`gh`) and valid auth (`gh auth status`). By default, the PR line is resolved only for `github.com`. You can allow additional GitHub Enterprise hosts with `PI_STATUS_ALLOWED_GITHUB_HOSTS` (comma-separated exact hostnames).
 

@@ -32,16 +32,10 @@ You can also set keys directly in `~/.pi/agent/auth.json`:
 
 If `auth.json` already has entries, merge these keys instead of overwriting the file.
 
-## Install locally
+## Install
 
 ```bash
-ln -sfn /path/to/pi-extensions/web-search ~/.pi/agent/extensions/web-search
-```
-
-Then in pi:
-
-```
-/reload
+pi install npm:@siddr/pi-web-search
 ```
 
 ## Tool

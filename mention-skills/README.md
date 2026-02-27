@@ -4,13 +4,9 @@ Type `$skill-name` in the editor to autocomplete and reference discovered skills
 
 ## Install
 
-Symlink into your extensions directory:
-
 ```bash
-ln -s /path/to/pi-extensions/mention-skills ~/.pi/agent/extensions/mention-skills
+pi install npm:pi-mention-skills
 ```
-
-Then run `/reload` in pi (or restart).
 
 ## Usage
 
