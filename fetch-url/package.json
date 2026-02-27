@@ -1,10 +1,19 @@
 {
   "name": "@siddr/pi-fetch-url",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "description": "Readable content fetch tool extension for pi",
   "license": "MIT",
   "keywords": ["pi-package"],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sids/pi-extensions.git",
+    "directory": "fetch-url"
+  },
+  "bugs": {
+    "url": "https://github.com/sids/pi-extensions/issues"
+  },
+  "homepage": "https://github.com/sids/pi-extensions/tree/main/fetch-url#readme",
   "pi": {
     "extensions": ["./index.ts"]
   },

@@ -1,6 +1,6 @@
 {
   "name": "@siddr/pi-shared-qna",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "description": "Shared Q&A TUI helpers for siddr pi extensions",
   "license": "MIT",
@@ -12,6 +12,15 @@
     "qna-tui.ts",
     "README.md"
   ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sids/pi-extensions.git",
+    "directory": "shared"
+  },
+  "bugs": {
+    "url": "https://github.com/sids/pi-extensions/issues"
+  },
+  "homepage": "https://github.com/sids/pi-extensions/tree/main/shared#readme",
   "peerDependencies": {
     "@mariozechner/pi-tui": "*"
   },
