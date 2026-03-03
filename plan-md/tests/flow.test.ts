@@ -24,16 +24,23 @@ afterEach(async () => {
 	}
 });
 
-function createRegisteredHandler(stateManager: {
+function createRegisteredBindings(stateManager: {
 	getState: () => any;
 	setState: (ctx: any, nextState: any) => void;
 	startPlanMode: (ctx: any, options: { originLeafId?: string; planFilePath: string }) => void;
 }) {
 	let handler: ((args: string, ctx: any) => Promise<void>) | undefined;
+	let shortcutHandler: ((ctx: any) => Promise<void>) | undefined;
+	const shortcutKeys: string[] = [];
+
 	registerPlanModeCommand(
 		{
 			registerCommand: (_name: string, command: { handler: (args: string, ctx: any) => Promise<void> }) => {
 				handler = command.handler;
+			},
+			registerShortcut: (shortcut: string, options: { handler: (ctx: any) => Promise<void> }) => {
+				shortcutKeys.push(shortcut);
+				shortcutHandler = options.handler;
 			},
 		} as any,
 		{ stateManager },
@@ -42,8 +49,218 @@ function createRegisteredHandler(stateManager: {
 	if (!handler) {
 		throw new Error("Failed to register /plan-md handler");
 	}
-	return handler;
+	if (!shortcutHandler) {
+		throw new Error("Failed to register Alt+P shortcut handler");
+	}
+
+	return {
+		handler,
+		shortcutHandler,
+		shortcutKeys,
+	};
 }
+
+function createRegisteredHandler(stateManager: {
+	getState: () => any;
+	setState: (ctx: any, nextState: any) => void;
+	startPlanMode: (ctx: any, options: { originLeafId?: string; planFilePath: string }) => void;
+}) {
+	return createRegisteredBindings(stateManager).handler;
+}
+
+describe("/plan-md Alt+P shortcut", () => {
+	test("registers alt+p", () => {
+		const { shortcutKeys } = createRegisteredBindings({
+			getState: () => ({ version: 1, active: false }),
+			setState: () => {},
+			startPlanMode: () => {},
+		});
+
+		expect(shortcutKeys).toEqual(["alt+p"]);
+	});
+
+	test("starts plan mode without sending /plan-md text", async () => {
+		const tmpDir = await mkdtemp(path.join(os.tmpdir(), "plan-md-flow-"));
+		tempDirs.push(tmpDir);
+		const planFilePath = path.join(tmpDir, "session-1.plan.md");
+		const startCalls: Array<{ originLeafId?: string; planFilePath: string }> = [];
+		let state = {
+			version: 1,
+			active: false,
+			planFilePath,
+			lastPlanLeafId: undefined,
+		};
+
+		const { shortcutHandler } = createRegisteredBindings({
+			getState: () => state,
+			setState: (_ctx, nextState) => {
+				state = nextState;
+			},
+			startPlanMode: (_ctx, options) => {
+				startCalls.push(options);
+			},
+		});
+
+		await shortcutHandler({
+			cwd: tmpDir,
+			hasUI: false,
+			isIdle: () => true,
+			ui: {
+				notify: () => {},
+			},
+			sessionManager: {
+				getLeafId: () => "leaf-1",
+				getEntries: () => [{ id: "leaf-1", type: "message", message: { role: "user" } }],
+				getSessionFile: () => undefined,
+				getSessionDir: () => tmpDir,
+				getSessionId: () => "session-1",
+			},
+		});
+
+		expect(startCalls).toEqual([
+			{
+				originLeafId: "leaf-1",
+				planFilePath,
+			},
+		]);
+	});
+
+	test("shows start location choices when shortcut enters plan mode from branchable history", async () => {
+		const tmpDir = await mkdtemp(path.join(os.tmpdir(), "plan-md-flow-"));
+		tempDirs.push(tmpDir);
+		const planFilePath = path.join(tmpDir, "session-1.plan.md");
+		const startCalls: Array<{ originLeafId?: string; planFilePath: string }> = [];
+		let state = {
+			version: 1,
+			active: false,
+			planFilePath,
+			lastPlanLeafId: undefined,
+		};
+
+		const { shortcutHandler } = createRegisteredBindings({
+			getState: () => state,
+			setState: (_ctx, nextState) => {
+				state = nextState;
+			},
+			startPlanMode: (_ctx, options) => {
+				startCalls.push(options);
+			},
+		});
+
+		const selectCalls: Array<{ prompt: string; choices: string[] }> = [];
+		await shortcutHandler({
+			cwd: tmpDir,
+			hasUI: true,
+			isIdle: () => true,
+			ui: {
+				select: async (prompt: string, choices: string[]) => {
+					selectCalls.push({ prompt, choices });
+					return "Current branch";
+				},
+				notify: () => {},
+			},
+			sessionManager: {
+				getLeafId: () => "leaf-2",
+				getEntries: () => [
+					{ id: "user-1", type: "message", message: { role: "user" } },
+					{ id: "leaf-2", type: "message", message: { role: "assistant" } },
+				],
+				getSessionFile: () => undefined,
+				getSessionDir: () => tmpDir,
+				getSessionId: () => "session-1",
+			},
+		});
+
+		expect(selectCalls).toEqual([
+			{
+				prompt: "Start planning in:",
+				choices: ["Empty branch", "Current branch"],
+			},
+		]);
+		expect(startCalls).toEqual([
+			{
+				originLeafId: "leaf-2",
+				planFilePath,
+			},
+		]);
+	});
+
+	test("uses the same end flow when shortcut is pressed in active mode", async () => {
+		const tmpDir = await mkdtemp(path.join(os.tmpdir(), "plan-md-flow-"));
+		tempDirs.push(tmpDir);
+		const planFilePath = path.join(tmpDir, "session-1.plan.md");
+		await writeFile(planFilePath, "# Existing plan\n", "utf8");
+		let state = {
+			version: 1,
+			active: true,
+			originLeafId: "origin-leaf",
+			planFilePath,
+			lastPlanLeafId: undefined,
+		};
+		const setStateCalls: any[] = [];
+		const setEditorTextCalls: string[] = [];
+		const branchCalls: string[] = [];
+		const selectCalls: Array<{ prompt: string; choices: string[] }> = [];
+
+		const { shortcutHandler } = createRegisteredBindings({
+			getState: () => state,
+			setState: (_ctx, nextState) => {
+				setStateCalls.push(nextState);
+				state = nextState;
+			},
+			startPlanMode: () => {},
+		});
+
+		await shortcutHandler({
+			cwd: tmpDir,
+			hasUI: true,
+			isIdle: () => true,
+			ui: {
+				select: async (prompt: string, choices: string[]) => {
+					selectCalls.push({ prompt, choices });
+					return "Exit";
+				},
+				notify: () => {},
+				setEditorText: (text: string) => {
+					setEditorTextCalls.push(text);
+				},
+				getEditorText: () => "",
+			},
+			sessionManager: {
+				getLeafId: () => "planning-leaf",
+				getEntries: () => [
+					{ id: "origin-leaf", type: "message", message: { role: "assistant" } },
+					{ id: "planning-leaf", type: "message", message: { role: "assistant" } },
+				],
+				getEntry: (entryId: string) =>
+					entryId === "origin-leaf"
+						? { id: "origin-leaf", type: "message", parentId: "user-1", message: { role: "assistant" } }
+						: undefined,
+				branch: (entryId: string) => {
+					branchCalls.push(entryId);
+				},
+				getSessionFile: () => undefined,
+				getSessionDir: () => tmpDir,
+				getSessionId: () => "session-1",
+			},
+		});
+
+		expect(selectCalls).toEqual([
+			{
+				prompt: "Plan mode action (Esc stays in Plan mode)",
+				choices: ["Exit", "Exit & summarize branch"],
+			},
+		]);
+		expect(branchCalls).toEqual(["origin-leaf"]);
+		expect(setStateCalls.at(-1)).toEqual({
+			version: 1,
+			active: false,
+			planFilePath,
+			lastPlanLeafId: "planning-leaf",
+		});
+		expect(setEditorTextCalls).toEqual([`Plan file: ${planFilePath}\nImplement the approved plan in this file. Keep changes focused, update tests, and summarize what was implemented.`]);
+	});
+});
 
 describe("/plan-md continue planning", () => {
 	test("navigates to saved planning leaf before activating plan mode", async () => {

@@ -1,5 +1,10 @@
 import path from "node:path";
-import { BorderedLoader, type ExtensionAPI, type ExtensionContext } from "@mariozechner/pi-coding-agent";
+import {
+	BorderedLoader,
+	type ExtensionAPI,
+	type ExtensionCommandContext,
+	type ExtensionContext,
+} from "@mariozechner/pi-coding-agent";
 import {
 	buildImplementationPrefill,
 	PLAN_MODE_END_OPTIONS,
@@ -321,6 +326,121 @@ function canOfferEmptyBranchStart(ctx: ExtensionContext, originLeafId: string | 
 	return Boolean(originLeafId && firstUserMessageId && firstUserMessageId !== originLeafId);
 }
 
+async function waitForIdleInShortcutContext(ctx: ExtensionContext): Promise<void> {
+	while (!ctx.isIdle()) {
+		await new Promise<void>((resolve) => {
+			setTimeout(resolve, 25);
+		});
+	}
+}
+
+function extractTextFromMessageContent(content: unknown): string {
+	if (typeof content === "string") {
+		return content;
+	}
+	if (!Array.isArray(content)) {
+		return "";
+	}
+
+	let text = "";
+	for (const part of content) {
+		if (!part || typeof part !== "object") {
+			continue;
+		}
+		const typedPart = part as { type?: unknown; text?: unknown };
+		if (typedPart.type === "text" && typeof typedPart.text === "string") {
+			text += typedPart.text;
+		}
+	}
+	return text;
+}
+
+async function navigateTreeInShortcutContext(
+	ctx: ExtensionContext,
+	targetId: string,
+	options?: {
+		summarize?: boolean;
+		label?: string;
+	},
+): Promise<{ cancelled: boolean }> {
+	if (options?.summarize) {
+		ctx.ui.notify("Alt+P exited plan mode without branch summarization. Use /plan-md for summarize-on-exit.", "warning");
+	}
+
+	const sessionManager = ctx.sessionManager as ExtensionContext["sessionManager"] & {
+		getEntry?: (entryId: string) =>
+			| {
+				type?: string;
+				parentId?: string | null;
+				message?: {
+					role?: string;
+					content?: unknown;
+				};
+				content?: unknown;
+			}
+			| undefined;
+		branch?: (entryId: string) => void;
+		resetLeaf?: () => void;
+		appendLabelChange?: (targetId: string, label: string | undefined) => void;
+	};
+
+	if (typeof sessionManager.getEntry !== "function") {
+		return { cancelled: true };
+	}
+
+	const targetEntry = sessionManager.getEntry(targetId);
+	if (!targetEntry) {
+		return { cancelled: true };
+	}
+
+	let newLeafId: string | null = targetId;
+	let editorText: string | undefined;
+
+	if (targetEntry.type === "message" && targetEntry.message?.role === "user") {
+		newLeafId = targetEntry.parentId ?? null;
+		editorText = extractTextFromMessageContent(targetEntry.message.content);
+	} else if (targetEntry.type === "custom_message") {
+		newLeafId = targetEntry.parentId ?? null;
+		editorText = extractTextFromMessageContent(targetEntry.content);
+	}
+
+	if (newLeafId === null) {
+		if (typeof sessionManager.resetLeaf !== "function") {
+			return { cancelled: true };
+		}
+		sessionManager.resetLeaf();
+	} else {
+		if (typeof sessionManager.branch !== "function") {
+			return { cancelled: true };
+		}
+		sessionManager.branch(newLeafId);
+	}
+
+	if (options?.label && typeof sessionManager.appendLabelChange === "function") {
+		sessionManager.appendLabelChange(targetId, options.label);
+	}
+
+	if (editorText && ctx.hasUI && !ctx.ui.getEditorText().trim()) {
+		ctx.ui.setEditorText(editorText);
+	}
+
+	return { cancelled: false };
+}
+
+function createShortcutCommandContext(ctx: ExtensionContext): ExtensionCommandContext {
+	return {
+		...ctx,
+		waitForIdle: async () => {
+			await waitForIdleInShortcutContext(ctx);
+		},
+		newSession: async () => ({ cancelled: true }),
+		fork: async () => ({ cancelled: true }),
+		navigateTree: async (targetId, options) => navigateTreeInShortcutContext(ctx, targetId, options),
+		switchSession: async () => ({ cancelled: true }),
+		reload: async () => {},
+	};
+}
+
 export function registerPlanModeCommand(
 	pi: ExtensionAPI,
 	dependencies: {
@@ -328,210 +448,220 @@ export function registerPlanModeCommand(
 		onPlanModeExited?: (summary: PlanModeExitSummary) => void;
 	},
 ) {
-	pi.registerCommand("plan-md", {
-		description: "Start /plan-md, end it, or pass a plan file location.",
-		handler: async (args, ctx) => {
-			const rawLocation = args.trim();
-			const state = dependencies.stateManager.getState();
+	const handlePlanModeCommand = async (args: string, ctx: ExtensionCommandContext) => {
+		const rawLocation = args.trim();
+		const state = dependencies.stateManager.getState();
 
-			if (state.active) {
-				if (rawLocation.length > 0) {
-					const moved = await updateActivePlanFileLocation(ctx, dependencies.stateManager, rawLocation);
-					if (!moved) {
-						return;
-					}
-					if (moved.previousPath === moved.nextPath) {
-						ctx.ui.notify("Plan file location unchanged.", "info");
-					} else {
-						ctx.ui.notify(`Plan file moved to ${moved.nextPath}.`, "info");
-					}
+		if (state.active) {
+			if (rawLocation.length > 0) {
+				const moved = await updateActivePlanFileLocation(ctx, dependencies.stateManager, rawLocation);
+				if (!moved) {
 					return;
 				}
-
-				await endPlanMode(ctx, dependencies.stateManager, dependencies.onPlanModeExited);
+				if (moved.previousPath === moved.nextPath) {
+					ctx.ui.notify("Plan file location unchanged.", "info");
+				} else {
+					ctx.ui.notify(`Plan file moved to ${moved.nextPath}.`, "info");
+				}
 				return;
 			}
 
-			await ctx.waitForIdle();
+			await endPlanMode(ctx, dependencies.stateManager, dependencies.onPlanModeExited);
+			return;
+		}
 
-			let requestedPlanFilePath: string | undefined;
-			if (rawLocation.length > 0) {
-				try {
-					requestedPlanFilePath = (await resolvePlanLocationInput(ctx, rawLocation)) ?? undefined;
-				} catch (error) {
-					ctx.ui.notify(
-						`Failed to resolve plan file location: ${error instanceof Error ? error.message : String(error)}`,
-						"error",
-					);
-					return;
-				}
-				if (!requestedPlanFilePath) {
-					ctx.ui.notify("Please provide a valid plan file location.", "warning");
-					return;
-				}
-			}
+		await ctx.waitForIdle();
 
-			const originLeafId = ctx.sessionManager.getLeafId();
-			const canStartFromEmptyBranch = canOfferEmptyBranchStart(ctx, originLeafId);
-			const currentState = dependencies.stateManager.getState();
-			const sessionPlanFilePath = resolveActivePlanFilePath(ctx, currentState.planFilePath);
-			const existingSessionPlanText = (await readPlanFile(sessionPlanFilePath))?.trim();
-			const savedPlanLeafId = currentState.lastPlanLeafId;
-			let planFilePath = requestedPlanFilePath ?? sessionPlanFilePath;
-
-			type StartIntent = "continue" | "empty-branch" | "current-branch";
-			let startIntent: StartIntent = existingSessionPlanText ? "continue" : "current-branch";
-
-			if (ctx.hasUI) {
-				if (existingSessionPlanText) {
-					const continueOption = "Continue planning";
-					const startFreshOption = "Start fresh";
-					const choices = canStartFromEmptyBranch
-						? [continueOption, ...PLAN_MODE_START_OPTIONS]
-						: [continueOption, startFreshOption];
-					const choice = await ctx.ui.select(`Start planning:\nPlan file: ${sessionPlanFilePath}`, choices);
-					if (choice === undefined) {
-						ctx.ui.notify("Plan mode activation cancelled.", "info");
-						return;
-					}
-					if (choice === continueOption) {
-						startIntent = "continue";
-					} else if (choice === PLAN_MODE_START_OPTIONS[0]) {
-						startIntent = "empty-branch";
-					} else {
-						startIntent = "current-branch";
-					}
-				} else if (canStartFromEmptyBranch) {
-					const choice = await ctx.ui.select("Start planning in:", [...PLAN_MODE_START_OPTIONS]);
-					if (choice === undefined) {
-						ctx.ui.notify("Plan mode activation cancelled.", "info");
-						return;
-					}
-					startIntent = choice === PLAN_MODE_START_OPTIONS[0] ? "empty-branch" : "current-branch";
-				}
-			}
-
-			if (startIntent === "continue") {
-				const resumedSavedPlanningBranch = await navigateToSavedPlanningBranch(ctx, {
-					savedLeafId: savedPlanLeafId,
-					currentLeafId: originLeafId,
-					cancelMessage: "Plan mode activation cancelled.",
-				});
-				if (!resumedSavedPlanningBranch) {
-					return;
-				}
-
-				if (requestedPlanFilePath && requestedPlanFilePath !== sessionPlanFilePath) {
-					let shouldMove: boolean;
-					try {
-						shouldMove = await confirmMoveOverwriteIfNeeded(ctx, sessionPlanFilePath, requestedPlanFilePath);
-					} catch (error) {
-						ctx.ui.notify(
-							`Failed to check target path: ${error instanceof Error ? error.message : String(error)}`,
-							"error",
-						);
-						return;
-					}
-					if (!shouldMove) {
-						return;
-					}
-
-					try {
-						await movePlanFile(sessionPlanFilePath, requestedPlanFilePath);
-						planFilePath = requestedPlanFilePath;
-					} catch (error) {
-						ctx.ui.notify(
-							`Failed to move existing plan file: ${error instanceof Error ? error.message : String(error)}`,
-							"error",
-						);
-						return;
-					}
-				} else {
-					planFilePath = sessionPlanFilePath;
-				}
-			} else {
-				if (startIntent === "empty-branch") {
-					if (!originLeafId) {
-						ctx.ui.notify("Could not determine origin point for returning from planning.", "error");
-						return;
-					}
-
-					const movedToFreshBranch = await navigateToFreshPlanningBranch(ctx, "Plan mode activation cancelled.");
-					if (!movedToFreshBranch) {
-						return;
-					}
-				}
-
-				if (requestedPlanFilePath) {
-					planFilePath = requestedPlanFilePath;
-				} else if (existingSessionPlanText) {
-					try {
-						planFilePath = await createFreshPlanFilePath(ctx, path.dirname(sessionPlanFilePath));
-					} catch (error) {
-						ctx.ui.notify(
-							`Failed to allocate a fresh plan file path: ${error instanceof Error ? error.message : String(error)}`,
-							"error",
-						);
-						return;
-					}
-				} else {
-					planFilePath = sessionPlanFilePath;
-				}
-
-				if (requestedPlanFilePath) {
-					let requestedPathExists = false;
-					try {
-						requestedPathExists = await pathExists(planFilePath);
-					} catch (error) {
-						ctx.ui.notify(
-							`Failed to check requested plan path: ${error instanceof Error ? error.message : String(error)}`,
-							"error",
-						);
-						return;
-					}
-
-					if (requestedPathExists) {
-						if (!ctx.hasUI) {
-							ctx.ui.notify(
-								`Refusing to overwrite existing plan file without interactive confirmation: ${planFilePath}`,
-								"error",
-							);
-							return;
-						}
-
-						const shouldOverwriteRequestedPath = await ctx.ui.confirm(
-							"Overwrite existing plan file?",
-							`Plan file already exists:\n${planFilePath}\n\nStart fresh planning and overwrite this file?`,
-						);
-						if (!shouldOverwriteRequestedPath) {
-							ctx.ui.notify("Plan mode activation cancelled.", "info");
-							return;
-						}
-					}
-				}
-
-				try {
-					await resetPlanFile(planFilePath);
-				} catch (error) {
-					ctx.ui.notify(`Failed to reset plan file: ${error instanceof Error ? error.message : String(error)}`, "error");
-					return;
-				}
-			}
-
+		let requestedPlanFilePath: string | undefined;
+		if (rawLocation.length > 0) {
 			try {
-				await ensurePlanFileExists(planFilePath);
+				requestedPlanFilePath = (await resolvePlanLocationInput(ctx, rawLocation)) ?? undefined;
 			} catch (error) {
 				ctx.ui.notify(
-					`Failed to initialize plan file: ${error instanceof Error ? error.message : String(error)}`,
+					`Failed to resolve plan file location: ${error instanceof Error ? error.message : String(error)}`,
 					"error",
 				);
 				return;
 			}
+			if (!requestedPlanFilePath) {
+				ctx.ui.notify("Please provide a valid plan file location.", "warning");
+				return;
+			}
+		}
 
-			dependencies.stateManager.startPlanMode(ctx, {
-				originLeafId,
-				planFilePath,
+		const originLeafId = ctx.sessionManager.getLeafId();
+		const canStartFromEmptyBranch = canOfferEmptyBranchStart(ctx, originLeafId);
+		const currentState = dependencies.stateManager.getState();
+		const sessionPlanFilePath = resolveActivePlanFilePath(ctx, currentState.planFilePath);
+		const existingSessionPlanText = (await readPlanFile(sessionPlanFilePath))?.trim();
+		const savedPlanLeafId = currentState.lastPlanLeafId;
+		let planFilePath = requestedPlanFilePath ?? sessionPlanFilePath;
+
+		type StartIntent = "continue" | "empty-branch" | "current-branch";
+		let startIntent: StartIntent = existingSessionPlanText ? "continue" : "current-branch";
+
+		if (ctx.hasUI) {
+			if (existingSessionPlanText) {
+				const continueOption = "Continue planning";
+				const startFreshOption = "Start fresh";
+				const choices = canStartFromEmptyBranch
+					? [continueOption, ...PLAN_MODE_START_OPTIONS]
+					: [continueOption, startFreshOption];
+				const choice = await ctx.ui.select(`Start planning:\nPlan file: ${sessionPlanFilePath}`, choices);
+				if (choice === undefined) {
+					ctx.ui.notify("Plan mode activation cancelled.", "info");
+					return;
+				}
+				if (choice === continueOption) {
+					startIntent = "continue";
+				} else if (choice === PLAN_MODE_START_OPTIONS[0]) {
+					startIntent = "empty-branch";
+				} else {
+					startIntent = "current-branch";
+				}
+			} else if (canStartFromEmptyBranch) {
+				const choice = await ctx.ui.select("Start planning in:", [...PLAN_MODE_START_OPTIONS]);
+				if (choice === undefined) {
+					ctx.ui.notify("Plan mode activation cancelled.", "info");
+					return;
+				}
+				startIntent = choice === PLAN_MODE_START_OPTIONS[0] ? "empty-branch" : "current-branch";
+			}
+		}
+
+		if (startIntent === "continue") {
+			const resumedSavedPlanningBranch = await navigateToSavedPlanningBranch(ctx, {
+				savedLeafId: savedPlanLeafId,
+				currentLeafId: originLeafId,
+				cancelMessage: "Plan mode activation cancelled.",
 			});
+			if (!resumedSavedPlanningBranch) {
+				return;
+			}
+
+			if (requestedPlanFilePath && requestedPlanFilePath !== sessionPlanFilePath) {
+				let shouldMove: boolean;
+				try {
+					shouldMove = await confirmMoveOverwriteIfNeeded(ctx, sessionPlanFilePath, requestedPlanFilePath);
+				} catch (error) {
+					ctx.ui.notify(
+						`Failed to check target path: ${error instanceof Error ? error.message : String(error)}`,
+						"error",
+					);
+					return;
+				}
+				if (!shouldMove) {
+					return;
+				}
+
+				try {
+					await movePlanFile(sessionPlanFilePath, requestedPlanFilePath);
+					planFilePath = requestedPlanFilePath;
+				} catch (error) {
+					ctx.ui.notify(
+						`Failed to move existing plan file: ${error instanceof Error ? error.message : String(error)}`,
+						"error",
+					);
+					return;
+				}
+			} else {
+				planFilePath = sessionPlanFilePath;
+			}
+		} else {
+			if (startIntent === "empty-branch") {
+				if (!originLeafId) {
+					ctx.ui.notify("Could not determine origin point for returning from planning.", "error");
+					return;
+				}
+
+				const movedToFreshBranch = await navigateToFreshPlanningBranch(ctx, "Plan mode activation cancelled.");
+				if (!movedToFreshBranch) {
+					return;
+				}
+			}
+
+			if (requestedPlanFilePath) {
+				planFilePath = requestedPlanFilePath;
+			} else if (existingSessionPlanText) {
+				try {
+					planFilePath = await createFreshPlanFilePath(ctx, path.dirname(sessionPlanFilePath));
+				} catch (error) {
+					ctx.ui.notify(
+						`Failed to allocate a fresh plan file path: ${error instanceof Error ? error.message : String(error)}`,
+						"error",
+					);
+					return;
+				}
+			} else {
+				planFilePath = sessionPlanFilePath;
+			}
+
+			if (requestedPlanFilePath) {
+				let requestedPathExists = false;
+				try {
+					requestedPathExists = await pathExists(planFilePath);
+				} catch (error) {
+					ctx.ui.notify(
+						`Failed to check requested plan path: ${error instanceof Error ? error.message : String(error)}`,
+						"error",
+					);
+					return;
+				}
+
+				if (requestedPathExists) {
+					if (!ctx.hasUI) {
+						ctx.ui.notify(
+							`Refusing to overwrite existing plan file without interactive confirmation: ${planFilePath}`,
+							"error",
+						);
+						return;
+					}
+
+					const shouldOverwriteRequestedPath = await ctx.ui.confirm(
+						"Overwrite existing plan file?",
+						`Plan file already exists:\n${planFilePath}\n\nStart fresh planning and overwrite this file?`,
+					);
+					if (!shouldOverwriteRequestedPath) {
+						ctx.ui.notify("Plan mode activation cancelled.", "info");
+						return;
+					}
+				}
+			}
+
+			try {
+				await resetPlanFile(planFilePath);
+			} catch (error) {
+				ctx.ui.notify(`Failed to reset plan file: ${error instanceof Error ? error.message : String(error)}`, "error");
+				return;
+			}
+		}
+
+		try {
+			await ensurePlanFileExists(planFilePath);
+		} catch (error) {
+			ctx.ui.notify(
+				`Failed to initialize plan file: ${error instanceof Error ? error.message : String(error)}`,
+				"error",
+			);
+			return;
+		}
+
+		dependencies.stateManager.startPlanMode(ctx, {
+			originLeafId,
+			planFilePath,
+		});
+	};
+
+	pi.registerCommand("plan-md", {
+		description: "Start /plan-md, end it, or pass a plan file location.",
+		handler: handlePlanModeCommand,
+	});
+
+	pi.registerShortcut("alt+p", {
+		description: "Toggle /plan-md",
+		handler: async (ctx) => {
+			const shortcutCommandContext = createShortcutCommandContext(ctx);
+			await handlePlanModeCommand("", shortcutCommandContext);
 		},
 	});
 }
