@@ -5,6 +5,7 @@ import { keyHint, type ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
 import { registerPlanModeCommand } from "./flow";
 import { resolveActivePlanFilePath } from "./plan-files";
+import { loadPlanModePrompt } from "./prompts";
 import { registerRequestUserInputTool } from "./request-user-input";
 import { RequestUserInputSchema, SetPlanSchema, SteerSubagentSchema, SubagentsSchema } from "./schemas";
 import { CONTEXT_ENTRY_TYPE, createPlanModeStateManager } from "./state";
@@ -170,10 +171,11 @@ export default function (pi: ExtensionAPI) {
 			return;
 		}
 
+		const prompt = await loadPlanModePrompt();
 		return {
 			message: {
 				customType: CONTEXT_ENTRY_TYPE,
-				content: `[PLAN MODE ACTIVE]\nCreate a concrete implementation plan only.\n\nGuidance:\n- Focus on planning and analysis; do not write implementation code in this mode.\n- Start with direct local inspection for obvious, self-contained questions.\n- Use subagents when it helps (e.g. parallel codebase exploration, independent validation, or external best-practice/documentation research).\n- Use web_search/fetch_url when external references are needed (directly or via subagents).\n- Use steer_subagent when a specific subagent task needs deeper follow-up without rerunning everything.\n- Ask clarifying questions when requirements or constraints are unclear, preferably via request_user_input for short multiple-choice questions.\n- Avoid pedantic questions about obvious defaults; make reasonable assumptions and continue.\n- Keep a single up-to-date plan in the plan file by calling set_plan whenever the plan changes.\n- Before exiting plan mode, ensure set_plan has the full latest plan text.`,
+				content: prompt,
 				display: false,
 			},
 		};
