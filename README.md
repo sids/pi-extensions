@@ -17,3 +17,10 @@ A collection of pi extensions. Each extension lives in its own directory with it
 ## Documentation
 
 See each extension’s README for setup and usage. Developer notes live in `AGENTS.md`.
+
+## Local development and publishing notes
+
+- Keep pi runtime packages in each extension's `peerDependencies` (`@mariozechner/pi-*`, `@sinclair/typebox` where needed). This is what published npm packages rely on.
+- Keep the same runtime packages in the workspace root `devDependencies` so local symlinked extensions resolve the same imports during development.
+- Run `npm run check:peer-runtime` before publishing. This verifies that all extension `peerDependencies` are represented in root `devDependencies`.
+- Run `npm install` at the repo root after pulling changes so workspace links and runtime deps are present.
