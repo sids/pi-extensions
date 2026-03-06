@@ -1,5 +1,14 @@
+import { chmod, mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { describe, expect, test } from "bun:test";
-import { buildSubagentRunDetails, normalizeSubagentTasks } from "../subagents";
+import {
+	buildSubagentRunDetails,
+	createSubagentAgentDir,
+	normalizeSubagentTasks,
+	registerSubagentTools,
+	resolveSubagentAgentDir,
+} from "../subagents";
 
 describe("normalizeSubagentTasks", () => {
 	test("sanitizes and deduplicates task ids", () => {
@@ -10,6 +19,202 @@ describe("normalizeSubagentTasks", () => {
 		]);
 
 		expect(normalized.map((task) => task.id)).toEqual(["auth-scan", "auth-scan-2", "task-3"]);
+	});
+});
+
+describe("resolveSubagentAgentDir", () => {
+	test("expands the configured agent dir and falls back to the default path", () => {
+		expect(resolveSubagentAgentDir({ PI_CODING_AGENT_DIR: "~/custom-agent" })).toBe(
+			path.join(os.homedir(), "custom-agent"),
+		);
+		expect(resolveSubagentAgentDir({})).toBe(path.join(os.homedir(), ".pi", "agent"));
+	});
+});
+
+describe("createSubagentAgentDir", () => {
+	test("copies locked config files and reuses the rest of the agent directory", async () => {
+		const sourceAgentDir = await mkdtemp(path.join(os.tmpdir(), "plan-md-agent-source-"));
+		let subagentAgentDir: string | null = null;
+
+		try {
+			await writeFile(path.join(sourceAgentDir, "auth.json"), '{"openai-codex":{"type":"api_key","key":"secret"}}');
+			await writeFile(path.join(sourceAgentDir, "models.json"), '{"models":[]}');
+			await writeFile(path.join(sourceAgentDir, "settings.json"), '{"theme":"dark"}');
+			await writeFile(path.join(sourceAgentDir, "SYSTEM.md"), "global system prompt");
+			await mkdir(path.join(sourceAgentDir, "extensions"), { recursive: true });
+			await writeFile(path.join(sourceAgentDir, "extensions", "example.ts"), "export default {}\n");
+			await mkdir(path.join(sourceAgentDir, "auth.json.lock"));
+			await mkdir(path.join(sourceAgentDir, "settings.json.lock"));
+
+			subagentAgentDir = await createSubagentAgentDir(sourceAgentDir);
+			expect(subagentAgentDir).not.toBeNull();
+			if (!subagentAgentDir) {
+				throw new Error("expected an isolated subagent agent dir");
+			}
+
+			expect(await readFile(path.join(subagentAgentDir, "auth.json"), "utf8")).toBe(
+				'{"openai-codex":{"type":"api_key","key":"secret"}}',
+			);
+			expect(await readFile(path.join(subagentAgentDir, "models.json"), "utf8")).toBe('{"models":[]}');
+			expect(await readFile(path.join(subagentAgentDir, "settings.json"), "utf8")).toBe('{"theme":"dark"}');
+			expect(await readFile(path.join(subagentAgentDir, "SYSTEM.md"), "utf8")).toBe("global system prompt");
+			expect(await realpath(path.join(subagentAgentDir, "extensions"))).toBe(
+				await realpath(path.join(sourceAgentDir, "extensions")),
+			);
+			expect(await readFile(path.join(subagentAgentDir, "extensions", "example.ts"), "utf8")).toBe(
+				"export default {}\n",
+			);
+
+			const subagentEntries = await readdir(subagentAgentDir);
+			expect(subagentEntries).not.toContain("auth.json.lock");
+			expect(subagentEntries).not.toContain("settings.json.lock");
+		} finally {
+			await rm(sourceAgentDir, { recursive: true, force: true });
+			if (subagentAgentDir) {
+				await rm(subagentAgentDir, { recursive: true, force: true });
+			}
+		}
+	});
+});
+
+describe("subagents tool", () => {
+	test("uses a separate agent dir for each parallel task", async () => {
+		const tempDir = await mkdtemp(path.join(os.tmpdir(), "plan-md-subagents-tool-"));
+		const sourceAgentDir = path.join(tempDir, "source-agent");
+		const binDir = path.join(tempDir, "bin");
+		const spawnLogPath = path.join(tempDir, "spawn-log.jsonl");
+		const originalAuth = '{"openai-codex":{"type":"api_key","key":"secret"}}';
+		const originalSettings = '{"theme":"dark"}';
+		const originalModels = '{"models":[]}';
+		let previousAgentDir: string | undefined;
+		let previousPath: string | undefined;
+		let previousSpawnLogPath: string | undefined;
+
+		try {
+			await mkdir(sourceAgentDir, { recursive: true });
+			await mkdir(binDir, { recursive: true });
+			await writeFile(path.join(sourceAgentDir, "auth.json"), originalAuth);
+			await writeFile(path.join(sourceAgentDir, "settings.json"), originalSettings);
+			await writeFile(path.join(sourceAgentDir, "models.json"), originalModels);
+
+			const stubPiPath = path.join(binDir, "pi");
+			await writeFile(
+				stubPiPath,
+				`#!/usr/bin/env node
+const fs = require("node:fs");
+const path = require("node:path");
+const logPath = process.env.SUBAGENT_LOG_PATH;
+const agentDir = process.env.PI_CODING_AGENT_DIR || "";
+const read = (name) => {
+	const filePath = path.join(agentDir, name);
+	return fs.existsSync(filePath) ? fs.readFileSync(filePath, "utf8") : null;
+};
+fs.appendFileSync(logPath, JSON.stringify({
+	agentDir,
+	auth: read("auth.json"),
+	settings: read("settings.json"),
+	models: read("models.json"),
+}) + "\\n");
+setTimeout(() => {
+	process.stdout.write(JSON.stringify({
+		type: "message_end",
+		message: {
+			role: "assistant",
+			content: [{ type: "text", text: path.basename(agentDir) || "ok" }],
+		},
+	}) + "\\n");
+	process.exit(0);
+}, 25);
+`,
+			);
+			await chmod(stubPiPath, 0o755);
+
+			previousAgentDir = process.env.PI_CODING_AGENT_DIR;
+			previousPath = process.env.PATH;
+			previousSpawnLogPath = process.env.SUBAGENT_LOG_PATH;
+			process.env.PI_CODING_AGENT_DIR = sourceAgentDir;
+			process.env.PATH = [binDir, previousPath].filter(Boolean).join(path.delimiter);
+			process.env.SUBAGENT_LOG_PATH = spawnLogPath;
+
+			let subagentsTool:
+				| {
+					execute: (
+						toolCallId: string,
+						params: { tasks: Array<{ id?: string; prompt: string; cwd?: string }>; concurrency?: number },
+						signal?: AbortSignal,
+						onUpdate?: (update: unknown) => void,
+						ctx?: { cwd: string },
+					) => Promise<{ isError?: boolean }>;
+				}
+				| undefined;
+
+			registerSubagentTools(
+				{
+					registerTool: (tool: { name: string }) => {
+						if (tool.name === "subagents") {
+							subagentsTool = tool as typeof subagentsTool;
+						}
+					},
+				} as any,
+				{
+					getState: () => ({ active: true }),
+					subagentsSchema: {},
+					steerSubagentSchema: {},
+				},
+			);
+
+			if (!subagentsTool) {
+				throw new Error("expected subagents tool to be registered");
+			}
+
+			const result = await subagentsTool.execute(
+				"call-1",
+				{
+					tasks: [
+						{ id: "task-a", prompt: "Inspect A", cwd: tempDir },
+						{ id: "task-b", prompt: "Inspect B", cwd: tempDir },
+					],
+					concurrency: 2,
+				},
+				undefined,
+				undefined,
+				{ cwd: tempDir } as any,
+			);
+
+			expect(result.isError).toBe(false);
+
+			const logLines = (await readFile(spawnLogPath, "utf8"))
+				.trim()
+				.split("\n")
+				.map((line) => JSON.parse(line) as { agentDir: string; auth: string; settings: string; models: string });
+			expect(logLines).toHaveLength(2);
+
+			const agentDirs = logLines.map((line) => line.agentDir);
+			expect(new Set(agentDirs).size).toBe(2);
+			expect(agentDirs).not.toContain(sourceAgentDir);
+			for (const line of logLines) {
+				expect(line.auth).toBe(originalAuth);
+				expect(line.settings).toBe(originalSettings);
+				expect(line.models).toBe(originalModels);
+			}
+		} finally {
+			if (previousAgentDir === undefined) {
+				delete process.env.PI_CODING_AGENT_DIR;
+			} else {
+				process.env.PI_CODING_AGENT_DIR = previousAgentDir;
+			}
+			if (previousPath === undefined) {
+				delete process.env.PATH;
+			} else {
+				process.env.PATH = previousPath;
+			}
+			if (previousSpawnLogPath === undefined) {
+				delete process.env.SUBAGENT_LOG_PATH;
+			} else {
+				process.env.SUBAGENT_LOG_PATH = previousSpawnLogPath;
+			}
+			await rm(tempDir, { recursive: true, force: true });
+		}
 	});
 });
 

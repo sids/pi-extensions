@@ -1,5 +1,7 @@
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
+import type { Dirent } from "node:fs";
+import { copyFile, mkdtemp, readdir, rm, stat, symlink } from "node:fs/promises";
 import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
@@ -42,6 +44,74 @@ function createText(text: string) {
 }
 
 const SUBAGENT_TASK_PREVIEW_LIMIT = 4;
+// Each subagent gets its own agent dir copy for auth/settings/models so concurrent
+// `pi --no-session` startup does not contend on global lock files.
+const SUBAGENT_AGENT_DIR_ENV = "PI_CODING_AGENT_DIR";
+const SUBAGENT_AGENT_DIR_COPIED_FILES = new Set(["auth.json", "models.json", "settings.json"]);
+const SUBAGENT_AGENT_DIR_SKIPPED_FILES = new Set(["auth.json.lock", "models.json.lock", "settings.json.lock"]);
+
+export function resolveSubagentAgentDir(env: NodeJS.ProcessEnv = process.env): string {
+	const value = env[SUBAGENT_AGENT_DIR_ENV]?.trim();
+	if (!value) {
+		return path.join(os.homedir(), ".pi", "agent");
+	}
+	if (value === "~") {
+		return os.homedir();
+	}
+	if (value.startsWith("~/")) {
+		return path.join(os.homedir(), value.slice(2));
+	}
+	return value;
+}
+
+function getAgentDirSymlinkType(isDirectory: boolean): "file" | "dir" | "junction" {
+	if (!isDirectory) {
+		return "file";
+	}
+	return process.platform === "win32" ? "junction" : "dir";
+}
+
+export async function createSubagentAgentDir(sourceAgentDir: string = resolveSubagentAgentDir()): Promise<string | null> {
+	const resolvedSourceAgentDir = path.resolve(sourceAgentDir);
+	let entries: Dirent[];
+	try {
+		entries = await readdir(resolvedSourceAgentDir, { withFileTypes: true });
+	} catch {
+		return null;
+	}
+
+	const tempAgentDir = await mkdtemp(path.join(os.tmpdir(), "pi-plan-md-agent-"));
+	for (const entry of entries) {
+		if (SUBAGENT_AGENT_DIR_SKIPPED_FILES.has(entry.name)) {
+			continue;
+		}
+
+		const sourcePath = path.join(resolvedSourceAgentDir, entry.name);
+		const targetPath = path.join(tempAgentDir, entry.name);
+		if (SUBAGENT_AGENT_DIR_COPIED_FILES.has(entry.name)) {
+			await copyFile(sourcePath, targetPath);
+			continue;
+		}
+
+		const sourceStats = entry.isSymbolicLink() ? await stat(sourcePath) : undefined;
+		const isDirectory = entry.isDirectory() || sourceStats?.isDirectory() === true;
+		if (isDirectory) {
+			await symlink(sourcePath, targetPath, getAgentDirSymlinkType(true));
+			continue;
+		}
+
+		await copyFile(sourcePath, targetPath);
+	}
+
+	return tempAgentDir;
+}
+
+async function removeSubagentAgentDir(agentDir: string | null | undefined) {
+	if (!agentDir) {
+		return;
+	}
+	await rm(agentDir, { recursive: true, force: true });
+}
 
 function getAssistantText(message: AgentMessage): string {
 	if (message.role !== "assistant") {
@@ -231,6 +301,13 @@ async function runSubagentTask(
 	const prompt = promptParts.join("\n\n");
 	const args = ["--mode", "json", "--no-session", "-p", prompt];
 	const cwd = task.cwd?.trim() ? task.cwd : defaultCwd;
+	let agentDir: string | null = null;
+	try {
+		agentDir = await createSubagentAgentDir();
+	} catch {
+		agentDir = null;
+	}
+	const env = agentDir ? { ...process.env, [SUBAGENT_AGENT_DIR_ENV]: agentDir } : process.env;
 	const startedAt = Date.now();
 	const activities: SubagentActivity[] = [];
 	const maxActivities = 120;
@@ -255,8 +332,9 @@ async function runSubagentTask(
 	recordActivity("status", "started");
 
 	return new Promise<SubagentTaskResult>((resolve) => {
-		const process = spawn("pi", args, {
+		const child = spawn("pi", args, {
 			cwd,
+			env,
 			shell: false,
 			stdio: ["ignore", "pipe", "pipe"],
 		});
@@ -278,7 +356,7 @@ async function runSubagentTask(
 			aborted = true;
 			recordActivity("status", "aborting");
 			try {
-				process.kill("SIGTERM");
+				child.kill("SIGTERM");
 			} catch {
 				return;
 			}
@@ -289,7 +367,7 @@ async function runSubagentTask(
 				}
 				recordActivity("status", "forcing termination");
 				try {
-					process.kill("SIGKILL");
+					child.kill("SIGKILL");
 				} catch {
 					// Process may already be gone.
 				}
@@ -304,6 +382,9 @@ async function runSubagentTask(
 			if (options?.signal) {
 				options.signal.removeEventListener("abort", abortListener);
 			}
+			void removeSubagentAgentDir(agentDir).catch(() => {
+				// Best-effort cleanup for per-task agent dirs.
+			});
 		};
 
 		const resolveOnce = (result: SubagentTaskResult) => {
@@ -358,7 +439,7 @@ async function runSubagentTask(
 			}
 		};
 
-		process.stdout.on("data", (chunk) => {
+		child.stdout.on("data", (chunk) => {
 			stdoutBuffer += chunk.toString();
 			const lines = stdoutBuffer.split("\n");
 			stdoutBuffer = lines.pop() ?? "";
@@ -367,7 +448,7 @@ async function runSubagentTask(
 			}
 		});
 
-		process.stderr.on("data", (chunk) => {
+		child.stderr.on("data", (chunk) => {
 			const text = chunk.toString();
 			stderr += text;
 			for (const line of text.split("\n")) {
@@ -377,7 +458,7 @@ async function runSubagentTask(
 			}
 		});
 
-		process.on("close", (code) => {
+		child.on("close", (code) => {
 			closed = true;
 			cleanupAbortHandling();
 			if (stdoutBuffer.trim()) {
@@ -401,7 +482,7 @@ async function runSubagentTask(
 			});
 		});
 
-		process.on("error", (error) => {
+		child.on("error", (error) => {
 			cleanupAbortHandling();
 			recordActivity("stderr", error.message);
 			resolveOnce({
