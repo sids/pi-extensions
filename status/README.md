@@ -6,7 +6,7 @@ Shows a status widget below the input editor with session context (plus an optio
 - Current thinking level
 - Current working directory
 - Current Git branch
-- Context usage percent
+- Context usage percent plus used token count
 - Last loop time plus cumulative agent and session times (`<loop> loop · <agent> agent · <session> session`)
 - Current GitHub PR URL for the active branch (includes `(merged)` / `(closed)` when not open)
 

@@ -64,6 +64,43 @@ export function formatContextPercent(usage?: { percent: number | null } | null):
 	return `${Math.round(usage.percent)}%`;
 }
 
+export function formatTokenCount(count?: number | null): string {
+	if (count === null || count === undefined || Number.isNaN(count) || count < 0) {
+		return UNKNOWN_VALUE;
+	}
+
+	const rounded = Math.round(count);
+	if (rounded < 1000) {
+		return rounded.toString();
+	}
+	if (rounded < 10_000) {
+		return `${(rounded / 1000).toFixed(1)}k`;
+	}
+	if (rounded < 1_000_000) {
+		return `${Math.round(rounded / 1000)}k`;
+	}
+	if (rounded < 10_000_000) {
+		return `${(rounded / 1_000_000).toFixed(1)}M`;
+	}
+	return `${Math.round(rounded / 1_000_000)}M`;
+}
+
+export function formatContextLabel(usage?: { percent: number | null; tokens: number | null } | null): string {
+	const percent = formatContextPercent(usage);
+	const tokens = formatTokenCount(usage?.tokens ?? null);
+
+	if (percent !== UNKNOWN_VALUE && tokens !== UNKNOWN_VALUE) {
+		return `${percent} (${tokens})`;
+	}
+	if (percent !== UNKNOWN_VALUE) {
+		return percent;
+	}
+	if (tokens !== UNKNOWN_VALUE) {
+		return tokens;
+	}
+	return UNKNOWN_VALUE;
+}
+
 export function formatElapsedMinutes(minutes?: number | null): string {
 	if (minutes === null || minutes === undefined || Number.isNaN(minutes) || minutes < 0) {
 		return UNKNOWN_VALUE;

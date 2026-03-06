@@ -8,11 +8,13 @@ import {
 	clearTitleAttention,
 	elapsedDurationMs,
 	filterPullRequestsByHeadOwner,
+	formatContextLabel,
 	formatContextPercent,
 	formatElapsedMinutes,
 	formatModelLabel,
 	formatPullRequestLabel,
 	formatRepoLabel,
+	formatTokenCount,
 	formatThinkingLevel,
 	formatWorkingDirectory,
 	isGitHubHost,
@@ -103,6 +105,34 @@ describe("formatContextPercent", () => {
 
 	test("handles unknown percent", () => {
 		expect(formatContextPercent({ percent: null })).toBe("--");
+	});
+});
+
+describe("formatTokenCount", () => {
+	test("formats small values directly", () => {
+		expect(formatTokenCount(987)).toBe("987");
+	});
+
+	test("formats thousands and millions compactly", () => {
+		expect(formatTokenCount(1_499)).toBe("1.5k");
+		expect(formatTokenCount(54_321)).toBe("54k");
+		expect(formatTokenCount(1_500_000)).toBe("1.5M");
+	});
+
+	test("handles unknown values", () => {
+		expect(formatTokenCount(undefined)).toBe("--");
+		expect(formatTokenCount(null)).toBe("--");
+	});
+});
+
+describe("formatContextLabel", () => {
+	test("shows percent and used tokens", () => {
+		expect(formatContextLabel({ percent: 42.6, tokens: 54_321 })).toBe("43% (54k)");
+	});
+
+	test("falls back when usage is unknown", () => {
+		expect(formatContextLabel(undefined)).toBe("--");
+		expect(formatContextLabel({ percent: null, tokens: null })).toBe("--");
 	});
 });
 

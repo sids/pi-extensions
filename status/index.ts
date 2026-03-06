@@ -8,7 +8,7 @@ import {
 	clearTitleAttention,
 	elapsedDurationMs,
 	filterPullRequestsByHeadOwner,
-	formatContextPercent,
+	formatContextLabel,
 	formatElapsedMinutes,
 	formatModelLabel,
 	formatPullRequestLabel,
@@ -38,7 +38,7 @@ const PR_POLL_INTERVAL_MS = 30_000;
 type StatusPayload = {
 	modelLabel: string;
 	thinkingLevel: string;
-	contextPercent: string;
+	contextLabel: string;
 	contextUsage: number | null;
 	repoLabel: string;
 	loopMinutesLabel: string;
@@ -81,7 +81,7 @@ const createStatusWidget = (payload: StatusPayload) => (_tui: unknown, theme: { 
 	render: (width: number) => {
 		const modelLabel = theme.fg("muted", payload.modelLabel);
 		const thinkingLabel = theme.fg(resolveThinkingColor(payload.thinkingLevel), `(${payload.thinkingLevel})`);
-		const contextLabel = theme.fg(resolveContextColor(payload.contextUsage), payload.contextPercent);
+		const contextLabel = theme.fg(resolveContextColor(payload.contextUsage), payload.contextLabel);
 		const timingLabel = theme.fg(
 			"muted",
 			`· ${payload.loopMinutesLabel} loop · ${payload.agentMinutesLabel} agent · ${payload.sessionMinutesLabel} session`,
@@ -736,7 +736,7 @@ export default function (pi: ExtensionAPI) {
 		const payload: StatusPayload = {
 			modelLabel: formatModelLabel(ctx.model),
 			thinkingLevel: formatThinkingLevel(pi.getThinkingLevel()),
-			contextPercent: formatContextPercent(usage),
+			contextLabel: formatContextLabel(usage),
 			contextUsage: usage?.percent ?? null,
 			repoLabel: formatRepoLabel(ctx.cwd, branch),
 			loopMinutesLabel: formatElapsedMinutes(timings.loop),
