@@ -44,7 +44,7 @@ export function resolvePlanFilePath(cwd: string, filePath: string): string | nul
 	return path.resolve(cwd, trimmed);
 }
 
-export function resolveSubagentConcurrency(value: number | undefined): number | null {
+export function resolveTaskAgentConcurrency(value: number | undefined): number | null {
 	const concurrency = value ?? 2;
 	if (!Number.isFinite(concurrency) || !Number.isInteger(concurrency)) {
 		return null;

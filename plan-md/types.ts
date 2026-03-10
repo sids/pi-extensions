@@ -6,27 +6,27 @@ export type PlanModeState = {
 	lastPlanLeafId?: string;
 };
 
-export type SubagentTask = {
+export type TaskAgentTask = {
 	id?: string;
 	prompt: string;
 	cwd?: string;
 };
 
-export type NormalizedSubagentTask = {
+export type NormalizedTaskAgentTask = {
 	id: string;
 	prompt: string;
 	cwd?: string;
 };
 
-export type SubagentActivityKind = "status" | "tool" | "assistant" | "toolResult" | "stderr";
+export type TaskAgentActivityKind = "status" | "tool" | "assistant" | "toolResult" | "stderr";
 
-export type SubagentActivity = {
-	kind: SubagentActivityKind;
+export type TaskAgentActivity = {
+	kind: TaskAgentActivityKind;
 	text: string;
 	timestamp: number;
 };
 
-export type SubagentTaskResult = {
+export type TaskAgentTaskResult = {
 	taskId: string;
 	task: string;
 	cwd: string;
@@ -34,13 +34,13 @@ export type SubagentTaskResult = {
 	references: string[];
 	exitCode: number;
 	stderr: string;
-	activities: SubagentActivity[];
+	activities: TaskAgentActivity[];
 	startedAt: number;
 	finishedAt: number;
 	steeringNotes: string[];
 };
 
-export type SubagentTaskProgress = {
+export type TaskAgentTaskProgress = {
 	taskId: string;
 	prompt: string;
 	status: "queued" | "running" | "completed" | "failed";
@@ -48,24 +48,24 @@ export type SubagentTaskProgress = {
 	activityCount: number;
 };
 
-export type SubagentRunDetails = {
+export type TaskAgentRunDetails = {
 	runId: string;
-	tasks: SubagentTaskResult[];
+	tasks: TaskAgentTaskResult[];
 	successCount: number;
 	totalCount: number;
 };
 
-export type SubagentProgressDetails = {
+export type TaskAgentProgressDetails = {
 	runId: string;
 	completed: number;
 	total: number;
-	tasks: SubagentTaskProgress[];
+	tasks: TaskAgentTaskProgress[];
 };
 
-export type SubagentRunRecord = {
+export type TaskAgentRunRecord = {
 	runId: string;
 	createdAt: number;
-	tasks: SubagentTaskResult[];
+	tasks: TaskAgentTaskResult[];
 };
 
 export type RequestUserInputOption = {

@@ -41,8 +41,8 @@ pi install npm:pi-plan-md
 
 Plan mode adds planning-specific tools only while active:
 
-- `subagents` — run isolated research tasks (concurrency: 1-4)
-- `steer_subagent` — rerun one task from a previous `subagents` run with extra guidance
+- `task_agents` — run isolated research tasks (concurrency: 1-4)
+- `steer_task_agent` — rerun one task from a previous `task_agents` run with extra guidance
 - `request_user_input` — ask clarifying questions with optional choices and optional freeform answers
 - `set_plan` — overwrite the active plan file with the complete latest plan text
 

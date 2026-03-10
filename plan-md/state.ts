@@ -30,7 +30,7 @@ function getPiTui() {
 export const STATE_ENTRY_TYPE = "plan-md:state";
 export const CONTEXT_ENTRY_TYPE = "plan-md:context";
 const BANNER_WIDGET_KEY = "plan-md-banner";
-const PLAN_MODE_TOOL_NAMES = ["subagents", "steer_subagent", "request_user_input", "set_plan"] as const;
+const PLAN_MODE_TOOL_NAMES = ["task_agents", "steer_task_agent", "request_user_input", "set_plan"] as const;
 const PLAN_MODE_TOOL_NAME_SET = new Set<string>(PLAN_MODE_TOOL_NAMES);
 
 export function getLatestState(ctx: ExtensionContext): PlanModeState {

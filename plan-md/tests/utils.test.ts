@@ -6,7 +6,7 @@ import {
 	PLAN_MODE_START_OPTIONS,
 	PLAN_MODE_SUMMARY_PROMPT,
 	resolvePlanFilePath,
-	resolveSubagentConcurrency,
+	resolveTaskAgentConcurrency,
 } from "../utils";
 
 describe("resolvePlanFilePath", () => {
@@ -20,20 +20,20 @@ describe("resolvePlanFilePath", () => {
 	});
 });
 
-describe("resolveSubagentConcurrency", () => {
+describe("resolveTaskAgentConcurrency", () => {
 	test("defaults to two workers", () => {
-		expect(resolveSubagentConcurrency(undefined)).toBe(2);
+		expect(resolveTaskAgentConcurrency(undefined)).toBe(2);
 	});
 
 	test("accepts integers in range", () => {
-		expect(resolveSubagentConcurrency(1)).toBe(1);
-		expect(resolveSubagentConcurrency(4)).toBe(4);
+		expect(resolveTaskAgentConcurrency(1)).toBe(1);
+		expect(resolveTaskAgentConcurrency(4)).toBe(4);
 	});
 
 	test("rejects fractional and out-of-range values", () => {
-		expect(resolveSubagentConcurrency(1.5)).toBeNull();
-		expect(resolveSubagentConcurrency(0)).toBeNull();
-		expect(resolveSubagentConcurrency(5)).toBeNull();
+		expect(resolveTaskAgentConcurrency(1.5)).toBeNull();
+		expect(resolveTaskAgentConcurrency(0)).toBeNull();
+		expect(resolveTaskAgentConcurrency(5)).toBeNull();
 	});
 });
 

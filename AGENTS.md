@@ -29,7 +29,7 @@ This repository contains the **answer**, **fetch-url**, **web-search**, **status
 - `plan-md/flow.ts`: `/plan-md` command flow
 - `plan-md/plan-files.ts`: Plan file path + movement helpers
 - `plan-md/request-user-input.ts`: `request_user_input` tool behavior
-- `plan-md/subagents.ts`: `subagents` / `steer_subagent` tool behavior
+- `plan-md/task-agents.ts`: `task_agents` / `steer_task_agent` tool behavior
 - `plan-md/README.md`: Usage docs
 - `plan-md/tests/*.test.ts`: Unit tests
 - `review/index.ts`: Extension entry point
@@ -74,7 +74,7 @@ This repository contains the **answer**, **fetch-url**, **web-search**, **status
   bun test plan-md/tests/plan-files.test.ts
   bun test plan-md/tests/flow.test.ts
   bun test plan-md/tests/request-user-input.test.ts
-  bun test plan-md/tests/subagents.test.ts
+  bun test plan-md/tests/task-agents.test.ts
   bun test review/tests/utils.test.ts
   bun test review/tests/state.test.ts
   bun test review/tests/comments.test.ts
