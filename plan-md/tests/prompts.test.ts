@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { loadPlanModePrompt } from "../prompts";
 
 const tempDirs: string[] = [];
@@ -57,5 +58,15 @@ describe("loadPlanModePrompt", () => {
 
 		const prompt = await loadPlanModePrompt(paths);
 		expect(prompt).toBe("bundled prompt");
+	});
+
+	test("bundled prompt tells the model to put the goal at the top of the plan", async () => {
+		const paths = await createPromptPaths();
+		const prompt = await loadPlanModePrompt({
+			agentDirPath: paths.agentDirPath,
+			bundledPromptPath: fileURLToPath(new URL("../prompts/PLAN.prompt.md", import.meta.url)),
+		});
+
+		expect(prompt).toContain("Include the goal at the top of the plan.");
 	});
 });
