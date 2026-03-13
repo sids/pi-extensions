@@ -2,7 +2,7 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import {
 	DEFAULT_MAX_BYTES,
 	DEFAULT_MAX_LINES,
-	formatSize,
+	keyHint,
 	truncateHead,
 } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
@@ -18,6 +18,11 @@ import {
 	formatMetadataBlock,
 	isHtmlContentType,
 } from "./utils";
+import {
+	formatFetchUrlTruncationNotice,
+	formatFetchUrlTruncationWarning,
+	splitFetchUrlPreview,
+} from "./tool-output";
 
 const fetchUrlSchema = Type.Object(
 	{
@@ -45,6 +50,7 @@ type FetchUrlDetails = {
 	format: "markdown" | "html" | "raw";
 	metadata?: ReturnType<typeof extractMetadataFromHtml>;
 	usedFallback?: boolean;
+	displayText?: string;
 	truncation?: ReturnType<typeof truncateHead>;
 	fullOutputPath?: string;
 };
@@ -81,13 +87,41 @@ export default function (pi: ExtensionAPI) {
 			];
 			return new Text(lines.join("\n"), 0, 0);
 		},
-		renderResult: (result, { isPartial }, theme) => {
+		renderResult: (result, { expanded, isPartial }, theme) => {
 			if (isPartial) {
 				return new Text(theme.fg("muted", "Fetching..."), 0, 0);
 			}
 
-			const text = extractText(result) || "(no output)";
-			return new Text(text, 0, 0);
+			const details = result.details as FetchUrlDetails | undefined;
+			const text = (details?.displayText ?? extractText(result)) || "(no output)";
+			const lines: string[] = [];
+
+			if (expanded) {
+				lines.push(text);
+			} else {
+				const { previewLines, remainingLines } = splitFetchUrlPreview(text);
+				if (previewLines.length > 0) {
+					lines.push(previewLines.join("\n"));
+				} else {
+					lines.push("(no output)");
+				}
+				if (remainingLines > 0) {
+					lines.push(
+						`${theme.fg("muted", `... (${remainingLines} more lines,`)} ${keyHint("expandTools", "to expand")})`,
+					);
+				}
+			}
+
+			if (details?.truncation && details.fullOutputPath) {
+				lines.push(
+					theme.fg(
+						"warning",
+						formatFetchUrlTruncationWarning(details.truncation, details.fullOutputPath),
+					),
+				);
+			}
+
+			return new Text(lines.join("\n"), 0, 0);
 		},
 		async execute(_toolCallId, params: FetchUrlParams, signal) {
 			if (signal?.aborted) {
@@ -164,7 +198,8 @@ export default function (pi: ExtensionAPI) {
 				maxBytes: DEFAULT_MAX_BYTES,
 			});
 
-			let outputText = truncation.content || "(no output)";
+			const displayText = truncation.content || "(no output)";
+			let contextText = displayText;
 			const details: FetchUrlDetails = {
 				url: parsedUrl.toString(),
 				status: response.status,
@@ -172,19 +207,18 @@ export default function (pi: ExtensionAPI) {
 				format: effectiveFormat,
 				metadata,
 				usedFallback,
+				displayText,
 			};
 
 			if (truncation.truncated) {
 				const fullOutputPath = await writeTempOutput(fullOutput);
 				details.truncation = truncation;
 				details.fullOutputPath = fullOutputPath;
-				outputText += `\n\n[Output truncated: ${truncation.outputLines} of ${truncation.totalLines} lines (`;
-				outputText += `${formatSize(truncation.outputBytes)} of ${formatSize(truncation.totalBytes)}).`;
-				outputText += ` Full output saved to: ${fullOutputPath}]`;
+				contextText += `\n\n${formatFetchUrlTruncationNotice(truncation, fullOutputPath)}`;
 			}
 
 			return {
-				content: [{ type: "text", text: outputText }],
+				content: [{ type: "text", text: contextText }],
 				details,
 			};
 		},

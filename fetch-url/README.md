@@ -21,7 +21,8 @@ Behavior:
 - If `raw=true`, returns raw response body.
 - If the response is HTML and `raw` is false, uses Mozilla Readability + fallback heuristics to extract the main content.
 - If the response is not HTML, returns raw text/JSON as-is.
-- Output is truncated to 2000 lines or 50KB. Full output is saved to a temp file when truncated.
+- Tool output stays collapsed in the UI by default; use `Ctrl+O` to expand and inspect the fetched text.
+- Context uses pi-style truncation heuristics: output is truncated to 2000 lines or 50KB, and full output is saved to a temp file when truncated.
 
 ### Example prompts
 
