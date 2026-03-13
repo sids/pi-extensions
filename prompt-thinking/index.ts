@@ -122,17 +122,19 @@ export class PromptThinkingEditor extends CustomEditor {
 
 export default function (pi: ExtensionAPI) {
 	let currentModel: ThinkingModel | null = null;
-	let currentThinkingLevel: ThinkingLevel = "off";
-	let thinkingItems: AutocompleteItem[] = buildThinkingAutocompleteItems([currentThinkingLevel], currentThinkingLevel);
+	let availableThinkingLevels: ThinkingLevel[] = ["off"];
 	let pendingPrompts: PendingPrompt[] = [];
 	let activeOverride: ActiveOverride | null = null;
 
-	function refreshThinkingItems(model?: ThinkingModel | null) {
+	function getLiveThinkingLevel(): ThinkingLevel {
+		return pi.getThinkingLevel() as ThinkingLevel;
+	}
+
+	function refreshAvailableThinkingLevels(model?: ThinkingModel | null) {
 		if (model !== undefined) {
 			currentModel = model;
 		}
-		currentThinkingLevel = pi.getThinkingLevel() as ThinkingLevel;
-		thinkingItems = buildThinkingAutocompleteItems(getAvailableThinkingLevels(currentModel), currentThinkingLevel);
+		availableThinkingLevels = getAvailableThinkingLevels(currentModel);
 	}
 
 	function clearPromptState() {
@@ -154,13 +156,19 @@ export default function (pi: ExtensionAPI) {
 
 	function installEditor(ctx: { ui: Pick<ExtensionUIContext, "setEditorComponent"> }) {
 		ctx.ui.setEditorComponent((tui: TUI, theme: EditorTheme, keybindings: KeybindingsManager) =>
-			new PromptThinkingEditor(tui, theme, keybindings, () => thinkingItems, () => currentThinkingLevel),
+			new PromptThinkingEditor(
+				tui,
+				theme,
+				keybindings,
+				() => buildThinkingAutocompleteItems(availableThinkingLevels, getLiveThinkingLevel()),
+				() => getLiveThinkingLevel(),
+			),
 		);
 	}
 
 	pi.on("session_start", (_event, ctx) => {
 		clearPromptState();
-		refreshThinkingItems((ctx.model as ThinkingModel | undefined) ?? null);
+		refreshAvailableThinkingLevels((ctx.model as ThinkingModel | undefined) ?? null);
 		if (ctx.hasUI) {
 			installEditor(ctx);
 		}
@@ -168,7 +176,7 @@ export default function (pi: ExtensionAPI) {
 
 	pi.on("session_switch", (_event, ctx) => {
 		clearPromptState();
-		refreshThinkingItems((ctx.model as ThinkingModel | undefined) ?? null);
+		refreshAvailableThinkingLevels((ctx.model as ThinkingModel | undefined) ?? null);
 		if (ctx.hasUI) {
 			installEditor(ctx);
 		}
@@ -177,13 +185,12 @@ export default function (pi: ExtensionAPI) {
 	pi.on("session_shutdown", () => {
 		if (activeOverride) {
 			pi.setThinkingLevel(activeOverride.previousLevel);
-			refreshThinkingItems();
 		}
 		clearPromptState();
 	});
 
 	pi.on("model_select", (event) => {
-		refreshThinkingItems(event.model as ThinkingModel);
+		refreshAvailableThinkingLevels(event.model as ThinkingModel);
 	});
 
 	pi.on("input", (event, _ctx) => {
@@ -214,10 +221,9 @@ export default function (pi: ExtensionAPI) {
 			return;
 		}
 
-		const previousLevel = pi.getThinkingLevel() as ThinkingLevel;
+		const previousLevel = getLiveThinkingLevel();
 		activeOverride = { previousLevel };
 		pi.setThinkingLevel(pendingPrompt.overrideLevel);
-		refreshThinkingItems();
 	});
 
 	pi.on("agent_end", () => {
@@ -226,6 +232,5 @@ export default function (pi: ExtensionAPI) {
 		}
 		pi.setThinkingLevel(activeOverride.previousLevel);
 		activeOverride = null;
-		refreshThinkingItems();
 	});
 }

@@ -44,7 +44,7 @@ Please answer briefly
 ## Autocomplete behavior
 
 - Typing `^` opens a thinking-level picker in the interactive TUI.
-- The current thinking level is preselected when it is available for the active model.
+- The current thinking level is read when the picker opens and preselected when it is available for the active model.
 - Up/down arrows move through lower/higher thinking levels because suggestions stay in natural order.
 - Available levels depend on the current model:
   - non-reasoning models: `^off`

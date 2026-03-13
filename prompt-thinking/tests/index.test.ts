@@ -8,6 +8,7 @@ type Handler = (event: any, ctx: any) => any;
 function createHarness(initialThinkingLevel: ThinkingLevel = "high") {
 	const handlers = new Map<string, Handler[]>();
 	let currentThinkingLevel = initialThinkingLevel;
+	let getThinkingCalls = 0;
 	const setThinkingCalls: ThinkingLevel[] = [];
 	const editorFactories: Array<(tui: TUI, theme: EditorTheme, keybindings: any) => PromptThinkingEditor> = [];
 
@@ -18,6 +19,7 @@ function createHarness(initialThinkingLevel: ThinkingLevel = "high") {
 			handlers.set(name, list);
 		},
 		getThinkingLevel() {
+			getThinkingCalls += 1;
 			return currentThinkingLevel;
 		},
 		setThinkingLevel(level: ThinkingLevel) {
@@ -44,6 +46,7 @@ function createHarness(initialThinkingLevel: ThinkingLevel = "high") {
 	return {
 		emit,
 		getThinkingLevel: () => currentThinkingLevel,
+		getThinkingCallCount: () => getThinkingCalls,
 		setThinkingLevelForTest: (level: ThinkingLevel) => {
 			currentThinkingLevel = level;
 		},
@@ -137,7 +140,7 @@ describe("prompt-thinking extension", () => {
 		expect(typeof installedFactory).toBe("function");
 	});
 
-	test("preselects the current thinking level in autocomplete", async () => {
+	test("reads the current thinking level when the dropdown opens", async () => {
 		const harness = createHarness("high");
 		let installedFactory: ((tui: TUI, theme: EditorTheme, keybindings: any) => PromptThinkingEditor) | undefined;
 
@@ -155,16 +158,20 @@ describe("prompt-thinking extension", () => {
 			},
 		);
 
+		expect(harness.getThinkingCallCount()).toBe(0);
+
 		const { tui, theme, keybindings } = createEditorTestDoubles();
 		const editor = installedFactory!(tui, theme, keybindings);
 		editor.setAutocompleteProvider(createEditorBaseProvider());
+		harness.setThinkingLevelForTest("low");
 		editor.handleInput("^");
 
 		const selected = (editor as any).autocompleteList?.getSelectedItem();
-		expect(selected?.value).toBe("high");
+		expect(selected?.value).toBe("low");
+		expect(harness.getThinkingCallCount()).toBeGreaterThan(0);
 	});
 
-	test("refreshes available levels after model changes", async () => {
+	test("refreshes available levels after model changes without reading the current level until dropdown open", async () => {
 		const harness = createHarness("off");
 		let installedFactory: ((tui: TUI, theme: EditorTheme, keybindings: any) => PromptThinkingEditor) | undefined;
 
@@ -184,6 +191,7 @@ describe("prompt-thinking extension", () => {
 
 		harness.setThinkingLevelForTest("xhigh");
 		await harness.emit("model_select", { model: { id: "gpt-5.3-codex", reasoning: true } }, {});
+		expect(harness.getThinkingCallCount()).toBe(0);
 
 		const { tui, theme, keybindings } = createEditorTestDoubles();
 		const editor = installedFactory!(tui, theme, keybindings);
@@ -192,6 +200,7 @@ describe("prompt-thinking extension", () => {
 
 		const selected = (editor as any).autocompleteList?.getSelectedItem();
 		expect(selected?.value).toBe("xhigh");
+		expect(harness.getThinkingCallCount()).toBeGreaterThan(0);
 	});
 
 	test("transforms prompts with ^thinking tokens and restores the previous level after the prompt", async () => {
