@@ -10,6 +10,7 @@ A collection of pi extensions. Each extension lives in its own directory with it
 - [`review/`](review/) – Interactive review mode with target selection, structured findings capture, and triage
 - [`answer/`](answer/) – Interactive Q&A workflow for extracting questions and sending compiled answers
 - [`mention-skills/`](mention-skills/) – `$skill-name` autocomplete with submit-time expansion to `SKILL.md` paths
+- [`prompt-save/`](prompt-save/) – Session-wide saved prompt picker with save, restore, copy, and delete shortcuts
 - [`prompt-thinking/`](prompt-thinking/) – `^thinking-level` autocomplete with single-prompt thinking overrides
 - [`fetch-url/`](fetch-url/) – URL fetch tool with main-content extraction and markdown/html/raw output
 - [`web-search/`](web-search/) – Brave Search `web_search` tool for single or multi-query result sets
