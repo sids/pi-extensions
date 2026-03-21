@@ -18,6 +18,8 @@ import {
 export const SAVE_SHORTCUT = "alt+s";
 export const OPEN_PICKER_SHORTCUT = "alt+shift+s";
 export const COPY_SHORTCUT = "ctrl+alt+c";
+const RAW_SAVE_SHORTCUT = "\x1bs";
+const RAW_OPEN_PICKER_SHORTCUT = "\x1bS";
 
 function getLatestPromptSaveState(ctx: ExtensionContext): PromptSaveState {
 	return getLatestPromptSaveStateFromEntries(ctx.sessionManager.getEntries());
@@ -25,6 +27,7 @@ function getLatestPromptSaveState(ctx: ExtensionContext): PromptSaveState {
 
 export default function promptSave(pi: ExtensionAPI) {
 	let state = createEmptyPromptSaveState();
+	let removeTerminalInputListener: (() => void) | undefined;
 
 	const refreshState = (ctx: ExtensionContext) => {
 		state = getLatestPromptSaveState(ctx);
@@ -77,6 +80,29 @@ export default function promptSave(pi: ExtensionAPI) {
 		ctx.ui.notify("Inserted saved prompt", "info");
 	};
 
+	const installRawShortcutCompatibility = (ctx: ExtensionContext) => {
+		removeTerminalInputListener?.();
+		removeTerminalInputListener = undefined;
+
+		if (!ctx.hasUI) {
+			return;
+		}
+
+		removeTerminalInputListener = ctx.ui.onTerminalInput((data) => {
+			if (data === RAW_SAVE_SHORTCUT) {
+				saveEditorText(ctx);
+				return { consume: true };
+			}
+
+			if (data === RAW_OPEN_PICKER_SHORTCUT) {
+				void openPromptPicker(ctx);
+				return { consume: true };
+			}
+
+			return undefined;
+		});
+	};
+
 	type PromptPickerResult =
 		| {
 				action: "use";
@@ -117,10 +143,12 @@ export default function promptSave(pi: ExtensionAPI) {
 
 	pi.on("session_start", async (_event, ctx) => {
 		refreshState(ctx);
+		installRawShortcutCompatibility(ctx);
 	});
 
 	pi.on("session_switch", async (_event, ctx) => {
 		refreshState(ctx);
+		installRawShortcutCompatibility(ctx);
 	});
 
 	pi.on("session_fork", async (_event, ctx) => {
@@ -129,6 +157,11 @@ export default function promptSave(pi: ExtensionAPI) {
 
 	pi.on("session_tree", async (_event, ctx) => {
 		refreshState(ctx);
+	});
+
+	pi.on("session_shutdown", async () => {
+		removeTerminalInputListener?.();
+		removeTerminalInputListener = undefined;
 	});
 
 	pi.registerShortcut(SAVE_SHORTCUT, {

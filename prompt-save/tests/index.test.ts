@@ -39,6 +39,7 @@ function createHarness(options: HarnessOptions = {}) {
 	let entryId = entries.length + 1;
 	let pickerComponent: any;
 	let renderRequests = 0;
+	let terminalInputHandler: ((data: string) => { consume?: boolean; data?: string } | undefined) | undefined;
 	const tui = {
 		requestRender() {
 			renderRequests++;
@@ -55,6 +56,14 @@ function createHarness(options: HarnessOptions = {}) {
 			},
 			notify: (message: string, type?: string) => {
 				notifications.push({ message, type });
+			},
+			onTerminalInput: (handler: (data: string) => { consume?: boolean; data?: string } | undefined) => {
+				terminalInputHandler = handler;
+				return () => {
+					if (terminalInputHandler === handler) {
+						terminalInputHandler = undefined;
+					}
+				};
 			},
 			custom: async (factory: any) => {
 				return await new Promise((resolve) => {
@@ -104,10 +113,15 @@ function createHarness(options: HarnessOptions = {}) {
 		return await handler(ctx);
 	}
 
+	function handleTerminalInput(data: string) {
+		return terminalInputHandler?.(data);
+	}
+
 	return {
 		ctx,
 		emit,
 		runShortcut,
+		handleTerminalInput,
 		getEntries: () => entries,
 		getNotifications: () => notifications,
 		getEditorText: () => editorText,
@@ -151,6 +165,27 @@ describe("prompt-save extension", () => {
 			},
 		});
 		expect(harness.getNotifications()).toContainEqual({ message: "Saved prompt", type: "info" });
+	});
+
+	test("supports raw Meta sequences for save", async () => {
+		const harness = createHarness({ editorText: "saved prompt" });
+		await harness.emit("session_start");
+
+		const result = harness.handleTerminalInput("\x1bs");
+
+		expect(result).toEqual({ consume: true });
+		expect(harness.getEditorText()).toBe("");
+		expect(harness.getEntries().at(-1)).toMatchObject({
+			type: "custom",
+			customType: MUTATION_ENTRY_TYPE,
+			data: {
+				version: 1,
+				action: "add",
+				item: {
+					text: "saved prompt",
+				},
+			},
+		});
 	});
 
 	test("ignores empty or whitespace-only editor text on Alt+S", async () => {
@@ -197,6 +232,28 @@ describe("prompt-save extension", () => {
 		expect(lines.join("\n")).toContain("No saved prompts in this session yet.");
 		picker.handleInput("\x1b");
 		await openPromise;
+	});
+
+	test("supports raw Meta sequences for opening the picker", async () => {
+		const harness = createHarness({
+			entries: [
+				{
+					type: "custom",
+					customType: MUTATION_ENTRY_TYPE,
+					data: createAddPromptSaveMutation({ id: "prompt-1", text: "saved prompt", createdAt: 1 }),
+				},
+			],
+		});
+		await harness.emit("session_start");
+
+		const openPromise = Promise.resolve().then(() => harness.handleTerminalInput("\x1bS"));
+		await Promise.resolve();
+		const picker = harness.getPickerComponent();
+
+		expect(picker).toBeDefined();
+		expect(picker.render(160).join("\n")).toContain("saved prompt");
+		expect(await openPromise).toEqual({ consume: true });
+		picker.handleInput("\x1b");
 	});
 
 	test("renders the picker shortcut hints inline", async () => {
