@@ -1,0 +1,29 @@
+{
+  "name": "@siddr/pi-openai-params",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Combined OpenAI fast mode and verbosity settings for pi",
+  "license": "MIT",
+  "keywords": ["pi-package"],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sids/pi-extensions.git",
+    "directory": "openai-params"
+  },
+  "bugs": {
+    "url": "https://github.com/sids/pi-extensions/issues"
+  },
+  "homepage": "https://github.com/sids/pi-extensions/tree/main/openai-params#readme",
+  "pi": {
+    "extensions": ["./index.ts"]
+  },
+  "peerDependencies": {
+    "@mariozechner/pi-ai": "*",
+    "@mariozechner/pi-coding-agent": "*",
+    "@mariozechner/pi-tui": "*"
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/",
+    "access": "public"
+  }
+}

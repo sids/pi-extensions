@@ -12,6 +12,7 @@ A collection of pi extensions. Each extension lives in its own directory with it
 - [`mention-skills/`](mention-skills/) – `$skill-name` autocomplete with submit-time expansion to `SKILL.md` paths
 - [`prompt-save/`](prompt-save/) – Session-wide saved prompt picker with save, restore, copy, and delete shortcuts
 - [`prompt-thinking/`](prompt-thinking/) – `^thinking-level` autocomplete with single-prompt thinking overrides
+- [`openai-params/`](openai-params/) – OpenAI settings UI for fast mode and verbosity request parameters
 - [`fetch-url/`](fetch-url/) – URL fetch tool with main-content extraction and markdown/html/raw output
 - [`web-search/`](web-search/) – Brave Search `web_search` tool for single or multi-query result sets
 - [`status/`](status/) – Live status line and terminal title indicators for model, repo, timing, and PR context
