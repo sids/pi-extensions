@@ -1,16 +1,6 @@
 import path from "node:path";
-import {
-	BorderedLoader,
-	type ExtensionAPI,
-	type ExtensionCommandContext,
-	type ExtensionContext,
-} from "@mariozechner/pi-coding-agent";
-import {
-	buildImplementationPrefill,
-	PLAN_MODE_END_OPTIONS,
-	PLAN_MODE_START_OPTIONS,
-	PLAN_MODE_SUMMARY_PROMPT,
-} from "./utils";
+import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import { buildImplementationPrefill, PLAN_MODE_END_OPTIONS, PLAN_MODE_START_OPTIONS } from "./utils";
 import {
 	createFreshPlanFilePath,
 	ensurePlanFileExists,
@@ -30,7 +20,7 @@ type PlanModeStateManager = {
 	startPlanMode: (
 		ctx: ExtensionContext,
 		options: {
-			originLeafId?: string;
+			originLeafId?: string | null;
 			planFilePath: string;
 		},
 	) => void;
@@ -40,6 +30,30 @@ type PlanModeExitSummary = {
 	planFilePath: string;
 	planText?: string;
 };
+
+type PlanModeEndAction = "exit" | "stay-current";
+
+type MutableSessionManager = ExtensionContext["sessionManager"] & {
+	branch?: (entryId: string) => void;
+	resetLeaf?: () => void;
+	appendCustomEntry?: (customType: string, data?: unknown) => string;
+	getEntry?: (entryId: string) =>
+		| {
+			id?: string;
+			type?: string;
+			customType?: string;
+			parentId?: string | null;
+			message?: {
+				role?: string;
+				content?: unknown;
+			};
+			content?: unknown;
+		}
+		| undefined;
+	appendLabelChange?: (targetId: string, label: string | undefined) => void;
+};
+
+const RESTORE_ANCHOR_ENTRY_TYPE = "plan-md:restore-anchor";
 
 async function navigateToFreshPlanningBranch(
 	ctx: ExtensionContext,
@@ -106,6 +120,166 @@ async function navigateToSavedPlanningBranch(
 	} catch (error) {
 		ctx.ui.notify(
 			`Failed to resume the saved planning branch: ${error instanceof Error ? error.message : String(error)}`,
+			"error",
+		);
+		return false;
+	}
+
+	return true;
+}
+
+function getSessionEntryById(ctx: ExtensionContext, entryId: string) {
+	for (const entry of ctx.sessionManager.getEntries()) {
+		if (entry.id === entryId) {
+			return entry;
+		}
+	}
+	return undefined;
+}
+
+function isRootUserMessageEntry(entry: ReturnType<typeof getSessionEntryById>): boolean {
+	return entry?.type === "message" && entry.parentId === null && entry.message.role === "user";
+}
+
+function setSessionLeaf(sessionManager: MutableSessionManager, leafId: string | null): boolean {
+	if (leafId === null) {
+		if (typeof sessionManager.resetLeaf !== "function") {
+			return false;
+		}
+		sessionManager.resetLeaf();
+		return true;
+	}
+
+	if (typeof sessionManager.branch !== "function") {
+		return false;
+	}
+	sessionManager.branch(leafId);
+	return true;
+}
+
+function findRestoreAnchorId(ctx: ExtensionContext, parentId: string | null): string | undefined {
+	const entries = ctx.sessionManager.getEntries();
+	for (let i = entries.length - 1; i >= 0; i--) {
+		const entry = entries[i];
+		if (
+			entry.type === "custom" &&
+			entry.customType === RESTORE_ANCHOR_ENTRY_TYPE &&
+			entry.parentId === parentId
+		) {
+			return entry.id;
+		}
+	}
+	return undefined;
+}
+
+function getOrCreateRestoreAnchor(
+	ctx: ExtensionContext,
+	parentId: string | null,
+	restoreLeafId: string | null,
+): string | null {
+	const existingAnchorId = findRestoreAnchorId(ctx, parentId);
+	if (existingAnchorId) {
+		return existingAnchorId;
+	}
+
+	const sessionManager = ctx.sessionManager as MutableSessionManager;
+	if (typeof sessionManager.appendCustomEntry !== "function") {
+		return null;
+	}
+	if (!setSessionLeaf(sessionManager, parentId)) {
+		return null;
+	}
+
+	try {
+		return sessionManager.appendCustomEntry(RESTORE_ANCHOR_ENTRY_TYPE, { parentId });
+	} finally {
+		setSessionLeaf(sessionManager, restoreLeafId);
+	}
+}
+
+async function restorePlanModeOrigin(
+	ctx: ExtensionContext,
+	originLeafId: string | null | undefined,
+	planningLeafId: string | null,
+): Promise<boolean> {
+	if (originLeafId === undefined) {
+		return true;
+	}
+
+	if (originLeafId === null) {
+		const anchorId = getOrCreateRestoreAnchor(ctx, null, planningLeafId);
+		if (!anchorId) {
+			ctx.ui.notify("Could not fully restore the empty-root origin. Ended planning at the current branch tip.", "warning");
+			return true;
+		}
+
+		try {
+			const navigateResult = await ctx.navigateTree(anchorId, { summarize: false });
+			if (navigateResult.cancelled) {
+				ctx.ui.notify("Returning from plan mode was cancelled. Use /plan-md to try again.", "info");
+				return false;
+			}
+		} catch (error) {
+			ctx.ui.notify(
+				`Failed to restore origin point: ${error instanceof Error ? error.message : String(error)}`,
+				"error",
+			);
+			return false;
+		}
+
+		const sessionManager = ctx.sessionManager as MutableSessionManager;
+		if (!setSessionLeaf(sessionManager, null)) {
+			ctx.ui.notify("Restored the empty-root context, but could not reset the branch pointer fully.", "warning");
+		}
+		return true;
+	}
+
+	const originEntry = getSessionEntryById(ctx, originLeafId);
+	if (!originEntry) {
+		ctx.ui.notify("Origin point is unavailable. Ended planning at the current branch tip.", "warning");
+		return true;
+	}
+
+	if (isRootUserMessageEntry(originEntry)) {
+		const anchorId = getOrCreateRestoreAnchor(ctx, originLeafId, planningLeafId);
+		if (!anchorId) {
+			ctx.ui.notify(
+				"Could not create a restore point for the root message. Ended planning at the current branch tip.",
+				"warning",
+			);
+			return true;
+		}
+
+		try {
+			const navigateResult = await ctx.navigateTree(anchorId, { summarize: false });
+			if (navigateResult.cancelled) {
+				ctx.ui.notify("Returning from plan mode was cancelled. Use /plan-md to try again.", "info");
+				return false;
+			}
+		} catch (error) {
+			ctx.ui.notify(
+				`Failed to restore origin point: ${error instanceof Error ? error.message : String(error)}`,
+				"error",
+			);
+			return false;
+		}
+
+		const sessionManager = ctx.sessionManager as MutableSessionManager;
+		if (!setSessionLeaf(sessionManager, originLeafId)) {
+			ctx.ui.notify("Restored the root-message context, but could not reset the branch pointer fully.", "warning");
+		}
+		return true;
+	}
+
+	try {
+		const navigateResult = await ctx.navigateTree(originLeafId, { summarize: false });
+		if (navigateResult.cancelled) {
+			ctx.ui.notify("Returning from plan mode was cancelled. Use /plan-md to try again.", "info");
+			return false;
+		}
+	} catch (error) {
+		ctx.ui.notify(
+			`Failed to restore origin point: ${error instanceof Error ? error.message : String(error)}`,
 			"error",
 		);
 		return false;
@@ -209,7 +383,7 @@ async function updateActivePlanFileLocation(
 async function exitPlanMode(
 	ctx: ExtensionContext,
 	stateManager: PlanModeStateManager,
-	wantsSummary: boolean,
+	endAction: PlanModeEndAction,
 	onPlanModeExited?: (summary: PlanModeExitSummary) => void,
 ): Promise<boolean> {
 	const state = stateManager.getState();
@@ -224,56 +398,13 @@ async function exitPlanMode(
 
 	const activeState = state;
 	const planningLeafId = ctx.sessionManager.getLeafId();
-	const originLeafId = activeState.originLeafId;
 	const planFilePath = resolveActivePlanFilePath(ctx, activeState.planFilePath);
 
-	const canNavigateToOrigin = Boolean(originLeafId && hasEntryInSession(ctx, originLeafId));
-	if (canNavigateToOrigin && originLeafId) {
-		if (wantsSummary) {
-			const result = await ctx.ui.custom<{ cancelled: boolean; error?: string } | null>((tui, theme, _kb, done) => {
-				const loader = new BorderedLoader(tui, theme, "Summarizing planning branch...");
-				loader.onAbort = () => done(null);
-
-				ctx.navigateTree(originLeafId, {
-					summarize: true,
-					customInstructions: PLAN_MODE_SUMMARY_PROMPT,
-					replaceInstructions: true,
-				})
-					.then(done)
-					.catch((error) => done({ cancelled: false, error: error instanceof Error ? error.message : String(error) }));
-
-				return loader;
-			});
-
-			if (result === null) {
-				ctx.ui.notify("Summarization cancelled. Use /plan-md to try again.", "info");
-				return false;
-			}
-			if (result.error) {
-				ctx.ui.notify(`Summarization failed: ${result.error}`, "error");
-				return false;
-			}
-			if (result.cancelled) {
-				ctx.ui.notify("Returning from plan mode was cancelled. Use /plan-md to try again.", "info");
-				return false;
-			}
-		} else {
-			try {
-				const navigateResult = await ctx.navigateTree(originLeafId, { summarize: false });
-				if (navigateResult.cancelled) {
-					ctx.ui.notify("Returning from plan mode was cancelled. Use /plan-md to try again.", "info");
-					return false;
-				}
-			} catch (error) {
-				ctx.ui.notify(
-					`Failed to restore origin point: ${error instanceof Error ? error.message : String(error)}`,
-					"error",
-				);
-				return false;
-			}
+	if (endAction === "exit") {
+		const restoredOrigin = await restorePlanModeOrigin(ctx, activeState.originLeafId, planningLeafId);
+		if (!restoredOrigin) {
+			return false;
 		}
-	} else if (originLeafId) {
-		ctx.ui.notify("Origin point is unavailable. Ended planning at the current branch tip.", "warning");
 	}
 
 	stateManager.setState(ctx, {
@@ -317,11 +448,11 @@ async function endPlanMode(
 		return;
 	}
 
-	const wantsSummary = choice === PLAN_MODE_END_OPTIONS[1];
-	await exitPlanMode(ctx, stateManager, wantsSummary, onPlanModeExited);
+	const endAction: PlanModeEndAction = choice === PLAN_MODE_END_OPTIONS[1] ? "stay-current" : "exit";
+	await exitPlanMode(ctx, stateManager, endAction, onPlanModeExited);
 }
 
-function canOfferEmptyBranchStart(ctx: ExtensionContext, originLeafId: string | undefined): boolean {
+function canOfferEmptyBranchStart(ctx: ExtensionContext, originLeafId: string | null | undefined): boolean {
 	const firstUserMessageId = getFirstUserMessageId(ctx);
 	return Boolean(originLeafId && firstUserMessageId && firstUserMessageId !== originLeafId);
 }
@@ -363,26 +494,7 @@ async function navigateTreeInShortcutContext(
 		label?: string;
 	},
 ): Promise<{ cancelled: boolean }> {
-	if (options?.summarize) {
-		ctx.ui.notify("Alt+P exited plan mode without branch summarization. Use /plan-md for summarize-on-exit.", "warning");
-	}
-
-	const sessionManager = ctx.sessionManager as ExtensionContext["sessionManager"] & {
-		getEntry?: (entryId: string) =>
-			| {
-				type?: string;
-				parentId?: string | null;
-				message?: {
-					role?: string;
-					content?: unknown;
-				};
-				content?: unknown;
-			}
-			| undefined;
-		branch?: (entryId: string) => void;
-		resetLeaf?: () => void;
-		appendLabelChange?: (targetId: string, label: string | undefined) => void;
-	};
+	const sessionManager = ctx.sessionManager as MutableSessionManager;
 
 	if (typeof sessionManager.getEntry !== "function") {
 		return { cancelled: true };

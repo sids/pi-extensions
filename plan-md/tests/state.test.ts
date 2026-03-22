@@ -45,6 +45,25 @@ describe("getLatestState", () => {
 		expect(state.planFilePath).toBe("/tmp/new.plan.md");
 		expect(state.lastPlanLeafId).toBe("leaf-new");
 	});
+
+	test("preserves an explicit null origin leaf id", () => {
+		const ctx = {
+			sessionManager: {
+				getEntries: () => [
+					{
+						type: "custom",
+						customType: "plan-md:state",
+						data: { version: 1, active: true, originLeafId: null, planFilePath: "/tmp/session.plan.md" },
+					},
+				],
+				getBranch: () => [],
+			},
+		} as any;
+
+		const state = getLatestState(ctx);
+		expect(state.active).toBe(true);
+		expect(state.originLeafId).toBeNull();
+	});
 });
 
 describe("createPlanModeStateManager tool visibility", () => {

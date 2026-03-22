@@ -4,7 +4,6 @@ import {
 	findDuplicateId,
 	PLAN_MODE_END_OPTIONS,
 	PLAN_MODE_START_OPTIONS,
-	PLAN_MODE_SUMMARY_PROMPT,
 	resolvePlanFilePath,
 	resolveTaskAgentConcurrency,
 } from "../utils";
@@ -53,12 +52,7 @@ describe("plan mode review-style choices", () => {
 	});
 
 	test("exposes concise end options", () => {
-		expect(PLAN_MODE_END_OPTIONS).toEqual(["Exit", "Exit & summarize branch"]);
-	});
-
-	test("includes summarize-on-navigation instructions", () => {
-		expect(PLAN_MODE_SUMMARY_PROMPT).toContain("switching from a planning branch back to implementation");
-		expect(PLAN_MODE_SUMMARY_PROMPT).toContain("Ordered implementation steps");
+		expect(PLAN_MODE_END_OPTIONS).toEqual(["Exit", "Exit & stay in current branch"]);
 	});
 });
 

@@ -11,7 +11,7 @@ pi install npm:pi-plan-md
 ## What it does
 
 - `/plan-md` starts planning when inactive and opens plan mode actions when already active.
-- `Alt+P` runs the same plan-mode toggle flow as `/plan-md` (including start/end prompts) without sending `/plan-md` as chat text.
+- `Alt+P` runs the same plan-mode toggle flow as `/plan-md` (including the same start/end prompts and exit behavior) without sending `/plan-md` as chat text.
 - Start location picker (shown when the session has branchable history):
   - `Empty branch` (jumps to a clean branch point)
   - `Current branch` (stays where you are)
@@ -27,9 +27,11 @@ pi install npm:pi-plan-md
   - `Plan file: <path>`
 - Running `/plan-md` while active (without args) shows:
   - `Exit`
-  - `Exit & summarize branch`
+  - `Exit & stay in current branch`
 - Running `/plan-md <location>` while active moves the current plan file to the resolved location.
 - Starting or moving to an existing file asks for overwrite confirmation (and refuses overwrite in non-interactive mode).
+- `Exit` returns to the point from before plan mode started. If that point was the root user message, it restores a fresh branch from that message instead of dropping to an empty root.
+- `Exit & stay in current branch` ends plan mode without navigating away from the planning branch tip.
 - Exiting plan mode prefills the editor only when the active plan file has content.
 - After exit, a `Plan mode ended.` message is shown. When a plan exists, the message includes `Plan file: <path>` and an expandable plan preview (`Ctrl+O`); otherwise it shows `No plan created.`.
 

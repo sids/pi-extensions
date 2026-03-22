@@ -6,19 +6,7 @@ export const PLAN_MODE_STATE_VERSION = 1;
 export type { PlanModeState };
 
 export const PLAN_MODE_START_OPTIONS = ["Empty branch", "Current branch"] as const;
-export const PLAN_MODE_END_OPTIONS = ["Exit", "Exit & summarize branch"] as const;
-
-export const PLAN_MODE_SUMMARY_PROMPT = `We are switching from a planning branch back to implementation work.
-Summarize this planning branch so implementation can begin immediately.
-
-Include:
-1. Goal and scope
-2. Key decisions and assumptions
-3. Ordered implementation steps
-4. Risks, validations, and open questions
-5. Important file paths, commands, and references gathered during planning
-
-Use concise bullet points and preserve exact technical identifiers when relevant.`;
+export const PLAN_MODE_END_OPTIONS = ["Exit", "Exit & stay in current branch"] as const;
 
 export function createInactivePlanModeState(): PlanModeState {
 	return {

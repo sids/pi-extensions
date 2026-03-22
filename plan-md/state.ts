@@ -145,7 +145,7 @@ export function createPlanModeStateManager(pi: ExtensionAPI) {
 	const startPlanMode = (
 		ctx: ExtensionContext,
 		options: {
-			originLeafId?: string;
+			originLeafId?: string | null;
 			planFilePath: string;
 		},
 	) => {

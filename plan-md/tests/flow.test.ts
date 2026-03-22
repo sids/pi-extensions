@@ -27,7 +27,7 @@ afterEach(async () => {
 function createRegisteredBindings(stateManager: {
 	getState: () => any;
 	setState: (ctx: any, nextState: any) => void;
-	startPlanMode: (ctx: any, options: { originLeafId?: string; planFilePath: string }) => void;
+	startPlanMode: (ctx: any, options: { originLeafId?: string | null; planFilePath: string }) => void;
 }) {
 	let handler: ((args: string, ctx: any) => Promise<void>) | undefined;
 	let shortcutHandler: ((ctx: any) => Promise<void>) | undefined;
@@ -63,7 +63,7 @@ function createRegisteredBindings(stateManager: {
 function createRegisteredHandler(stateManager: {
 	getState: () => any;
 	setState: (ctx: any, nextState: any) => void;
-	startPlanMode: (ctx: any, options: { originLeafId?: string; planFilePath: string }) => void;
+	startPlanMode: (ctx: any, options: { originLeafId?: string | null; planFilePath: string }) => void;
 }) {
 	return createRegisteredBindings(stateManager).handler;
 }
@@ -185,7 +185,7 @@ describe("/plan-md Alt+P shortcut", () => {
 		]);
 	});
 
-	test("uses the same end flow when shortcut is pressed in active mode", async () => {
+	test("matches /plan-md exit behavior when shortcut exits to a root user-message origin", async () => {
 		const tmpDir = await mkdtemp(path.join(os.tmpdir(), "plan-md-flow-"));
 		tempDirs.push(tmpDir);
 		const planFilePath = path.join(tmpDir, "session-1.plan.md");
@@ -193,7 +193,7 @@ describe("/plan-md Alt+P shortcut", () => {
 		let state = {
 			version: 1,
 			active: true,
-			originLeafId: "origin-leaf",
+			originLeafId: "root-user",
 			planFilePath,
 			lastPlanLeafId: undefined,
 		};
@@ -201,6 +201,11 @@ describe("/plan-md Alt+P shortcut", () => {
 		const setEditorTextCalls: string[] = [];
 		const branchCalls: string[] = [];
 		const selectCalls: Array<{ prompt: string; choices: string[] }> = [];
+		let currentLeafId: string | null = "planning-leaf";
+		const sessionEntries: any[] = [
+			{ id: "root-user", type: "message", parentId: null, message: { role: "user", content: "Build it" } },
+			{ id: "planning-leaf", type: "message", parentId: "root-user", message: { role: "assistant" } },
+		];
 
 		const { shortcutHandler } = createRegisteredBindings({
 			getState: () => state,
@@ -227,16 +232,101 @@ describe("/plan-md Alt+P shortcut", () => {
 				getEditorText: () => "",
 			},
 			sessionManager: {
-				getLeafId: () => "planning-leaf",
-				getEntries: () => [
-					{ id: "origin-leaf", type: "message", message: { role: "assistant" } },
-					{ id: "planning-leaf", type: "message", message: { role: "assistant" } },
-				],
-				getEntry: (entryId: string) =>
-					entryId === "origin-leaf"
-						? { id: "origin-leaf", type: "message", parentId: "user-1", message: { role: "assistant" } }
-						: undefined,
+				getLeafId: () => currentLeafId,
+				getEntries: () => sessionEntries,
+				getEntry: (entryId: string) => sessionEntries.find((entry) => entry.id === entryId),
 				branch: (entryId: string) => {
+					currentLeafId = entryId;
+					branchCalls.push(entryId);
+				},
+				resetLeaf: () => {
+					currentLeafId = null;
+				},
+				appendCustomEntry: (customType: string) => {
+					const entry = {
+						id: "restore-anchor",
+						type: "custom",
+						customType,
+						parentId: currentLeafId,
+					};
+					sessionEntries.push(entry);
+					currentLeafId = entry.id;
+					return entry.id;
+				},
+				getSessionFile: () => undefined,
+				getSessionDir: () => tmpDir,
+				getSessionId: () => "session-1",
+			},
+		});
+
+		expect(selectCalls).toEqual([
+			{
+				prompt: "Plan mode action (Esc stays in Plan mode)",
+				choices: ["Exit", "Exit & stay in current branch"],
+			},
+		]);
+		expect(branchCalls).toEqual(["root-user", "planning-leaf", "restore-anchor", "root-user"]);
+		expect(currentLeafId).toBe("root-user");
+		expect(setStateCalls.at(-1)).toEqual({
+			version: 1,
+			active: false,
+			planFilePath,
+			lastPlanLeafId: "planning-leaf",
+		});
+		expect(setEditorTextCalls).toEqual([`Plan file: ${planFilePath}\nImplement the approved plan in this file. Keep changes focused, update tests, and summarize what was implemented.`]);
+	});
+
+	test("uses the stay-current end action when shortcut is pressed in active mode", async () => {
+		const tmpDir = await mkdtemp(path.join(os.tmpdir(), "plan-md-flow-"));
+		tempDirs.push(tmpDir);
+		const planFilePath = path.join(tmpDir, "session-1.plan.md");
+		await writeFile(planFilePath, "# Existing plan\n", "utf8");
+		let state = {
+			version: 1,
+			active: true,
+			originLeafId: "origin-leaf",
+			planFilePath,
+			lastPlanLeafId: undefined,
+		};
+		const setStateCalls: any[] = [];
+		const setEditorTextCalls: string[] = [];
+		const branchCalls: string[] = [];
+		const selectCalls: Array<{ prompt: string; choices: string[] }> = [];
+		let currentLeafId: string | null = "planning-leaf";
+
+		const { shortcutHandler } = createRegisteredBindings({
+			getState: () => state,
+			setState: (_ctx, nextState) => {
+				setStateCalls.push(nextState);
+				state = nextState;
+			},
+			startPlanMode: () => {},
+		});
+
+		await shortcutHandler({
+			cwd: tmpDir,
+			hasUI: true,
+			isIdle: () => true,
+			ui: {
+				select: async (prompt: string, choices: string[]) => {
+					selectCalls.push({ prompt, choices });
+					return "Exit & stay in current branch";
+				},
+				notify: () => {},
+				setEditorText: (text: string) => {
+					setEditorTextCalls.push(text);
+				},
+				getEditorText: () => "",
+			},
+			sessionManager: {
+				getLeafId: () => currentLeafId,
+				getEntries: () => [
+					{ id: "origin-leaf", type: "message", parentId: "user-1", message: { role: "assistant" } },
+					{ id: "planning-leaf", type: "message", parentId: "origin-leaf", message: { role: "assistant" } },
+				],
+				getEntry: () => undefined,
+				branch: (entryId: string) => {
+					currentLeafId = entryId;
 					branchCalls.push(entryId);
 				},
 				getSessionFile: () => undefined,
@@ -248,10 +338,167 @@ describe("/plan-md Alt+P shortcut", () => {
 		expect(selectCalls).toEqual([
 			{
 				prompt: "Plan mode action (Esc stays in Plan mode)",
-				choices: ["Exit", "Exit & summarize branch"],
+				choices: ["Exit", "Exit & stay in current branch"],
 			},
 		]);
-		expect(branchCalls).toEqual(["origin-leaf"]);
+		expect(branchCalls).toEqual([]);
+		expect(currentLeafId).toBe("planning-leaf");
+		expect(setStateCalls.at(-1)).toEqual({
+			version: 1,
+			active: false,
+			planFilePath,
+			lastPlanLeafId: "planning-leaf",
+		});
+		expect(setEditorTextCalls).toEqual([`Plan file: ${planFilePath}\nImplement the approved plan in this file. Keep changes focused, update tests, and summarize what was implemented.`]);
+	});
+});
+
+describe("/plan-md exit flow", () => {
+	test("restores a fresh branch from a root user-message origin on Exit", async () => {
+		const tmpDir = await mkdtemp(path.join(os.tmpdir(), "plan-md-flow-"));
+		tempDirs.push(tmpDir);
+		const planFilePath = path.join(tmpDir, "session-1.plan.md");
+		await writeFile(planFilePath, "# Existing plan\n", "utf8");
+		let state = {
+			version: 1,
+			active: true,
+			originLeafId: "root-user",
+			planFilePath,
+			lastPlanLeafId: undefined,
+		};
+		const setStateCalls: any[] = [];
+		const setEditorTextCalls: string[] = [];
+		const navigateCalls: Array<{ entryId: string; options: any }> = [];
+		const branchCalls: string[] = [];
+		let currentLeafId: string | null = "planning-leaf";
+		const sessionEntries: any[] = [
+			{ id: "root-user", type: "message", parentId: null, message: { role: "user", content: "Build it" } },
+			{ id: "planning-leaf", type: "message", parentId: "root-user", message: { role: "assistant" } },
+		];
+		const handler = createRegisteredHandler({
+			getState: () => state,
+			setState: (_ctx, nextState) => {
+				setStateCalls.push(nextState);
+				state = nextState;
+			},
+			startPlanMode: () => {},
+		});
+
+		await handler("", {
+			cwd: tmpDir,
+			hasUI: true,
+			waitForIdle: async () => {},
+			navigateTree: async (entryId: string, options: any) => {
+				navigateCalls.push({ entryId, options });
+				return { cancelled: false };
+			},
+			ui: {
+				select: async () => "Exit",
+				notify: () => {},
+				setEditorText: (text: string) => {
+					setEditorTextCalls.push(text);
+				},
+				getEditorText: () => "",
+			},
+			sessionManager: {
+				getLeafId: () => currentLeafId,
+				getEntries: () => sessionEntries,
+				branch: (entryId: string) => {
+					currentLeafId = entryId;
+					branchCalls.push(entryId);
+				},
+				resetLeaf: () => {
+					currentLeafId = null;
+				},
+				appendCustomEntry: (customType: string) => {
+					const entry = {
+						id: "restore-anchor",
+						type: "custom",
+						customType,
+						parentId: currentLeafId,
+					};
+					sessionEntries.push(entry);
+					currentLeafId = entry.id;
+					return entry.id;
+				},
+				getSessionFile: () => undefined,
+				getSessionDir: () => tmpDir,
+				getSessionId: () => "session-1",
+			},
+		});
+
+		expect(navigateCalls).toEqual([
+			{
+				entryId: "restore-anchor",
+				options: { summarize: false },
+			},
+		]);
+		expect(branchCalls).toEqual(["root-user", "planning-leaf", "root-user"]);
+		expect(currentLeafId).toBe("root-user");
+		expect(setStateCalls.at(-1)).toEqual({
+			version: 1,
+			active: false,
+			planFilePath,
+			lastPlanLeafId: "planning-leaf",
+		});
+		expect(setEditorTextCalls).toEqual([`Plan file: ${planFilePath}\nImplement the approved plan in this file. Keep changes focused, update tests, and summarize what was implemented.`]);
+	});
+
+	test("keeps the current branch when Exit & stay in current branch is selected", async () => {
+		const tmpDir = await mkdtemp(path.join(os.tmpdir(), "plan-md-flow-"));
+		tempDirs.push(tmpDir);
+		const planFilePath = path.join(tmpDir, "session-1.plan.md");
+		await writeFile(planFilePath, "# Existing plan\n", "utf8");
+		let state = {
+			version: 1,
+			active: true,
+			originLeafId: "origin-leaf",
+			planFilePath,
+			lastPlanLeafId: undefined,
+		};
+		const setStateCalls: any[] = [];
+		const setEditorTextCalls: string[] = [];
+		const navigateCalls: Array<{ entryId: string; options: any }> = [];
+		let currentLeafId: string | null = "planning-leaf";
+		const handler = createRegisteredHandler({
+			getState: () => state,
+			setState: (_ctx, nextState) => {
+				setStateCalls.push(nextState);
+				state = nextState;
+			},
+			startPlanMode: () => {},
+		});
+
+		await handler("", {
+			cwd: tmpDir,
+			hasUI: true,
+			waitForIdle: async () => {},
+			navigateTree: async (entryId: string, options: any) => {
+				navigateCalls.push({ entryId, options });
+				return { cancelled: false };
+			},
+			ui: {
+				select: async () => "Exit & stay in current branch",
+				notify: () => {},
+				setEditorText: (text: string) => {
+					setEditorTextCalls.push(text);
+				},
+				getEditorText: () => "",
+			},
+			sessionManager: {
+				getLeafId: () => currentLeafId,
+				getEntries: () => [
+					{ id: "origin-leaf", type: "message", parentId: "user-1", message: { role: "assistant" } },
+					{ id: "planning-leaf", type: "message", parentId: "origin-leaf", message: { role: "assistant" } },
+				],
+				getSessionFile: () => undefined,
+				getSessionDir: () => tmpDir,
+				getSessionId: () => "session-1",
+			},
+		});
+
+		expect(navigateCalls).toEqual([]);
+		expect(currentLeafId).toBe("planning-leaf");
 		expect(setStateCalls.at(-1)).toEqual({
 			version: 1,
 			active: false,

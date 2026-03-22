@@ -1,7 +1,7 @@
 export type PlanModeState = {
 	version: number;
 	active: boolean;
-	originLeafId?: string;
+	originLeafId?: string | null;
 	planFilePath?: string;
 	lastPlanLeafId?: string;
 };
