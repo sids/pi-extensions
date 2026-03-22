@@ -2,7 +2,7 @@
 
 ## Project overview
 
-This repository contains the **answer**, **fetch-url**, **web-search**, **status**, **plan-md**, **review**, and **mention-skills** pi extensions.
+This repository contains the **answer**, **fetch-url**, **web-search**, **status**, **plan-md**, **task-subagents**, **review**, and **mention-skills** pi extensions.
 
 ## Key files
 
@@ -29,9 +29,13 @@ This repository contains the **answer**, **fetch-url**, **web-search**, **status
 - `plan-md/flow.ts`: `/plan-md` command flow
 - `plan-md/plan-files.ts`: Plan file path + movement helpers
 - `plan-md/request-user-input.ts`: `request_user_input` tool behavior
-- `plan-md/task-agents.ts`: `task_agents` / `steer_task_agent` tool behavior
 - `plan-md/README.md`: Usage docs
 - `plan-md/tests/*.test.ts`: Unit tests
+- `task-subagents/index.ts`: Extension entry point
+- `task-subagents/subagents.ts`: `subagents` / `steer_subagent` tool behavior
+- `task-subagents/utils.ts`: Shared helpers
+- `task-subagents/README.md`: Usage docs
+- `task-subagents/tests/*.test.ts`: Unit tests
 - `review/index.ts`: Extension entry point
 - `review/flow.ts`: `/review` start/end orchestration
 - `review/state.ts`: Review mode state + tool gating/banner
@@ -74,7 +78,8 @@ This repository contains the **answer**, **fetch-url**, **web-search**, **status
   bun test plan-md/tests/plan-files.test.ts
   bun test plan-md/tests/flow.test.ts
   bun test plan-md/tests/request-user-input.test.ts
-  bun test plan-md/tests/task-agents.test.ts
+  bun test plan-md/tests/prompts.test.ts
+  bun test task-subagents/tests/*.test.ts
   bun test review/tests/utils.test.ts
   bun test review/tests/state.test.ts
   bun test review/tests/comments.test.ts

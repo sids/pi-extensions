@@ -3,7 +3,7 @@ const path = require("node:path");
 
 const rootDir = path.resolve(__dirname, "..");
 const rootPackageJsonPath = path.join(rootDir, "package.json");
-const packageDirs = ["answer", "fetch-url", "web-search", "status", "plan-md", "review", "mention-skills", "prompt-thinking", "shared"];
+const packageDirs = ["answer", "fetch-url", "web-search", "status", "plan-md", "task-subagents", "review", "mention-skills", "prompt-thinking", "shared"];
 
 function readJson(filePath) {
 	return JSON.parse(fs.readFileSync(filePath, "utf8"));

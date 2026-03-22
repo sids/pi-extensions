@@ -97,12 +97,12 @@ describe("createPlanModeStateManager tool visibility", () => {
 		});
 
 		expect(setActiveToolsCalls).toEqual([
-			["read", "bash", "edit", "write", "task_agents", "steer_task_agent", "request_user_input", "set_plan"],
+			["read", "bash", "edit", "write", "request_user_input", "set_plan"],
 		]);
 	});
 
 	test("removes plan mode tools when refreshed state is inactive", () => {
-		let activeTools = ["read", "bash", "set_plan", "task_agents", "steer_task_agent", "request_user_input"];
+		let activeTools = ["read", "bash", "set_plan", "request_user_input"];
 		const setActiveToolsCalls: string[][] = [];
 
 		const manager = createPlanModeStateManager({

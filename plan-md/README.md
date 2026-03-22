@@ -39,16 +39,24 @@ pi install npm:pi-plan-md
 
 - `/plan-md [location]`
 
-## Tools in plan mode
+## Built-in tools in plan mode
 
-Plan mode adds planning-specific tools only while active:
+Plan mode adds these tools only while active:
 
-- `task_agents` — run isolated research tasks (concurrency: 1-4)
-- `steer_task_agent` — rerun one task from a previous `task_agents` run with extra guidance
 - `request_user_input` — ask clarifying questions with optional choices and optional freeform answers
 - `set_plan` — overwrite the active plan file with the complete latest plan text
 
 When plan mode ends, these tools are removed again.
+
+## Optional companion extension
+
+If you also want delegated research tools, install `pi-task-subagents` separately:
+
+```bash
+pi install npm:pi-task-subagents
+```
+
+That adds `subagents` and `steer_subagent` everywhere, including during plan mode, but `pi-plan-md` does not require it.
 
 ## Notes
 

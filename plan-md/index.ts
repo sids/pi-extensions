@@ -7,9 +7,8 @@ import { registerPlanModeCommand } from "./flow";
 import { resolveActivePlanFilePath } from "./plan-files";
 import { loadPlanModePrompt } from "./prompts";
 import { registerRequestUserInputTool } from "./request-user-input";
-import { RequestUserInputSchema, SetPlanSchema, SteerTaskAgentSchema, TaskAgentsSchema } from "./schemas";
+import { RequestUserInputSchema, SetPlanSchema } from "./schemas";
 import { CONTEXT_ENTRY_TYPE, createPlanModeStateManager } from "./state";
-import { registerTaskAgentTools } from "./task-agents";
 
 function summarizeSnippet(text: string, maxLength: number = 120): string {
 	const singleLine = text.replace(/\s+/g, " ").trim();
@@ -142,12 +141,6 @@ export default function (pi: ExtensionAPI) {
 	registerRequestUserInputTool(pi, {
 		getState: stateManager.getState,
 		requestUserInputSchema: RequestUserInputSchema,
-	});
-
-	registerTaskAgentTools(pi, {
-		getState: stateManager.getState,
-		taskAgentsSchema: TaskAgentsSchema,
-		steerTaskAgentSchema: SteerTaskAgentSchema,
 	});
 
 	registerPlanModeCommand(pi, {

@@ -1,30 +1,28 @@
 {
-  "name": "pi-plan-md",
-  "version": "0.1.5",
+  "name": "pi-task-subagents",
+  "version": "0.1.0",
   "type": "module",
-  "description": "Branch-based planning workflow extension for pi",
+  "description": "Standalone subagent delegation tools for pi",
   "license": "MIT",
   "keywords": ["pi-package"],
   "repository": {
     "type": "git",
     "url": "git+https://github.com/sids/pi-extensions.git",
-    "directory": "plan-md"
+    "directory": "task-subagents"
   },
   "bugs": {
     "url": "https://github.com/sids/pi-extensions/issues"
   },
-  "homepage": "https://github.com/sids/pi-extensions/tree/main/plan-md#readme",
+  "homepage": "https://github.com/sids/pi-extensions/tree/main/task-subagents#readme",
   "pi": {
     "extensions": ["./index.ts"]
   },
   "peerDependencies": {
     "@mariozechner/pi-agent-core": "*",
+    "@mariozechner/pi-ai": "*",
     "@mariozechner/pi-coding-agent": "*",
     "@mariozechner/pi-tui": "*",
     "@sinclair/typebox": "*"
-  },
-  "dependencies": {
-    "@siddr/pi-shared-qna": "^0.1.0"
   },
   "publishConfig": {
     "registry": "https://registry.npmjs.org/",

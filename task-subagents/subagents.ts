@@ -7,20 +7,19 @@ import os from "node:os";
 import path from "node:path";
 import type { AgentMessage, AgentToolResult } from "@mariozechner/pi-agent-core";
 import type { TextContent } from "@mariozechner/pi-ai";
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import type {
-	NormalizedTaskAgentTask,
-	PlanModeState,
-	TaskAgentActivity,
-	TaskAgentActivityKind,
-	TaskAgentProgressDetails,
-	TaskAgentRunDetails,
-	TaskAgentRunRecord,
-	TaskAgentTask,
-	TaskAgentTaskProgress,
-	TaskAgentTaskResult,
+	NormalizedSubagentTask,
+	SubagentActivity,
+	SubagentActivityKind,
+	SubagentProgressDetails,
+	SubagentRunDetails,
+	SubagentRunRecord,
+	SubagentTask,
+	SubagentTaskProgress,
+	SubagentTaskResult,
 } from "./types";
-import { resolveTaskAgentConcurrency } from "./utils";
+import { resolveSubagentConcurrency } from "./utils";
 
 const require = createRequire(import.meta.url);
 
@@ -43,15 +42,17 @@ function createText(text: string) {
 	return new Text(text, 0, 0);
 }
 
-const TASK_AGENT_PREVIEW_LIMIT = 4;
-// Each task agent gets its own agent dir copy for auth/settings/models so concurrent
+const SUBAGENT_PREVIEW_LIMIT = 4;
+// Each subagent gets its own agent dir copy for auth/settings/models so concurrent
 // `pi --no-session` startup does not contend on global lock files.
-const TASK_AGENT_DIR_ENV = "PI_CODING_AGENT_DIR";
-const TASK_AGENT_DIR_COPIED_FILES = new Set(["auth.json", "models.json", "settings.json"]);
-const TASK_AGENT_DIR_SKIPPED_FILES = new Set(["auth.json.lock", "models.json.lock", "settings.json.lock"]);
+const SUBAGENT_DIR_ENV = "PI_CODING_AGENT_DIR";
+// Child pi processes inherit this to prevent recursive subagent delegation.
+const SUBAGENT_EXTENSION_DISABLED_ENV = "PI_TASK_SUBAGENTS_DISABLED";
+const SUBAGENT_DIR_COPIED_FILES = new Set(["auth.json", "models.json", "settings.json"]);
+const SUBAGENT_DIR_SKIPPED_FILES = new Set(["auth.json.lock", "models.json.lock", "settings.json.lock"]);
 
-export function resolveTaskAgentDir(env: NodeJS.ProcessEnv = process.env): string {
-	const value = env[TASK_AGENT_DIR_ENV]?.trim();
+export function resolveSubagentDir(env: NodeJS.ProcessEnv = process.env): string {
+	const value = env[SUBAGENT_DIR_ENV]?.trim();
 	if (!value) {
 		return path.join(os.homedir(), ".pi", "agent");
 	}
@@ -64,6 +65,11 @@ export function resolveTaskAgentDir(env: NodeJS.ProcessEnv = process.env): strin
 	return value;
 }
 
+export function isSubagentExtensionDisabled(env: NodeJS.ProcessEnv = process.env): boolean {
+	const value = env[SUBAGENT_EXTENSION_DISABLED_ENV]?.trim().toLowerCase();
+	return value === "1" || value === "true";
+}
+
 function getAgentDirSymlinkType(isDirectory: boolean): "file" | "dir" | "junction" {
 	if (!isDirectory) {
 		return "file";
@@ -71,7 +77,7 @@ function getAgentDirSymlinkType(isDirectory: boolean): "file" | "dir" | "junctio
 	return process.platform === "win32" ? "junction" : "dir";
 }
 
-export async function createTaskAgentDir(sourceAgentDir: string = resolveTaskAgentDir()): Promise<string | null> {
+export async function createSubagentDir(sourceAgentDir: string = resolveSubagentDir()): Promise<string | null> {
 	const resolvedSourceAgentDir = path.resolve(sourceAgentDir);
 	let entries: Dirent[];
 	try {
@@ -80,15 +86,15 @@ export async function createTaskAgentDir(sourceAgentDir: string = resolveTaskAge
 		return null;
 	}
 
-	const tempAgentDir = await mkdtemp(path.join(os.tmpdir(), "pi-plan-md-agent-"));
+	const tempAgentDir = await mkdtemp(path.join(os.tmpdir(), "pi-task-subagents-agent-"));
 	for (const entry of entries) {
-		if (TASK_AGENT_DIR_SKIPPED_FILES.has(entry.name)) {
+		if (SUBAGENT_DIR_SKIPPED_FILES.has(entry.name)) {
 			continue;
 		}
 
 		const sourcePath = path.join(resolvedSourceAgentDir, entry.name);
 		const targetPath = path.join(tempAgentDir, entry.name);
-		if (TASK_AGENT_DIR_COPIED_FILES.has(entry.name)) {
+		if (SUBAGENT_DIR_COPIED_FILES.has(entry.name)) {
 			await copyFile(sourcePath, targetPath);
 			continue;
 		}
@@ -106,7 +112,7 @@ export async function createTaskAgentDir(sourceAgentDir: string = resolveTaskAge
 	return tempAgentDir;
 }
 
-async function removeTaskAgentDir(agentDir: string | null | undefined) {
+async function removeSubagentDir(agentDir: string | null | undefined) {
 	if (!agentDir) {
 		return;
 	}
@@ -169,11 +175,11 @@ function getMessageText(message: AgentMessage): string {
 		.trim();
 }
 
-export function createTaskAgentRunId(): string {
+export function createSubagentRunId(): string {
 	return `run-${randomBytes(4).toString("hex")}`;
 }
 
-function normalizeTaskAgentTaskId(rawId: string | undefined, index: number, used: Set<string>): string {
+function normalizeSubagentTaskId(rawId: string | undefined, index: number, used: Set<string>): string {
 	const fallback = `task-${index + 1}`;
 	const base =
 		rawId
@@ -194,10 +200,10 @@ function normalizeTaskAgentTaskId(rawId: string | undefined, index: number, used
 	return id;
 }
 
-export function normalizeTaskAgentTasks(tasks: TaskAgentTask[]): NormalizedTaskAgentTask[] {
+export function normalizeSubagentTasks(tasks: SubagentTask[]): NormalizedSubagentTask[] {
 	const used = new Set<string>();
 	return tasks.map((task, index) => ({
-		id: normalizeTaskAgentTaskId(task.id, index, used),
+		id: normalizeSubagentTaskId(task.id, index, used),
 		prompt: task.prompt,
 		cwd: task.cwd,
 	}));
@@ -235,7 +241,7 @@ function formatToolCallArguments(argumentsValue: unknown): string {
 	return preview ? ` ${preview}` : "";
 }
 
-function formatTaskAgentActivity(activity: TaskAgentActivity): string {
+function formatSubagentActivity(activity: SubagentActivity): string {
 	switch (activity.kind) {
 		case "tool":
 			return `→ ${activity.text}`;
@@ -250,17 +256,17 @@ function formatTaskAgentActivity(activity: TaskAgentActivity): string {
 	}
 }
 
-function cloneTaskAgentProgress(tasks: TaskAgentTaskProgress[]): TaskAgentTaskProgress[] {
+function cloneSubagentProgress(tasks: SubagentTaskProgress[]): SubagentTaskProgress[] {
 	return tasks.map((task) => ({ ...task }));
 }
 
-function buildTaskAgentProgressText(
+function buildSubagentProgressText(
 	runId: string,
-	tasks: TaskAgentTaskProgress[],
+	tasks: SubagentTaskProgress[],
 	completed: number,
 	total: number,
 ): string {
-	const lines: string[] = [`Task agent run ${runId}: ${completed}/${total} complete`];
+	const lines: string[] = [`Subagent run ${runId}: ${completed}/${total} complete`];
 	for (const task of tasks) {
 		const status = task.status.padEnd(9, " ");
 		const latest = task.latestActivity ? ` — ${task.latestActivity}` : "";
@@ -269,21 +275,21 @@ function buildTaskAgentProgressText(
 	return lines.join("\n");
 }
 
-type RunTaskAgentTaskOptions = {
+type RunSubagentTaskOptions = {
 	signal?: AbortSignal;
-	onActivity?: (activity: TaskAgentActivity) => void;
+	onActivity?: (activity: SubagentActivity) => void;
 	steeringInstruction?: string;
 	previousOutput?: string;
 	steeringNotes?: string[];
 };
 
-async function runTaskAgentTask(
-	task: NormalizedTaskAgentTask,
+async function runSubagentTask(
+	task: NormalizedSubagentTask,
 	defaultCwd: string,
-	options?: RunTaskAgentTaskOptions,
-): Promise<TaskAgentTaskResult> {
+	options?: RunSubagentTaskOptions,
+): Promise<SubagentTaskResult> {
 	const promptParts = [
-		"You are a focused research task agent working for a planning workflow.",
+		"You are a focused research subagent helping the main coding agent.",
 		"Stay read-only. Do not edit files.",
 		`Task ID: ${task.id}`,
 		`Task: ${task.prompt}`,
@@ -303,21 +309,25 @@ async function runTaskAgentTask(
 	const cwd = task.cwd?.trim() ? task.cwd : defaultCwd;
 	let agentDir: string | null = null;
 	try {
-		agentDir = await createTaskAgentDir();
+		agentDir = await createSubagentDir();
 	} catch {
 		agentDir = null;
 	}
-	const env = agentDir ? { ...process.env, [TASK_AGENT_DIR_ENV]: agentDir } : process.env;
+	const env = {
+		...process.env,
+		[SUBAGENT_EXTENSION_DISABLED_ENV]: "1",
+		...(agentDir ? { [SUBAGENT_DIR_ENV]: agentDir } : {}),
+	};
 	const startedAt = Date.now();
-	const activities: TaskAgentActivity[] = [];
+	const activities: SubagentActivity[] = [];
 	const maxActivities = 120;
 
-	const recordActivity = (kind: TaskAgentActivityKind, text: string) => {
+	const recordActivity = (kind: SubagentActivityKind, text: string) => {
 		const normalized = summarizeSnippet(text, 180);
 		if (!normalized) {
 			return;
 		}
-		const activity: TaskAgentActivity = {
+		const activity: SubagentActivity = {
 			kind,
 			text: normalized,
 			timestamp: Date.now(),
@@ -331,7 +341,7 @@ async function runTaskAgentTask(
 
 	recordActivity("status", "started");
 
-	return new Promise<TaskAgentTaskResult>((resolve) => {
+	return new Promise<SubagentTaskResult>((resolve) => {
 		const child = spawn("pi", args, {
 			cwd,
 			env,
@@ -382,12 +392,12 @@ async function runTaskAgentTask(
 			if (options?.signal) {
 				options.signal.removeEventListener("abort", abortListener);
 			}
-			void removeTaskAgentDir(agentDir).catch(() => {
+			void removeSubagentDir(agentDir).catch(() => {
 				// Best-effort cleanup for per-task agent dirs.
 			});
 		};
 
-		const resolveOnce = (result: TaskAgentTaskResult) => {
+		const resolveOnce = (result: SubagentTaskResult) => {
 			if (resolved) {
 				return;
 			}
@@ -510,7 +520,7 @@ async function runTaskAgentTask(
 	});
 }
 
-function formatTaskAgentDuration(result: TaskAgentTaskResult): string {
+function formatSubagentDuration(result: SubagentTaskResult): string {
 	const durationMs = Math.max(0, result.finishedAt - result.startedAt);
 	if (durationMs < 1000) {
 		return `${durationMs}ms`;
@@ -518,7 +528,7 @@ function formatTaskAgentDuration(result: TaskAgentTaskResult): string {
 	return `${(durationMs / 1000).toFixed(1)}s`;
 }
 
-function formatTaskAgentResult(result: TaskAgentTaskResult, index: number): string {
+function formatSubagentResult(result: SubagentTaskResult, index: number): string {
 	const status = result.exitCode === 0 ? "completed" : "failed";
 	const header = `Task ${index + 1} (${result.taskId}): ${status}`;
 	const output = result.output.trim().length > 0 ? result.output.trim() : "(no output)";
@@ -526,18 +536,18 @@ function formatTaskAgentResult(result: TaskAgentTaskResult, index: number): stri
 	const recentActivities = result.activities.slice(-6);
 	const activityText =
 		recentActivities.length > 0
-			? recentActivities.map((activity) => `- ${formatTaskAgentActivity(activity)}`).join("\n")
+			? recentActivities.map((activity) => `- ${formatSubagentActivity(activity)}`).join("\n")
 			: "- (no activity captured)";
 
 	if (result.exitCode !== 0) {
 		const stderr = result.stderr.trim().length > 0 ? result.stderr.trim() : "unknown error";
-		return `${header}\nPrompt: ${result.task}\nCWD: ${result.cwd}\nDuration: ${formatTaskAgentDuration(result)}\nRecent activity:\n${activityText}\nError: ${stderr}`;
+		return `${header}\nPrompt: ${result.task}\nCWD: ${result.cwd}\nDuration: ${formatSubagentDuration(result)}\nRecent activity:\n${activityText}\nError: ${stderr}`;
 	}
 
-	return `${header}\nPrompt: ${result.task}\nCWD: ${result.cwd}\nDuration: ${formatTaskAgentDuration(result)}\nRecent activity:\n${activityText}\n\n${output}\n\nReferences:\n${refs}`;
+	return `${header}\nPrompt: ${result.task}\nCWD: ${result.cwd}\nDuration: ${formatSubagentDuration(result)}\nRecent activity:\n${activityText}\n\n${output}\n\nReferences:\n${refs}`;
 }
 
-export function buildTaskAgentRunDetails(runId: string, results: TaskAgentTaskResult[]): TaskAgentRunDetails {
+export function buildSubagentRunDetails(runId: string, results: SubagentTaskResult[]): SubagentRunDetails {
 	const successCount = results.filter((result) => result.exitCode === 0).length;
 	return {
 		runId,
@@ -547,11 +557,11 @@ export function buildTaskAgentRunDetails(runId: string, results: TaskAgentTaskRe
 	};
 }
 
-function isTaskAgentProgressDetails(details: unknown): details is TaskAgentProgressDetails {
+function isSubagentProgressDetails(details: unknown): details is SubagentProgressDetails {
 	if (!details || typeof details !== "object") {
 		return false;
 	}
-	const value = details as Partial<TaskAgentProgressDetails>;
+	const value = details as Partial<SubagentProgressDetails>;
 	return (
 		typeof value.runId === "string" &&
 		typeof value.completed === "number" &&
@@ -560,11 +570,11 @@ function isTaskAgentProgressDetails(details: unknown): details is TaskAgentProgr
 	);
 }
 
-function isTaskAgentRunDetails(details: unknown): details is TaskAgentRunDetails {
+function isSubagentRunDetails(details: unknown): details is SubagentRunDetails {
 	if (!details || typeof details !== "object") {
 		return false;
 	}
-	const value = details as Partial<TaskAgentRunDetails>;
+	const value = details as Partial<SubagentRunDetails>;
 	return (
 		typeof value.runId === "string" &&
 		typeof value.successCount === "number" &&
@@ -573,7 +583,7 @@ function isTaskAgentRunDetails(details: unknown): details is TaskAgentRunDetails
 	);
 }
 
-function statusIcon(status: TaskAgentTaskProgress["status"]): string {
+function statusIcon(status: SubagentTaskProgress["status"]): string {
 	switch (status) {
 		case "completed":
 			return "✓";
@@ -586,75 +596,78 @@ function statusIcon(status: TaskAgentTaskProgress["status"]): string {
 	}
 }
 
-export function registerTaskAgentTools(
+export function registerSubagentTools(
 	pi: ExtensionAPI,
 	dependencies: {
-		getState: () => PlanModeState;
-		taskAgentsSchema: unknown;
-		steerTaskAgentSchema: unknown;
+		subagentsSchema: unknown;
+		steerSubagentSchema: unknown;
 	},
 ) {
-	const taskAgentRuns = new Map<string, TaskAgentRunRecord>();
+	if (isSubagentExtensionDisabled()) {
+		return;
+	}
 
-	const rememberTaskAgentRun = (run: TaskAgentRunRecord) => {
-		taskAgentRuns.set(run.runId, run);
-		while (taskAgentRuns.size > 20) {
-			const oldestRunId = taskAgentRuns.keys().next().value;
+	const subagentRuns = new Map<string, SubagentRunRecord>();
+
+	const rememberSubagentRun = (run: SubagentRunRecord) => {
+		subagentRuns.set(run.runId, run);
+		while (subagentRuns.size > 20) {
+			const oldestRunId = subagentRuns.keys().next().value;
 			if (!oldestRunId) {
 				break;
 			}
-			taskAgentRuns.delete(oldestRunId);
+			subagentRuns.delete(oldestRunId);
 		}
 	};
 
 	pi.registerTool({
-		name: "task_agents",
-		label: "task agents",
+		name: "subagents",
+		label: "subagents",
 		description:
-			"Run one or more isolated research task agents in parallel with activity traces and run IDs for follow-up steering.",
-		parameters: dependencies.taskAgentsSchema,
+			"Run one or more isolated research subagents in parallel with activity traces and run IDs for follow-up steering.",
+		parameters: dependencies.subagentsSchema,
 		renderCall(args, theme) {
-			const tasks = (args.tasks as TaskAgentTask[] | undefined) ?? [];
+			const tasks = (args.tasks as SubagentTask[] | undefined) ?? [];
 			const lines: string[] = [
-				`${theme.fg("toolTitle", theme.bold("task agents "))}${theme.fg("accent", `${tasks.length} task${tasks.length === 1 ? "" : "s"}`)}`,
+				`${theme.fg("toolTitle", theme.bold("subagents "))}${theme.fg("accent", `${tasks.length} task${tasks.length === 1 ? "" : "s"}`)}`,
 			];
-			for (const task of tasks.slice(0, TASK_AGENT_PREVIEW_LIMIT)) {
+			for (const task of tasks.slice(0, SUBAGENT_PREVIEW_LIMIT)) {
 				const taskId = task.id?.trim() || "(auto-id)";
 				lines.push(`${theme.fg("muted", `- ${taskId}:`)} ${summarizeSnippet(task.prompt, 90)}`);
 			}
-			if (tasks.length > TASK_AGENT_PREVIEW_LIMIT) {
-				lines.push(theme.fg("muted", `... +${tasks.length - TASK_AGENT_PREVIEW_LIMIT} more (Ctrl+O to expand after start)`));
+			if (tasks.length > SUBAGENT_PREVIEW_LIMIT) {
+				lines.push(theme.fg("muted", `... +${tasks.length - SUBAGENT_PREVIEW_LIMIT} more (Ctrl+O to expand after start)`));
 			}
 			return createText(lines.join("\n"));
 		},
 		renderResult(result, { expanded, isPartial }, theme) {
 			const details = result.details;
-			if (isPartial && isTaskAgentProgressDetails(details)) {
+			if (isPartial && isSubagentProgressDetails(details)) {
 				const lines: string[] = [
-					`${theme.fg("toolTitle", theme.bold("task agents "))}${theme.fg("accent", details.runId)} ${theme.fg("muted", `${details.completed}/${details.total}`)}`,
+					`${theme.fg("toolTitle", theme.bold("subagents "))}${theme.fg("accent", details.runId)} ${theme.fg("muted", `${details.completed}/${details.total}`)}`,
 				];
-				const visibleTasks = expanded ? details.tasks : details.tasks.slice(0, TASK_AGENT_PREVIEW_LIMIT);
+				const visibleTasks = expanded ? details.tasks : details.tasks.slice(0, SUBAGENT_PREVIEW_LIMIT);
 				for (const task of visibleTasks) {
-					const status = theme.fg(task.status === "failed" ? "error" : task.status === "completed" ? "success" : "warning", statusIcon(task.status));
+					const icon = theme.fg(task.status === "failed" ? "error" : task.status === "completed" ? "success" : "warning", statusIcon(task.status));
 					const suffix = task.latestActivity ? ` ${theme.fg("dim", summarizeSnippet(task.latestActivity, 80))}` : "";
-					lines.push(`${status} ${theme.fg("accent", task.taskId)} ${theme.fg("muted", task.status)}${suffix}`);
+					lines.push(`${icon} ${theme.fg("accent", task.taskId)} ${theme.fg("muted", task.status)}${suffix}`);
 				}
-				if (!expanded && details.tasks.length > TASK_AGENT_PREVIEW_LIMIT) {
-					lines.push(theme.fg("muted", `... +${details.tasks.length - TASK_AGENT_PREVIEW_LIMIT} more running tasks`));
+				if (!expanded && details.tasks.length > SUBAGENT_PREVIEW_LIMIT) {
+					lines.push(theme.fg("muted", `... +${details.tasks.length - SUBAGENT_PREVIEW_LIMIT} more running tasks`));
 					lines.push(theme.fg("muted", "Press Ctrl+O to expand and show every task."));
 				}
 				return createText(lines.join("\n"));
 			}
 
-			if (!isTaskAgentRunDetails(details)) {
+			if (!isSubagentRunDetails(details)) {
 				const text = result.content.find((item) => item.type === "text");
 				return createText(text?.type === "text" ? text.text : "(no output)");
 			}
 
 			const lines: string[] = [
-				`${theme.fg("toolTitle", theme.bold("task agents "))}${theme.fg("accent", details.runId)} ${theme.fg("muted", `${details.successCount}/${details.totalCount} succeeded`)}`,
+				`${theme.fg("toolTitle", theme.bold("subagents "))}${theme.fg("accent", details.runId)} ${theme.fg("muted", `${details.successCount}/${details.totalCount} succeeded`)}`,
 			];
-			const visibleTasks = expanded ? details.tasks : details.tasks.slice(0, TASK_AGENT_PREVIEW_LIMIT);
+			const visibleTasks = expanded ? details.tasks : details.tasks.slice(0, SUBAGENT_PREVIEW_LIMIT);
 			for (const task of visibleTasks) {
 				const statusIconText = task.exitCode === 0 ? theme.fg("success", "✓") : theme.fg("error", "✗");
 				if (!expanded) {
@@ -666,7 +679,7 @@ export function registerTaskAgentTools(
 				lines.push(`${statusIconText} ${theme.fg("accent", task.taskId)} ${taskStatus}`);
 				lines.push(...indentMultiline(`Prompt: ${task.task}`, "  "));
 				lines.push(`  ${theme.fg("muted", "CWD:")} ${task.cwd}`);
-				lines.push(`  ${theme.fg("muted", "Duration:")} ${formatTaskAgentDuration(task)}`);
+				lines.push(`  ${theme.fg("muted", "Duration:")} ${formatSubagentDuration(task)}`);
 
 				if (task.steeringNotes.length > 0) {
 					lines.push(`  ${theme.fg("muted", "Steering notes:")}`);
@@ -680,7 +693,7 @@ export function registerTaskAgentTools(
 					lines.push(`    ${theme.fg("dim", "(no activity captured)")}`);
 				} else {
 					for (const activity of task.activities) {
-						lines.push(`    ${theme.fg("dim", formatTaskAgentActivity(activity))}`);
+						lines.push(`    ${theme.fg("dim", formatSubagentActivity(activity))}`);
 					}
 				}
 
@@ -705,8 +718,8 @@ export function registerTaskAgentTools(
 			}
 
 			if (!expanded) {
-				if (details.tasks.length > TASK_AGENT_PREVIEW_LIMIT) {
-					lines.push(theme.fg("muted", `... +${details.tasks.length - TASK_AGENT_PREVIEW_LIMIT} more tasks`));
+				if (details.tasks.length > SUBAGENT_PREVIEW_LIMIT) {
+					lines.push(theme.fg("muted", `... +${details.tasks.length - SUBAGENT_PREVIEW_LIMIT} more tasks`));
 				}
 				lines.push(theme.fg("muted", "Press Ctrl+O to expand and show all tasks, outputs, and activity traces."));
 			} else {
@@ -714,26 +727,19 @@ export function registerTaskAgentTools(
 			}
 			return createText(lines.join("\n"));
 		},
-		async execute(_toolCallId, params, signal, onUpdate, ctx): Promise<AgentToolResult<TaskAgentRunDetails>> {
-			if (!dependencies.getState().active) {
-				return {
-					isError: true,
-					content: [{ type: "text", text: "task_agents is only available while plan mode is active." }],
-				};
-			}
-
-			const tasks = normalizeTaskAgentTasks(params.tasks as TaskAgentTask[]);
-			const concurrency = resolveTaskAgentConcurrency(params.concurrency);
+		async execute(_toolCallId, params, signal, onUpdate, ctx): Promise<AgentToolResult<SubagentRunDetails>> {
+			const tasks = normalizeSubagentTasks(params.tasks as SubagentTask[]);
+			const concurrency = resolveSubagentConcurrency(params.concurrency);
 			if (concurrency === null) {
 				return {
 					isError: true,
 					content: [{ type: "text", text: "concurrency must be an integer between 1 and 4." }],
 				};
 			}
-			const runId = createTaskAgentRunId();
+			const runId = createSubagentRunId();
 			let completed = 0;
 
-			const progress: TaskAgentTaskProgress[] = tasks.map((task) => ({
+			const progress: SubagentTaskProgress[] = tasks.map((task) => ({
 				taskId: task.id,
 				prompt: task.prompt,
 				status: "queued",
@@ -742,13 +748,13 @@ export function registerTaskAgentTools(
 
 			const emitProgress = () => {
 				onUpdate?.({
-					content: [{ type: "text", text: buildTaskAgentProgressText(runId, progress, completed, tasks.length) }],
+					content: [{ type: "text", text: buildSubagentProgressText(runId, progress, completed, tasks.length) }],
 					details: {
 						runId,
 						completed,
 						total: tasks.length,
-						tasks: cloneTaskAgentProgress(progress),
-					} satisfies TaskAgentProgressDetails,
+						tasks: cloneSubagentProgress(progress),
+					} satisfies SubagentProgressDetails,
 				});
 			};
 
@@ -762,12 +768,12 @@ export function registerTaskAgentTools(
 				};
 				emitProgress();
 
-				const result = await runTaskAgentTask(task, ctx.cwd, {
+				const result = await runSubagentTask(task, ctx.cwd, {
 					signal,
 					onActivity: (activity) => {
 						progress[index] = {
 							...progress[index],
-							latestActivity: formatTaskAgentActivity(activity),
+							latestActivity: formatSubagentActivity(activity),
 							activityCount: progress[index].activityCount + 1,
 						};
 						emitProgress();
@@ -784,17 +790,17 @@ export function registerTaskAgentTools(
 				return result;
 			});
 
-			const details = buildTaskAgentRunDetails(runId, results);
-			rememberTaskAgentRun({
+			const details = buildSubagentRunDetails(runId, results);
+			rememberSubagentRun({
 				runId,
 				createdAt: Date.now(),
 				tasks: results,
 			});
 
-			const formatted = results.map((result, index) => formatTaskAgentResult(result, index)).join("\n\n---\n\n");
-			const summaryHeader = `Task agent research run ${runId}: ${details.successCount}/${details.totalCount} tasks succeeded.`;
+			const formatted = results.map((result, index) => formatSubagentResult(result, index)).join("\n\n---\n\n");
+			const summaryHeader = `Subagent research run ${runId}: ${details.successCount}/${details.totalCount} tasks succeeded.`;
 			const steeringHint =
-				`Use steer_task_agent with runId \"${runId}\" and a taskId to rerun a specific task with extra instruction.`;
+				`Use steer_subagent with runId "${runId}" and a taskId to rerun a specific task with extra instruction.`;
 
 			return {
 				content: [{ type: "text", text: `${summaryHeader}\n${steeringHint}\n\n${formatted}` }],
@@ -805,24 +811,17 @@ export function registerTaskAgentTools(
 	});
 
 	pi.registerTool({
-		name: "steer_task_agent",
-		label: "steer task agent",
+		name: "steer_subagent",
+		label: "steer subagent",
 		description:
-			"Rerun one task from a previous task_agents run using runId/taskId and an extra steering instruction.",
-		parameters: dependencies.steerTaskAgentSchema,
+			"Rerun one task from a previous subagents run using runId/taskId and an extra steering instruction.",
+		parameters: dependencies.steerSubagentSchema,
 		renderCall(args, theme) {
 			const instruction = summarizeSnippet(args.instruction ?? "", 90);
-			const text = `${theme.fg("toolTitle", theme.bold("steer task agent "))}${theme.fg("accent", `${args.runId}/${args.taskId}`)}\n${theme.fg("muted", instruction)}`;
+			const text = `${theme.fg("toolTitle", theme.bold("steer subagent "))}${theme.fg("accent", `${args.runId}/${args.taskId}`)}\n${theme.fg("muted", instruction)}`;
 			return createText(text);
 		},
-		async execute(_toolCallId, params, signal, onUpdate, ctx): Promise<AgentToolResult<TaskAgentRunDetails>> {
-			if (!dependencies.getState().active) {
-				return {
-					isError: true,
-					content: [{ type: "text", text: "steer_task_agent is only available while plan mode is active." }],
-				};
-			}
-
+		async execute(_toolCallId, params, signal, onUpdate, ctx): Promise<AgentToolResult<SubagentRunDetails>> {
 			const runId = String(params.runId ?? "").trim();
 			const taskId = String(params.taskId ?? "").trim();
 			const instruction = String(params.instruction ?? "").trim();
@@ -833,17 +832,17 @@ export function registerTaskAgentTools(
 				};
 			}
 
-			const run = taskAgentRuns.get(runId);
+			const run = subagentRuns.get(runId);
 			if (!run) {
-				const knownRunIds = Array.from(taskAgentRuns.keys());
+				const knownRunIds = Array.from(subagentRuns.keys());
 				return {
 					isError: true,
 					content: [
 						{
 							type: "text",
 							text: knownRunIds.length > 0
-								? `Unknown runId \"${runId}\". Known runIds: ${knownRunIds.join(", ")}`
-								: `Unknown runId \"${runId}\". No prior task agent runs are available.`,
+								? `Unknown runId "${runId}". Known runIds: ${knownRunIds.join(", ")}`
+								: `Unknown runId "${runId}". No prior subagent runs are available.`,
 						},
 					],
 				};
@@ -854,7 +853,7 @@ export function registerTaskAgentTools(
 				const knownTaskIds = run.tasks.map((task) => task.taskId).join(", ");
 				return {
 					isError: true,
-					content: [{ type: "text", text: `Unknown taskId \"${taskId}\" for run ${runId}. Known taskIds: ${knownTaskIds}` }],
+					content: [{ type: "text", text: `Unknown taskId "${taskId}" for run ${runId}. Known taskIds: ${knownTaskIds}` }],
 				};
 			}
 
@@ -872,17 +871,17 @@ export function registerTaskAgentTools(
 						latestActivity: index === taskIndex ? "re-running with steering" : undefined,
 						activityCount: task.activities.length,
 					})),
-				} satisfies TaskAgentProgressDetails,
+				} satisfies SubagentProgressDetails,
 			});
 
 			const steeringNotes = [...previousTask.steeringNotes, instruction];
-			const rerunTask: NormalizedTaskAgentTask = {
+			const rerunTask: NormalizedSubagentTask = {
 				id: previousTask.taskId,
 				prompt: previousTask.task,
 				cwd: previousTask.cwd,
 			};
 
-			const rerunResult = await runTaskAgentTask(rerunTask, ctx.cwd, {
+			const rerunResult = await runSubagentTask(rerunTask, ctx.cwd, {
 				signal,
 				steeringInstruction: instruction,
 				previousOutput: previousTask.output,
@@ -890,22 +889,22 @@ export function registerTaskAgentTools(
 				onActivity: (activity) => {
 					onUpdate?.({
 						content: [
-							{ type: "text", text: `Steering ${taskId}: ${formatTaskAgentActivity(activity)}` },
+							{ type: "text", text: `Steering ${taskId}: ${formatSubagentActivity(activity)}` },
 						],
 					});
 				},
 			});
 
 			run.tasks[taskIndex] = rerunResult;
-			rememberTaskAgentRun(run);
-			const details = buildTaskAgentRunDetails(runId, run.tasks);
+			rememberSubagentRun(run);
+			const details = buildSubagentRunDetails(runId, run.tasks);
 			const summaryHeader = `Steered ${taskId} in run ${runId}. Run status: ${details.successCount}/${details.totalCount} succeeded.`;
 
 			return {
 				content: [
 					{
 						type: "text",
-						text: `${summaryHeader}\n\n${formatTaskAgentResult(rerunResult, taskIndex)}`,
+						text: `${summaryHeader}\n\n${formatSubagentResult(rerunResult, taskIndex)}`,
 					},
 				],
 				details,

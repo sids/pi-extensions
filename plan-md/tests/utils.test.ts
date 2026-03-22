@@ -5,7 +5,6 @@ import {
 	PLAN_MODE_END_OPTIONS,
 	PLAN_MODE_START_OPTIONS,
 	resolvePlanFilePath,
-	resolveTaskAgentConcurrency,
 } from "../utils";
 
 describe("resolvePlanFilePath", () => {
@@ -16,23 +15,6 @@ describe("resolvePlanFilePath", () => {
 
 	test("returns null for empty input", () => {
 		expect(resolvePlanFilePath("/tmp/project", "   ")).toBeNull();
-	});
-});
-
-describe("resolveTaskAgentConcurrency", () => {
-	test("defaults to two workers", () => {
-		expect(resolveTaskAgentConcurrency(undefined)).toBe(2);
-	});
-
-	test("accepts integers in range", () => {
-		expect(resolveTaskAgentConcurrency(1)).toBe(1);
-		expect(resolveTaskAgentConcurrency(4)).toBe(4);
-	});
-
-	test("rejects fractional and out-of-range values", () => {
-		expect(resolveTaskAgentConcurrency(1.5)).toBeNull();
-		expect(resolveTaskAgentConcurrency(0)).toBeNull();
-		expect(resolveTaskAgentConcurrency(5)).toBeNull();
 	});
 });
 

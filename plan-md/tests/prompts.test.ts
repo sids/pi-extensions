@@ -69,4 +69,16 @@ describe("loadPlanModePrompt", () => {
 
 		expect(prompt).toContain("Include the goal at the top of the plan.");
 	});
+
+	test("bundled prompt only mentions optional subagents", async () => {
+		const paths = await createPromptPaths();
+		const prompt = await loadPlanModePrompt({
+			agentDirPath: paths.agentDirPath,
+			bundledPromptPath: fileURLToPath(new URL("../prompts/PLAN.prompt.md", import.meta.url)),
+		});
+
+		expect(prompt).toContain("Use subagents if available");
+		expect(prompt).not.toContain("task_agents");
+		expect(prompt).not.toContain("steer_task_agent");
+	});
 });
