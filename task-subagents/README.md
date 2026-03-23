@@ -17,6 +17,10 @@ Adds two general-purpose tools:
 
 Each subagent gets its own temporary pi agent directory copy so concurrent runs can reuse auth and settings without fighting over lock files.
 
+In interactive UI mode, `subagents` opens a pre-launch review screen before any child process starts. You can review each prompt and cwd, cycle per-task model and thinking overrides, cancel individual tasks with a note, and confirm the final launch plan. By default, launched subagents inherit the main agent's current model and thinking level. In headless mode, tasks still launch immediately.
+
+Run results now report launched, succeeded, failed, and cancelled counts, and `steer_subagent` reuses any reviewed model/thinking overrides when it reruns a task.
+
 ## Notes
 
 - This extension is optional and works on its own.

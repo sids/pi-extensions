@@ -112,7 +112,7 @@ type RegisteredTool = {
 		params: any,
 		signal?: AbortSignal,
 		onUpdate?: (update: unknown) => void,
-		ctx?: { cwd: string },
+		ctx?: any,
 	) => Promise<{ isError?: boolean; content: Array<{ type: string; text?: string }>; details?: any }>;
 };
 
@@ -136,10 +136,14 @@ async function setupStubPi(tempDir: string) {
 		`#!/usr/bin/env node
 const fs = require("node:fs");
 const path = require("node:path");
+const args = process.argv.slice(2);
 const logPath = process.env.SUBAGENT_LOG_PATH;
 const agentDir = process.env.PI_CODING_AGENT_DIR || "";
-const promptIndex = process.argv.indexOf("-p");
-const prompt = promptIndex === -1 ? "" : process.argv[promptIndex + 1] || "";
+const getFlag = (name) => {
+	const index = args.indexOf(name);
+	return index === -1 ? undefined : args[index + 1];
+};
+const prompt = getFlag("-p") || "";
 const read = (name) => {
 	const filePath = path.join(agentDir, name);
 	return fs.existsSync(filePath) ? fs.readFileSync(filePath, "utf8") : null;
@@ -150,6 +154,10 @@ if (logPath) {
 		auth: read("auth.json"),
 		settings: read("settings.json"),
 		models: read("models.json"),
+		args,
+		model: getFlag("--model") || null,
+		thinking: getFlag("--thinking") || null,
+		prompt,
 		steered: prompt.includes("Steering update from the main agent"),
 		subagentsDisabled: process.env.PI_TASK_SUBAGENTS_DISABLED || "",
 	}) + "\\n");
@@ -179,13 +187,42 @@ setTimeout(() => {
 	};
 }
 
-function registerTools(): Record<string, RegisteredTool> {
+async function readSpawnLog(spawnLogPath: string): Promise<Array<{
+	agentDir: string;
+	auth: string;
+	settings: string;
+	models: string;
+	args: string[];
+	model: string | null;
+	thinking: string | null;
+	prompt: string;
+	steered: boolean;
+	subagentsDisabled: string;
+}>> {
+	try {
+		const contents = await readFile(spawnLogPath, "utf8");
+		return contents
+			.trim()
+			.split("\n")
+			.filter(Boolean)
+			.map((line) => JSON.parse(line));
+	} catch (error) {
+		const err = error as NodeJS.ErrnoException;
+		if (err.code === "ENOENT") {
+			return [];
+		}
+		throw error;
+	}
+}
+
+function registerTools(options?: { thinkingLevel?: string }): Record<string, RegisteredTool> {
 	const tools: Record<string, RegisteredTool> = {};
 	registerSubagentTools(
 		{
 			registerTool: (tool: RegisteredTool) => {
 				tools[tool.name] = tool;
 			},
+			getThinkingLevel: () => options?.thinkingLevel ?? "medium",
 		} as any,
 		{
 			subagentsSchema: {},
@@ -193,6 +230,31 @@ function registerTools(): Record<string, RegisteredTool> {
 		},
 	);
 	return tools;
+}
+
+function createExecuteContext(
+	cwd: string,
+	options?: {
+		hasUI?: boolean;
+		reviewResult?: any;
+		availableModels?: Array<{ provider: string; id: string; name?: string; reasoning?: boolean; api?: string }>;
+		model?: { provider: string; id: string };
+	},
+) {
+	const availableModels = options?.availableModels ?? [];
+	return {
+		hasUI: options?.hasUI ?? false,
+		cwd,
+		model: options?.model,
+		modelRegistry: {
+			getAvailable: () => availableModels,
+			find: (provider: string, modelId: string) =>
+				availableModels.find((model) => model.provider === provider && model.id === modelId),
+		},
+		ui: {
+			custom: async () => options?.reviewResult ?? null,
+		},
+	};
 }
 
 describe("registerSubagentTools", () => {
@@ -217,10 +279,133 @@ describe("subagents tool", () => {
 		expect(Object.keys(tools).sort()).toEqual(["steer_subagent", "subagents"]);
 	});
 
-	test("uses a separate agent dir for each parallel task and hints steer_subagent", async () => {
+	test("uses a separate agent dir and inherits the current model/thinking in headless mode", async () => {
 		const tempDir = await mkdtemp(path.join(os.tmpdir(), "task-subagents-subagents-tool-"));
 		const { binDir, originalAuth, originalModels, originalSettings, sourceAgentDir, spawnLogPath } =
 			await setupStubPi(tempDir);
+		const tools = registerTools({ thinkingLevel: "high" });
+		const subagentsTool = tools.subagents;
+		let previousAgentDir: string | undefined;
+		let previousPath: string | undefined;
+		let previousSpawnLogPath: string | undefined;
+
+		try {
+			previousAgentDir = process.env.PI_CODING_AGENT_DIR;
+			previousPath = process.env.PATH;
+			previousSpawnLogPath = process.env.SUBAGENT_LOG_PATH;
+			process.env.PI_CODING_AGENT_DIR = sourceAgentDir;
+			process.env.PATH = [binDir, previousPath].filter(Boolean).join(path.delimiter);
+			process.env.SUBAGENT_LOG_PATH = spawnLogPath;
+
+			const result = await subagentsTool.execute(
+				"call-1",
+				{
+					tasks: [
+						{ id: "task-a", prompt: "Inspect A", cwd: tempDir },
+						{ id: "task-b", prompt: "Inspect B", cwd: tempDir },
+					],
+					concurrency: 2,
+				},
+				undefined,
+				undefined,
+				createExecuteContext(tempDir, {
+					model: { provider: "openai", id: "gpt-5" },
+				}),
+			);
+
+			expect(result.isError).toBe(false);
+			expect(result.content[0]?.text).toContain("Use steer_subagent with runId");
+			expect(result.details?.launchedCount).toBe(2);
+			expect(result.details?.cancelledCount).toBe(0);
+
+			const logLines = await readSpawnLog(spawnLogPath);
+			expect(logLines).toHaveLength(2);
+
+			const agentDirs = logLines.map((line) => line.agentDir);
+			expect(new Set(agentDirs).size).toBe(2);
+			expect(agentDirs).not.toContain(sourceAgentDir);
+			for (const line of logLines) {
+				expect(line.auth).toBe(originalAuth);
+				expect(line.settings).toBe(originalSettings);
+				expect(line.models).toBe(originalModels);
+				expect(line.model).toBe("openai/gpt-5");
+				expect(line.thinking).toBe("high");
+				expect(line.subagentsDisabled).toBe("1");
+			}
+		} finally {
+			if (previousAgentDir === undefined) {
+				delete process.env.PI_CODING_AGENT_DIR;
+			} else {
+				process.env.PI_CODING_AGENT_DIR = previousAgentDir;
+			}
+			if (previousPath === undefined) {
+				delete process.env.PATH;
+			} else {
+				process.env.PATH = previousPath;
+			}
+			if (previousSpawnLogPath === undefined) {
+				delete process.env.SUBAGENT_LOG_PATH;
+			} else {
+				process.env.SUBAGENT_LOG_PATH = previousSpawnLogPath;
+			}
+			await rm(tempDir, { recursive: true, force: true });
+		}
+	});
+
+	test("returns early when the pre-launch review is cancelled", async () => {
+		const tempDir = await mkdtemp(path.join(os.tmpdir(), "task-subagents-prelaunch-cancel-"));
+		const { binDir, sourceAgentDir, spawnLogPath } = await setupStubPi(tempDir);
+		const tools = registerTools();
+		const subagentsTool = tools.subagents;
+		let previousAgentDir: string | undefined;
+		let previousPath: string | undefined;
+		let previousSpawnLogPath: string | undefined;
+
+		try {
+			previousAgentDir = process.env.PI_CODING_AGENT_DIR;
+			previousPath = process.env.PATH;
+			previousSpawnLogPath = process.env.SUBAGENT_LOG_PATH;
+			process.env.PI_CODING_AGENT_DIR = sourceAgentDir;
+			process.env.PATH = [binDir, previousPath].filter(Boolean).join(path.delimiter);
+			process.env.SUBAGENT_LOG_PATH = spawnLogPath;
+
+			const result = await subagentsTool.execute(
+				"call-1",
+				{
+					tasks: [{ id: "task-a", prompt: "Inspect A", cwd: tempDir }],
+					concurrency: 1,
+				},
+				undefined,
+				undefined,
+				createExecuteContext(tempDir, { hasUI: true, reviewResult: null }),
+			);
+
+			expect(result.isError).toBe(true);
+			expect(result.content[0]?.text).toBe("Subagent launch cancelled before starting. No child processes were started.");
+			expect(await readSpawnLog(spawnLogPath)).toEqual([]);
+		} finally {
+			if (previousAgentDir === undefined) {
+				delete process.env.PI_CODING_AGENT_DIR;
+			} else {
+				process.env.PI_CODING_AGENT_DIR = previousAgentDir;
+			}
+			if (previousPath === undefined) {
+				delete process.env.PATH;
+			} else {
+				process.env.PATH = previousPath;
+			}
+			if (previousSpawnLogPath === undefined) {
+				delete process.env.SUBAGENT_LOG_PATH;
+			} else {
+				process.env.SUBAGENT_LOG_PATH = previousSpawnLogPath;
+			}
+			await rm(tempDir, { recursive: true, force: true });
+		}
+	});
+
+	test("skips cancelled tasks and reports cancellation notes", async () => {
+		const tempDir = await mkdtemp(path.join(os.tmpdir(), "task-subagents-selective-cancel-"));
+		const { binDir, sourceAgentDir, spawnLogPath } = await setupStubPi(tempDir);
 		const tools = registerTools();
 		const subagentsTool = tools.subagents;
 		let previousAgentDir: string | undefined;
@@ -246,36 +431,36 @@ describe("subagents tool", () => {
 				},
 				undefined,
 				undefined,
-				{ cwd: tempDir } as any,
+				createExecuteContext(tempDir, {
+					hasUI: true,
+					reviewResult: [
+						{ taskId: "task-a", prompt: "Inspect A", cwd: tempDir, launchStatus: "ready" },
+						{
+							taskId: "task-b",
+							prompt: "Inspect B",
+							cwd: tempDir,
+							launchStatus: "cancelled",
+							cancellationNote: "Already covered by task-a",
+						},
+					],
+				}),
 			);
 
 			expect(result.isError).toBe(false);
-			expect(result.content[0]?.text).toContain("Use steer_subagent with runId");
+			expect(result.content[0]?.text).toContain("1 cancelled");
+			expect(result.content[0]?.text).toContain("Cancellation note: Already covered by task-a");
+			expect(result.details?.launchedCount).toBe(1);
+			expect(result.details?.cancelledCount).toBe(1);
+			expect(result.details?.tasks[1]).toMatchObject({
+				status: "cancelled",
+				cancellationNote: "Already covered by task-a",
+				startedAt: null,
+				finishedAt: null,
+			});
 
-			const logLines = (await readFile(spawnLogPath, "utf8"))
-				.trim()
-				.split("\n")
-				.map(
-					(line) =>
-						JSON.parse(line) as {
-							agentDir: string;
-							auth: string;
-							settings: string;
-							models: string;
-							subagentsDisabled: string;
-						},
-				);
-			expect(logLines).toHaveLength(2);
-
-			const agentDirs = logLines.map((line) => line.agentDir);
-			expect(new Set(agentDirs).size).toBe(2);
-			expect(agentDirs).not.toContain(sourceAgentDir);
-			for (const line of logLines) {
-				expect(line.auth).toBe(originalAuth);
-				expect(line.settings).toBe(originalSettings);
-				expect(line.models).toBe(originalModels);
-				expect(line.subagentsDisabled).toBe("1");
-			}
+			const logLines = await readSpawnLog(spawnLogPath);
+			expect(logLines).toHaveLength(1);
+			expect(logLines[0]?.prompt).toContain("Task ID: task-a");
 		} finally {
 			if (previousAgentDir === undefined) {
 				delete process.env.PI_CODING_AGENT_DIR;
@@ -296,20 +481,23 @@ describe("subagents tool", () => {
 		}
 	});
 
-	test("steer_subagent reruns a prior task with updated naming", async () => {
-		const tempDir = await mkdtemp(path.join(os.tmpdir(), "task-subagents-steer-tool-"));
-		const { binDir, sourceAgentDir } = await setupStubPi(tempDir);
-		const tools = registerTools();
+	test("inherits the current model and thinking level by default and reuses them for steering", async () => {
+		const tempDir = await mkdtemp(path.join(os.tmpdir(), "task-subagents-default-inheritance-"));
+		const { binDir, sourceAgentDir, spawnLogPath } = await setupStubPi(tempDir);
+		const tools = registerTools({ thinkingLevel: "low" });
 		const subagentsTool = tools.subagents;
 		const steerSubagentTool = tools.steer_subagent;
 		let previousAgentDir: string | undefined;
 		let previousPath: string | undefined;
+		let previousSpawnLogPath: string | undefined;
 
 		try {
 			previousAgentDir = process.env.PI_CODING_AGENT_DIR;
 			previousPath = process.env.PATH;
+			previousSpawnLogPath = process.env.SUBAGENT_LOG_PATH;
 			process.env.PI_CODING_AGENT_DIR = sourceAgentDir;
 			process.env.PATH = [binDir, previousPath].filter(Boolean).join(path.delimiter);
+			process.env.SUBAGENT_LOG_PATH = spawnLogPath;
 
 			const initialResult = await subagentsTool.execute(
 				"call-1",
@@ -319,7 +507,292 @@ describe("subagents tool", () => {
 				},
 				undefined,
 				undefined,
-				{ cwd: tempDir } as any,
+				createExecuteContext(tempDir, {
+					hasUI: true,
+					model: { provider: "openai", id: "gpt-5" },
+					reviewResult: [
+						{
+							taskId: "task-a",
+							prompt: "Inspect A",
+							cwd: tempDir,
+							launchStatus: "ready",
+						},
+					],
+				}),
+			);
+
+			const runId = initialResult.details?.runId;
+			expect(runId).toEqual(expect.any(String));
+			expect(initialResult.details?.tasks[0]).toMatchObject({
+				modelOverride: undefined,
+				thinkingOverride: undefined,
+				launchModel: "openai/gpt-5",
+				launchThinking: "low",
+			});
+
+			const rerunResult = await steerSubagentTool.execute(
+				"call-2",
+				{
+					runId,
+					taskId: "task-a",
+					instruction: "Focus on config files.",
+				},
+				undefined,
+				undefined,
+				createExecuteContext(tempDir),
+			);
+
+			expect(rerunResult.isError).toBe(false);
+			expect(rerunResult.details?.tasks[0]).toMatchObject({
+				modelOverride: undefined,
+				thinkingOverride: undefined,
+				launchModel: "openai/gpt-5",
+				launchThinking: "low",
+				steeringNotes: ["Focus on config files."],
+			});
+
+			const logLines = await readSpawnLog(spawnLogPath);
+			expect(logLines).toHaveLength(2);
+			expect(logLines[0]?.model).toBe("openai/gpt-5");
+			expect(logLines[0]?.thinking).toBe("low");
+			expect(logLines[1]?.steered).toBe(true);
+			expect(logLines[1]?.model).toBe("openai/gpt-5");
+			expect(logLines[1]?.thinking).toBe("low");
+		} finally {
+			if (previousAgentDir === undefined) {
+				delete process.env.PI_CODING_AGENT_DIR;
+			} else {
+				process.env.PI_CODING_AGENT_DIR = previousAgentDir;
+			}
+			if (previousPath === undefined) {
+				delete process.env.PATH;
+			} else {
+				process.env.PATH = previousPath;
+			}
+			if (previousSpawnLogPath === undefined) {
+				delete process.env.SUBAGENT_LOG_PATH;
+			} else {
+				process.env.SUBAGENT_LOG_PATH = previousSpawnLogPath;
+			}
+			await rm(tempDir, { recursive: true, force: true });
+		}
+	});
+
+	test("clamps inherited thinking to the selected model before persisting and steering", async () => {
+		const tempDir = await mkdtemp(path.join(os.tmpdir(), "task-subagents-thinking-clamp-"));
+		const { binDir, sourceAgentDir, spawnLogPath } = await setupStubPi(tempDir);
+		const tools = registerTools({ thinkingLevel: "xhigh" });
+		const subagentsTool = tools.subagents;
+		const steerSubagentTool = tools.steer_subagent;
+		let previousAgentDir: string | undefined;
+		let previousPath: string | undefined;
+		let previousSpawnLogPath: string | undefined;
+
+		try {
+			previousAgentDir = process.env.PI_CODING_AGENT_DIR;
+			previousPath = process.env.PATH;
+			previousSpawnLogPath = process.env.SUBAGENT_LOG_PATH;
+			process.env.PI_CODING_AGENT_DIR = sourceAgentDir;
+			process.env.PATH = [binDir, previousPath].filter(Boolean).join(path.delimiter);
+			process.env.SUBAGENT_LOG_PATH = spawnLogPath;
+
+			const initialResult = await subagentsTool.execute(
+				"call-1",
+				{
+					tasks: [{ id: "task-a", prompt: "Inspect A", cwd: tempDir }],
+					concurrency: 1,
+				},
+				undefined,
+				undefined,
+				createExecuteContext(tempDir, {
+					hasUI: true,
+					model: { provider: "openai", id: "gpt-5.2" },
+					availableModels: [
+						{ provider: "openai", id: "gpt-5.2", name: "GPT-5.2", reasoning: true },
+						{ provider: "openai", id: "gpt-5", name: "GPT-5", reasoning: true },
+					],
+					reviewResult: [
+						{
+							taskId: "task-a",
+							prompt: "Inspect A",
+							cwd: tempDir,
+							launchStatus: "ready",
+							modelOverride: "openai/gpt-5",
+						},
+					],
+				}),
+			);
+
+			const runId = initialResult.details?.runId;
+			expect(runId).toEqual(expect.any(String));
+			expect(initialResult.details?.tasks[0]).toMatchObject({
+				modelOverride: "openai/gpt-5",
+				thinkingOverride: undefined,
+				launchModel: "openai/gpt-5",
+				launchThinking: "high",
+			});
+
+			const rerunResult = await steerSubagentTool.execute(
+				"call-2",
+				{
+					runId,
+					taskId: "task-a",
+					instruction: "Double-check the config.",
+				},
+				undefined,
+				undefined,
+				createExecuteContext(tempDir, {
+					availableModels: [{ provider: "openai", id: "gpt-5", name: "GPT-5", reasoning: true }],
+				}),
+			);
+
+			expect(rerunResult.isError).toBe(false);
+			expect(rerunResult.details?.tasks[0]).toMatchObject({
+				launchModel: "openai/gpt-5",
+				launchThinking: "high",
+				steeringNotes: ["Double-check the config."],
+			});
+
+			const logLines = await readSpawnLog(spawnLogPath);
+			expect(logLines).toHaveLength(2);
+			expect(logLines[0]?.model).toBe("openai/gpt-5");
+			expect(logLines[0]?.thinking).toBe("high");
+			expect(logLines[1]?.model).toBe("openai/gpt-5");
+			expect(logLines[1]?.thinking).toBe("high");
+		} finally {
+			if (previousAgentDir === undefined) {
+				delete process.env.PI_CODING_AGENT_DIR;
+			} else {
+				process.env.PI_CODING_AGENT_DIR = previousAgentDir;
+			}
+			if (previousPath === undefined) {
+				delete process.env.PATH;
+			} else {
+				process.env.PATH = previousPath;
+			}
+			if (previousSpawnLogPath === undefined) {
+				delete process.env.SUBAGENT_LOG_PATH;
+			} else {
+				process.env.SUBAGENT_LOG_PATH = previousSpawnLogPath;
+			}
+			await rm(tempDir, { recursive: true, force: true });
+		}
+	});
+
+	test("passes explicit model and thinking overrides to child pi invocations", async () => {
+		const tempDir = await mkdtemp(path.join(os.tmpdir(), "task-subagents-overrides-"));
+		const { binDir, sourceAgentDir, spawnLogPath } = await setupStubPi(tempDir);
+		const tools = registerTools();
+		const subagentsTool = tools.subagents;
+		let previousAgentDir: string | undefined;
+		let previousPath: string | undefined;
+		let previousSpawnLogPath: string | undefined;
+
+		try {
+			previousAgentDir = process.env.PI_CODING_AGENT_DIR;
+			previousPath = process.env.PATH;
+			previousSpawnLogPath = process.env.SUBAGENT_LOG_PATH;
+			process.env.PI_CODING_AGENT_DIR = sourceAgentDir;
+			process.env.PATH = [binDir, previousPath].filter(Boolean).join(path.delimiter);
+			process.env.SUBAGENT_LOG_PATH = spawnLogPath;
+
+			const result = await subagentsTool.execute(
+				"call-1",
+				{
+					tasks: [{ id: "task-a", prompt: "Inspect A", cwd: tempDir }],
+					concurrency: 1,
+				},
+				undefined,
+				undefined,
+				createExecuteContext(tempDir, {
+					hasUI: true,
+					availableModels: [{ provider: "openai", id: "gpt-5", name: "GPT-5", reasoning: true }],
+					reviewResult: [
+						{
+							taskId: "task-a",
+							prompt: "Inspect A",
+							cwd: tempDir,
+							launchStatus: "ready",
+							modelOverride: "openai/gpt-5",
+							thinkingOverride: "high",
+						},
+					],
+				}),
+			);
+
+			expect(result.isError).toBe(false);
+			expect(result.content[0]?.text).toContain("Model override: openai/gpt-5");
+			expect(result.content[0]?.text).toContain("Thinking override: high");
+			expect(result.details?.tasks[0]).toMatchObject({
+				modelOverride: "openai/gpt-5",
+				thinkingOverride: "high",
+				status: "completed",
+			});
+
+			const logLines = await readSpawnLog(spawnLogPath);
+			expect(logLines).toHaveLength(1);
+			expect(logLines[0]?.model).toBe("openai/gpt-5");
+			expect(logLines[0]?.thinking).toBe("high");
+		} finally {
+			if (previousAgentDir === undefined) {
+				delete process.env.PI_CODING_AGENT_DIR;
+			} else {
+				process.env.PI_CODING_AGENT_DIR = previousAgentDir;
+			}
+			if (previousPath === undefined) {
+				delete process.env.PATH;
+			} else {
+				process.env.PATH = previousPath;
+			}
+			if (previousSpawnLogPath === undefined) {
+				delete process.env.SUBAGENT_LOG_PATH;
+			} else {
+				process.env.SUBAGENT_LOG_PATH = previousSpawnLogPath;
+			}
+			await rm(tempDir, { recursive: true, force: true });
+		}
+	});
+
+	test("steer_subagent reuses reviewed model and thinking overrides", async () => {
+		const tempDir = await mkdtemp(path.join(os.tmpdir(), "task-subagents-steer-tool-"));
+		const { binDir, sourceAgentDir, spawnLogPath } = await setupStubPi(tempDir);
+		const tools = registerTools();
+		const subagentsTool = tools.subagents;
+		const steerSubagentTool = tools.steer_subagent;
+		let previousAgentDir: string | undefined;
+		let previousPath: string | undefined;
+		let previousSpawnLogPath: string | undefined;
+
+		try {
+			previousAgentDir = process.env.PI_CODING_AGENT_DIR;
+			previousPath = process.env.PATH;
+			previousSpawnLogPath = process.env.SUBAGENT_LOG_PATH;
+			process.env.PI_CODING_AGENT_DIR = sourceAgentDir;
+			process.env.PATH = [binDir, previousPath].filter(Boolean).join(path.delimiter);
+			process.env.SUBAGENT_LOG_PATH = spawnLogPath;
+
+			const initialResult = await subagentsTool.execute(
+				"call-1",
+				{
+					tasks: [{ id: "task-a", prompt: "Inspect A", cwd: tempDir }],
+					concurrency: 1,
+				},
+				undefined,
+				undefined,
+				createExecuteContext(tempDir, {
+					hasUI: true,
+					availableModels: [{ provider: "openai", id: "gpt-5", name: "GPT-5", reasoning: true }],
+					reviewResult: [
+						{
+							taskId: "task-a",
+							prompt: "Inspect A",
+							cwd: tempDir,
+							launchStatus: "ready",
+							modelOverride: "openai/gpt-5",
+							thinkingOverride: "medium",
+						},
+					],
+				}),
 			);
 
 			const runId = initialResult.details?.runId;
@@ -334,13 +807,25 @@ describe("subagents tool", () => {
 				},
 				undefined,
 				undefined,
-				{ cwd: tempDir } as any,
+				createExecuteContext(tempDir),
 			);
 
 			expect(rerunResult.isError).toBe(false);
 			expect(rerunResult.content[0]?.text).toContain(`Steered task-a in run ${runId}.`);
 			expect(rerunResult.content[0]?.text).toContain("steered output");
-			expect(rerunResult.details?.tasks[0]?.steeringNotes).toEqual(["Focus on config files."]);
+			expect(rerunResult.details?.tasks[0]).toMatchObject({
+				modelOverride: "openai/gpt-5",
+				thinkingOverride: "medium",
+				steeringNotes: ["Focus on config files."],
+			});
+
+			const logLines = await readSpawnLog(spawnLogPath);
+			expect(logLines).toHaveLength(2);
+			expect(logLines[0]?.model).toBe("openai/gpt-5");
+			expect(logLines[0]?.thinking).toBe("medium");
+			expect(logLines[1]?.steered).toBe(true);
+			expect(logLines[1]?.model).toBe("openai/gpt-5");
+			expect(logLines[1]?.thinking).toBe("medium");
 		} finally {
 			if (previousAgentDir === undefined) {
 				delete process.env.PI_CODING_AGENT_DIR;
@@ -352,18 +837,24 @@ describe("subagents tool", () => {
 			} else {
 				process.env.PATH = previousPath;
 			}
+			if (previousSpawnLogPath === undefined) {
+				delete process.env.SUBAGENT_LOG_PATH;
+			} else {
+				process.env.SUBAGENT_LOG_PATH = previousSpawnLogPath;
+			}
 			await rm(tempDir, { recursive: true, force: true });
 		}
 	});
 });
 
 describe("buildSubagentRunDetails", () => {
-	test("counts successful tasks", () => {
+	test("counts completed, failed, and cancelled tasks", () => {
 		const details = buildSubagentRunDetails("run-1", [
 			{
 				taskId: "task-1",
 				task: "One",
 				cwd: "/tmp",
+				status: "completed",
 				output: "ok",
 				references: [],
 				exitCode: 0,
@@ -377,6 +868,7 @@ describe("buildSubagentRunDetails", () => {
 				taskId: "task-2",
 				task: "Two",
 				cwd: "/tmp",
+				status: "failed",
 				output: "",
 				references: [],
 				exitCode: 1,
@@ -386,9 +878,26 @@ describe("buildSubagentRunDetails", () => {
 				finishedAt: 2,
 				steeringNotes: [],
 			},
+			{
+				taskId: "task-3",
+				task: "Three",
+				cwd: "/tmp",
+				status: "cancelled",
+				output: "",
+				references: [],
+				exitCode: null,
+				stderr: "",
+				activities: [],
+				startedAt: null,
+				finishedAt: null,
+				steeringNotes: [],
+			},
 		]);
 
 		expect(details.successCount).toBe(1);
-		expect(details.totalCount).toBe(2);
+		expect(details.failedCount).toBe(1);
+		expect(details.cancelledCount).toBe(1);
+		expect(details.launchedCount).toBe(2);
+		expect(details.totalCount).toBe(3);
 	});
 });
