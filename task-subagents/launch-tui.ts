@@ -5,10 +5,12 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
-import type {
-	NormalizedSubagentTask,
-	ReviewedSubagentTask,
-	SubagentThinkingLevel,
+import {
+	SUBAGENT_THINKING_LEVELS,
+	type NormalizedSubagentTask,
+	type ReviewedSubagentTask,
+	type SubagentContextMode,
+	type SubagentThinkingLevel,
 } from "./types";
 
 const require = createRequire(import.meta.url);
@@ -99,8 +101,6 @@ function getPiTui() {
 	};
 }
 
-export const SUBAGENT_THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh"] as const;
-
 export type SubagentModelOption = {
 	value?: string;
 	label: string;
@@ -113,6 +113,13 @@ export type SubagentThinkingOption = {
 	description?: string;
 };
 
+export type SubagentContextOption = {
+	value: SubagentContextMode;
+	label: string;
+	description?: string;
+	disabled?: boolean;
+};
+
 export function normalizeSubagentCancellationNote(note: string): string | undefined {
 	const trimmed = note.trim();
 	return trimmed.length > 0 ? trimmed : undefined;
@@ -121,11 +128,17 @@ export function normalizeSubagentCancellationNote(note: string): string | undefi
 export function createInitialReviewedSubagentTasks(
 	tasks: NormalizedSubagentTask[],
 	defaultCwd: string,
+	options?: {
+		defaultThinking?: SubagentThinkingLevel;
+		launchContext?: SubagentContextMode;
+	},
 ): ReviewedSubagentTask[] {
 	return tasks.map((task) => ({
 		taskId: task.id,
 		prompt: task.prompt,
 		cwd: task.cwd?.trim() ? task.cwd : defaultCwd,
+		defaultThinking: options?.defaultThinking,
+		launchContext: options?.launchContext ?? "fresh",
 		launchStatus: "ready",
 		cancellationNote: undefined,
 	}));
@@ -135,8 +148,14 @@ function formatCurrentModelLabel(currentModelId: string | undefined): string {
 	return currentModelId ? `${currentModelId} (current)` : "(no current model)";
 }
 
-function formatCurrentThinkingLabel(currentThinkingLevel: SubagentThinkingLevel | undefined): string {
-	return currentThinkingLevel ? `${currentThinkingLevel} (current)` : "(unknown thinking)";
+function formatCurrentThinkingLabel(
+	currentThinkingLevel: SubagentThinkingLevel | undefined,
+	inheritedFromCurrent: boolean,
+): string {
+	if (!currentThinkingLevel) {
+		return inheritedFromCurrent ? "(unknown thinking)" : "(unknown default thinking)";
+	}
+	return `${currentThinkingLevel} (${inheritedFromCurrent ? "current" : "default"})`;
 }
 
 export function buildSubagentModelOptions(
@@ -167,16 +186,40 @@ export function buildSubagentModelOptions(
 	return options;
 }
 
-export function buildSubagentThinkingOptions(currentThinkingLevel?: SubagentThinkingLevel): SubagentThinkingOption[] {
+export function buildSubagentThinkingOptions(
+	currentThinkingLevel?: SubagentThinkingLevel,
+	options?: { inheritedFromCurrent?: boolean },
+): SubagentThinkingOption[] {
+	const inheritedFromCurrent = options?.inheritedFromCurrent ?? true;
 	return [
 		{
-			label: formatCurrentThinkingLabel(currentThinkingLevel),
-			description: "Use the main agent's current thinking level.",
+			label: formatCurrentThinkingLabel(currentThinkingLevel, inheritedFromCurrent),
+			description: inheritedFromCurrent
+				? "Use the main agent's current thinking level."
+				: "Use the requested subagent thinking level.",
 		},
 		...SUBAGENT_THINKING_LEVELS.map((level) => ({
 			value: level,
 			label: level,
 		})),
+	];
+}
+
+export function buildSubagentContextOptions(hasForkSource: boolean): SubagentContextOption[] {
+	return [
+		{
+			value: "fresh",
+			label: "fresh",
+			description: "Start each subagent in a fresh ephemeral session.",
+		},
+		{
+			value: "fork",
+			label: "fork",
+			description: hasForkSource
+				? "Fork each subagent from the current session."
+				: "Fork each subagent from the current session. Unavailable until the current session is saved.",
+			disabled: !hasForkSource,
+		},
 	];
 }
 
@@ -313,12 +356,18 @@ type TuiComponent = {
 	invalidate: () => void;
 };
 
+export type SubagentLaunchReviewHandle = {
+	appendTasks: (tasks: ReviewedSubagentTask[]) => void;
+};
+
 class SubagentLaunchReviewComponent implements TuiComponent {
 	private tasks: ReviewedSubagentTask[];
 	private currentIndex = 0;
 	private showingConfirmation = false;
 	private readonly modelOptions: SubagentModelOption[];
-	private readonly thinkingOptions: SubagentThinkingOption[];
+	private readonly currentThinkingLevel?: SubagentThinkingLevel;
+	private readonly contextOptions: SubagentContextOption[];
+	private readonly hasForkSource: boolean;
 	private readonly editor: {
 		disableSubmit?: boolean;
 		onChange?: () => void;
@@ -343,7 +392,9 @@ class SubagentLaunchReviewComponent implements TuiComponent {
 	constructor(
 		tasks: ReviewedSubagentTask[],
 		modelOptions: SubagentModelOption[],
-		thinkingOptions: SubagentThinkingOption[],
+		currentThinkingLevel: SubagentThinkingLevel | undefined,
+		contextOptions: SubagentContextOption[],
+		hasForkSource: boolean,
 		tui: { requestRender: () => void },
 		onDone: (result: ReviewedSubagentTask[] | null) => void,
 		options?: {
@@ -355,9 +406,11 @@ class SubagentLaunchReviewComponent implements TuiComponent {
 			boldText?: (text: string) => string;
 		},
 	) {
-		this.tasks = tasks;
+		this.tasks = [...tasks];
 		this.modelOptions = modelOptions;
-		this.thinkingOptions = thinkingOptions;
+		this.currentThinkingLevel = currentThinkingLevel;
+		this.contextOptions = contextOptions;
+		this.hasForkSource = hasForkSource;
 		this.tui = tui;
 		this.onDone = onDone;
 		this.accent = options?.accentColor ?? this.accent;
@@ -458,13 +511,19 @@ class SubagentLaunchReviewComponent implements TuiComponent {
 		this.tui.requestRender();
 	}
 
+	private getThinkingOptions(task: ReviewedSubagentTask | undefined): SubagentThinkingOption[] {
+		return buildSubagentThinkingOptions(task?.defaultThinking ?? this.currentThinkingLevel, {
+			inheritedFromCurrent: task?.defaultThinking === undefined,
+		});
+	}
+
 	private cycleThinking(): void {
 		const current = this.getCurrent();
 		if (!current) {
 			return;
 		}
 
-		const next = cycleOption(this.thinkingOptions, current.thinkingOverride);
+		const next = cycleOption(this.getThinkingOptions(current), current.thinkingOverride);
 		if (!next) {
 			return;
 		}
@@ -475,12 +534,53 @@ class SubagentLaunchReviewComponent implements TuiComponent {
 		this.tui.requestRender();
 	}
 
+	private cycleContext(): void {
+		const current = this.getCurrent();
+		if (!current) {
+			return;
+		}
+
+		const enabledOptions = this.contextOptions.filter((option) => !option.disabled);
+		const next = cycleOption(enabledOptions, current.launchContext);
+		if (!next) {
+			return;
+		}
+
+		current.launchContext = next.value;
+		this.showingConfirmation = false;
+		this.invalidate();
+		this.tui.requestRender();
+	}
+
 	private getModelLabel(modelOverride: string | undefined): string {
 		return this.modelOptions.find((option) => option.value === modelOverride)?.label ?? this.modelOptions[0]?.label ?? "(no current model)";
 	}
 
-	private getThinkingLabel(thinkingOverride: SubagentThinkingLevel | undefined): string {
-		return this.thinkingOptions.find((option) => option.value === thinkingOverride)?.label ?? this.thinkingOptions[0]?.label ?? "(unknown thinking)";
+	private getThinkingLabel(task: ReviewedSubagentTask): string {
+		const thinkingOptions = this.getThinkingOptions(task);
+		return thinkingOptions.find((option) => option.value === task.thinkingOverride)?.label ?? thinkingOptions[0]?.label ?? "(unknown thinking)";
+	}
+
+	private getContextLabel(context: SubagentContextMode): string {
+		return this.contextOptions.find((option) => option.value === context)?.label ?? context;
+	}
+
+	appendTasks(tasks: ReviewedSubagentTask[]): void {
+		if (tasks.length === 0) {
+			return;
+		}
+
+		const hadCurrent = !!this.getCurrent();
+		if (hadCurrent) {
+			this.saveCurrentEditorText();
+		}
+		this.tasks.push(...tasks);
+		if (!hadCurrent) {
+			this.currentIndex = 0;
+			this.loadCurrentEditorText();
+		}
+		this.invalidate();
+		this.tui.requestRender();
 	}
 
 	private submit(): void {
@@ -523,6 +623,11 @@ class SubagentLaunchReviewComponent implements TuiComponent {
 
 		if (matchesKey(data, Key.ctrl("p"))) {
 			this.cycleModel();
+			return;
+		}
+
+		if (matchesKey(data, Key.ctrl("f"))) {
+			this.cycleContext();
 			return;
 		}
 
@@ -622,7 +727,8 @@ class SubagentLaunchReviewComponent implements TuiComponent {
 				}
 				lines.push(padLine(this.muted(`   CWD: ${task.cwd}`)));
 				lines.push(padLine(this.muted(`   Model: ${this.getModelLabel(task.modelOverride)}`)));
-				lines.push(padLine(this.muted(`   Thinking: ${this.getThinkingLabel(task.thinkingOverride)}`)));
+				lines.push(padLine(this.muted(`   Thinking: ${this.getThinkingLabel(task)}`)));
+				lines.push(padLine(this.muted(`   Context: ${this.getContextLabel(task.launchContext)}`)));
 				if (task.launchStatus === "cancelled" && task.cancellationNote) {
 					for (const line of wrapMultiline(`   Note: ${task.cancellationNote}`, contentWidth)) {
 						lines.push(padLine(this.muted(line)));
@@ -652,6 +758,11 @@ class SubagentLaunchReviewComponent implements TuiComponent {
 			return lines;
 		}
 
+		const contextWarning =
+			current.launchContext === "fork" && !this.hasForkSource
+				? this.warning("Current session is not saved, so fork launch will fail until you switch to a saved session.")
+				: undefined;
+
 		const progressParts = this.tasks.map((task, index) => {
 			if (index === this.currentIndex) {
 				return this.accent("●");
@@ -662,7 +773,13 @@ class SubagentLaunchReviewComponent implements TuiComponent {
 		lines.push(padLine(`${this.accent(`Task ${this.currentIndex + 1}/${this.tasks.length}`)}${this.muted(` · ${current.taskId}`)}`));
 		lines.push(padLine(`${this.muted("Launch:")} ${current.launchStatus === "cancelled" ? this.warning("cancelled") : this.success("ready")}`));
 		lines.push(padLine(`${this.muted("Model:")} ${this.getModelLabel(current.modelOverride)}`));
-		lines.push(padLine(`${this.muted("Thinking:")} ${this.getThinkingLabel(current.thinkingOverride)}`));
+		lines.push(padLine(`${this.muted("Thinking:")} ${this.getThinkingLabel(current)}`));
+		lines.push(padLine(`${this.muted("Context:")} ${this.getContextLabel(current.launchContext)}`));
+		if (contextWarning) {
+			for (const line of wrapMultiline(contextWarning, contentWidth)) {
+				lines.push(padLine(line));
+			}
+		}
 		lines.push(padLine(""));
 		lines.push(padLine(this.muted("CWD:")));
 		for (const line of wrapMultiline(current.cwd, contentWidth)) {
@@ -687,6 +804,7 @@ class SubagentLaunchReviewComponent implements TuiComponent {
 		lines.push(padLine([
 			hint("Tab", "cycle tasks"),
 			hint("Ctrl+P", "cycle model"),
+			hint("Ctrl+F", "cycle context"),
 			hint("⇧Tab", "cycle thinking"),
 			hint("Alt+Enter", "cancel/restore"),
 			hint("Enter", "next/confirm on last"),
@@ -702,28 +820,42 @@ class SubagentLaunchReviewComponent implements TuiComponent {
 
 export async function runSubagentLaunchReview(
 	ctx: ExtensionContext,
-	tasks: NormalizedSubagentTask[],
+	reviewedTasks: ReviewedSubagentTask[],
 	defaults?: {
 		currentModelId?: string;
 		currentThinkingLevel?: SubagentThinkingLevel;
+		hasForkSource?: boolean;
+		onReady?: (handle: SubagentLaunchReviewHandle) => void;
 	},
 ): Promise<ReviewedSubagentTask[] | null> {
 	if (!ctx.hasUI) {
 		return null;
 	}
 
-	const reviewedTasks = createInitialReviewedSubagentTasks(tasks, ctx.cwd);
 	const modelOptions = buildSubagentModelOptions(await getModelCandidates(ctx), defaults?.currentModelId);
-	const thinkingOptions = buildSubagentThinkingOptions(defaults?.currentThinkingLevel);
+	const contextOptions = buildSubagentContextOptions(defaults?.hasForkSource ?? false);
 
 	return ctx.ui.custom<ReviewedSubagentTask[] | null>((tui, theme, _kb, done) => {
-		return new SubagentLaunchReviewComponent(reviewedTasks, modelOptions, thinkingOptions, tui, done, {
-			accentColor: (text) => theme.fg("accent", text),
-			successColor: (text) => theme.fg("success", text),
-			warningColor: (text) => theme.fg("warning", text),
-			mutedColor: (text) => theme.fg("muted", text),
-			dimColor: (text) => theme.fg("dim", text),
-			boldText: (text) => theme.bold(text),
+		const component = new SubagentLaunchReviewComponent(
+			reviewedTasks,
+			modelOptions,
+			defaults?.currentThinkingLevel,
+			contextOptions,
+			defaults?.hasForkSource ?? false,
+			tui,
+			done,
+			{
+				accentColor: (text) => theme.fg("accent", text),
+				successColor: (text) => theme.fg("success", text),
+				warningColor: (text) => theme.fg("warning", text),
+				mutedColor: (text) => theme.fg("muted", text),
+				dimColor: (text) => theme.fg("dim", text),
+				boldText: (text) => theme.bold(text),
+			},
+		);
+		defaults?.onReady?.({
+			appendTasks: (tasks) => component.appendTasks(tasks),
 		});
+		return component;
 	});
 }

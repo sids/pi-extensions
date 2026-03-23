@@ -14,6 +14,7 @@ import type {
 	ReviewedSubagentTask,
 	SubagentActivity,
 	SubagentActivityKind,
+	SubagentContextMode,
 	SubagentProgressDetails,
 	SubagentRunDetails,
 	SubagentRunRecord,
@@ -22,7 +23,12 @@ import type {
 	SubagentTaskResult,
 	SubagentThinkingLevel,
 } from "./types";
-import { resolveSubagentConcurrency } from "./utils";
+import {
+	resolveSubagentConcurrency,
+	resolveSubagentContextMode,
+	resolveSubagentThinkingLevel,
+	resolveSubagentToolThinkingLevel,
+} from "./utils";
 
 const require = createRequire(import.meta.url);
 
@@ -47,7 +53,7 @@ function createText(text: string) {
 
 const SUBAGENT_PREVIEW_LIMIT = 4;
 // Each subagent gets its own agent dir copy for auth/settings/models so concurrent
-// `pi --no-session` startup does not contend on global lock files.
+// child `pi` startup does not contend on global lock files.
 const SUBAGENT_DIR_ENV = "PI_CODING_AGENT_DIR";
 // Child pi processes inherit this to prevent recursive subagent delegation.
 const SUBAGENT_EXTENSION_DISABLED_ENV = "PI_TASK_SUBAGENTS_DISABLED";
@@ -319,6 +325,8 @@ function buildSubagentProgressText(details: SubagentProgressDetails): string {
 type PreparedSubagentTask = ReviewedSubagentTask & {
 	launchModel?: string;
 	launchThinking?: SubagentThinkingLevel;
+	launchContext: SubagentContextMode;
+	forkSessionFile?: string;
 };
 
 type RunnableSubagentTask = PreparedSubagentTask;
@@ -330,6 +338,10 @@ function buildCurrentSubagentModelId(model: { provider: string; id: string } | u
 		return undefined;
 	}
 	return `${model.provider}/${model.id}`;
+}
+
+function buildCurrentSubagentSessionFile(ctx: { sessionManager?: { getSessionFile?: () => string | undefined } }): string | undefined {
+	return ctx.sessionManager?.getSessionFile?.();
 }
 
 function parseSubagentModelId(modelId: string | undefined): { provider: string; id: string } | undefined {
@@ -407,6 +419,7 @@ function prepareSubagentTasks(
 	defaults: {
 		model?: string;
 		thinking?: SubagentThinkingLevel;
+		forkSessionFile?: string;
 	},
 	modelRegistry: { find: (provider: string, modelId: string) => { id: string; api?: string; reasoning?: boolean } | undefined },
 ): PreparedSubagentTask[] {
@@ -418,8 +431,10 @@ function prepareSubagentTasks(
 			launchThinking: resolvePreparedSubagentThinking(
 				modelRegistry,
 				launchModel,
-				task.thinkingOverride ?? defaults.thinking,
+				task.thinkingOverride ?? task.defaultThinking ?? defaults.thinking,
 			),
+			launchContext: task.launchContext,
+			forkSessionFile: task.launchContext === "fork" ? defaults.forkSessionFile : undefined,
 		};
 	});
 }
@@ -453,7 +468,41 @@ async function runSubagentTask(
 	}
 
 	const prompt = promptParts.join("\n\n");
-	const args = ["--mode", "json", "--no-session"];
+	const args = ["--mode", "json"];
+	if (task.launchContext === "fork") {
+		if (!task.forkSessionFile) {
+			return {
+				taskId: task.taskId,
+				task: task.prompt,
+				cwd: task.cwd,
+				status: "failed",
+				modelOverride: task.modelOverride,
+				thinkingOverride: task.thinkingOverride,
+				launchModel: task.launchModel,
+				launchThinking: task.launchThinking,
+				launchContext: task.launchContext,
+				forkSessionFile: undefined,
+				cancellationNote: undefined,
+				output: "",
+				references: [],
+				exitCode: null,
+				stderr: "context \"fork\" requires a saved current session.",
+				activities: [
+					{
+						kind: "status",
+						text: "failed before launch: missing fork source session",
+						timestamp: Date.now(),
+					},
+				],
+				startedAt: null,
+				finishedAt: Date.now(),
+				steeringNotes: options?.steeringNotes ?? [],
+			};
+		}
+		args.push("--fork", task.forkSessionFile);
+	} else {
+		args.push("--no-session");
+	}
 	if (task.launchModel) {
 		args.push("--model", task.launchModel);
 	}
@@ -643,6 +692,8 @@ async function runSubagentTask(
 				thinkingOverride: task.thinkingOverride,
 				launchModel: task.launchModel,
 				launchThinking: task.launchThinking,
+				launchContext: task.launchContext,
+				forkSessionFile: task.forkSessionFile,
 				cancellationNote: undefined,
 				output,
 				references: extractReferences(output),
@@ -667,6 +718,8 @@ async function runSubagentTask(
 				thinkingOverride: task.thinkingOverride,
 				launchModel: task.launchModel,
 				launchThinking: task.launchThinking,
+				launchContext: task.launchContext,
+				forkSessionFile: task.forkSessionFile,
 				cancellationNote: undefined,
 				output: "",
 				references: [],
@@ -702,6 +755,8 @@ function createCancelledSubagentTaskResult(task: PreparedSubagentTask): Subagent
 		thinkingOverride: task.thinkingOverride,
 		launchModel: task.launchModel,
 		launchThinking: task.launchThinking,
+		launchContext: task.launchContext,
+		forkSessionFile: task.forkSessionFile,
 		cancellationNote: task.cancellationNote,
 		output: "",
 		references: [],
@@ -731,7 +786,9 @@ function formatSubagentDuration(result: SubagentTaskResult): string {
 	return `${(durationMs / 1000).toFixed(1)}s`;
 }
 
-function buildTaskSettingsParts(task: Pick<SubagentTaskProgress, "modelOverride" | "thinkingOverride">): string[] {
+function buildTaskSettingsParts(
+	task: Pick<SubagentTaskProgress, "modelOverride" | "thinkingOverride" | "launchContext">,
+): string[] {
 	const parts: string[] = [];
 	if (task.modelOverride) {
 		parts.push(`model ${task.modelOverride}`);
@@ -739,10 +796,15 @@ function buildTaskSettingsParts(task: Pick<SubagentTaskProgress, "modelOverride"
 	if (task.thinkingOverride) {
 		parts.push(`thinking ${task.thinkingOverride}`);
 	}
+	if (task.launchContext === "fork") {
+		parts.push("context fork");
+	}
 	return parts;
 }
 
-function formatTaskSettingsSuffix(task: Pick<SubagentTaskProgress, "modelOverride" | "thinkingOverride">): string {
+function formatTaskSettingsSuffix(
+	task: Pick<SubagentTaskProgress, "modelOverride" | "thinkingOverride" | "launchContext">,
+): string {
 	const parts = buildTaskSettingsParts(task);
 	return parts.length > 0 ? ` (${parts.join(", ")})` : "";
 }
@@ -756,6 +818,7 @@ function formatSubagentResult(result: SubagentTaskResult, index: number): string
 	const settingsLines = [
 		result.modelOverride ? `Model override: ${result.modelOverride}` : undefined,
 		result.thinkingOverride ? `Thinking override: ${result.thinkingOverride}` : undefined,
+		result.launchContext === "fork" ? "Context: fork" : undefined,
 	].filter((line): line is string => !!line);
 
 	if (result.status === "cancelled") {
@@ -912,6 +975,7 @@ function buildInitialProgressTask(task: ReviewedSubagentTask): SubagentTaskProgr
 		status: task.launchStatus === "cancelled" ? "cancelled" : "queued",
 		modelOverride: task.modelOverride,
 		thinkingOverride: task.thinkingOverride,
+		launchContext: task.launchContext,
 		cancellationNote: task.cancellationNote,
 		latestActivity:
 			task.launchStatus === "cancelled"
@@ -931,6 +995,7 @@ function buildProgressTaskFromResult(task: SubagentTaskResult): SubagentTaskProg
 		status: task.status,
 		modelOverride: task.modelOverride,
 		thinkingOverride: task.thinkingOverride,
+		launchContext: task.launchContext,
 		cancellationNote: task.cancellationNote,
 		latestActivity:
 			task.status === "cancelled"
@@ -968,17 +1033,168 @@ export function registerSubagentTools(
 		}
 	};
 
+	type PendingLaunchReviewRequest = {
+		ctx: any;
+		reviewedTasks: ReviewedSubagentTask[];
+		currentModelId?: string;
+		currentThinkingLevel?: SubagentThinkingLevel;
+		hasForkSource: boolean;
+		resolve: (tasks: ReviewedSubagentTask[] | null) => void;
+		reject: (error: unknown) => void;
+	};
+
+	type PendingLaunchReviewBatch = {
+		requests: PendingLaunchReviewRequest[];
+		mergedTasks: ReviewedSubagentTask[];
+		mergedTaskRefs: Array<{ requestIndex: number; taskIndex: number; originalTaskId: string }>;
+		usedTaskIds: Set<string>;
+		ctx: any;
+		currentModelId?: string;
+		currentThinkingLevel?: SubagentThinkingLevel;
+		hasForkSource: boolean;
+		status: "collecting" | "reviewing";
+		timer?: ReturnType<typeof setTimeout>;
+		appendTasks?: (tasks: ReviewedSubagentTask[]) => void;
+	};
+
+	let pendingLaunchReviewBatch: PendingLaunchReviewBatch | undefined;
+
+	const createUniqueReviewTaskId = (taskId: string, used: Set<string>): string => {
+		let candidate = taskId;
+		let suffix = 2;
+		while (used.has(candidate)) {
+			candidate = `${taskId}-${suffix}`;
+			suffix += 1;
+		}
+		used.add(candidate);
+		return candidate;
+	};
+
+	const addRequestToLaunchReviewBatch = (batch: PendingLaunchReviewBatch, request: PendingLaunchReviewRequest) => {
+		const requestIndex = batch.requests.length;
+		batch.requests.push(request);
+		batch.hasForkSource ||= request.hasForkSource;
+		const appendedTasks: ReviewedSubagentTask[] = [];
+		for (let taskIndex = 0; taskIndex < request.reviewedTasks.length; taskIndex++) {
+			const task = request.reviewedTasks[taskIndex]!;
+			const mergedTask = {
+				...task,
+				taskId: createUniqueReviewTaskId(task.taskId, batch.usedTaskIds),
+			};
+			batch.mergedTasks.push(mergedTask);
+			batch.mergedTaskRefs.push({ requestIndex, taskIndex, originalTaskId: task.taskId });
+			appendedTasks.push(mergedTask);
+		}
+		if (batch.status === "reviewing") {
+			batch.appendTasks?.(appendedTasks);
+		}
+	};
+
+	const flushPendingLaunchReviewBatch = async (batch: PendingLaunchReviewBatch) => {
+		if (batch.status !== "collecting") {
+			return;
+		}
+		batch.status = "reviewing";
+		if (batch.timer) {
+			clearTimeout(batch.timer);
+			batch.timer = undefined;
+		}
+
+		try {
+			const reviewedTasks = await runSubagentLaunchReview(batch.ctx, batch.mergedTasks, {
+				currentModelId: batch.currentModelId,
+				currentThinkingLevel: batch.currentThinkingLevel,
+				hasForkSource: batch.hasForkSource,
+				onReady: (handle) => {
+					batch.appendTasks = handle.appendTasks;
+				},
+			});
+			if (reviewedTasks === null) {
+				for (const request of batch.requests) {
+					request.resolve(null);
+				}
+				return;
+			}
+
+			const reviewedTasksByRequest = batch.requests.map((request) => new Array<ReviewedSubagentTask>(request.reviewedTasks.length));
+			for (let index = 0; index < reviewedTasks.length; index++) {
+				const reviewedTask = reviewedTasks[index]!;
+				const ref = batch.mergedTaskRefs[index]!;
+				reviewedTasksByRequest[ref.requestIndex]![ref.taskIndex] = {
+					...reviewedTask,
+					taskId: ref.originalTaskId,
+				};
+			}
+
+			for (let requestIndex = 0; requestIndex < batch.requests.length; requestIndex++) {
+				batch.requests[requestIndex]!.resolve(reviewedTasksByRequest[requestIndex]!);
+			}
+		} catch (error) {
+			for (const request of batch.requests) {
+				request.reject(error);
+			}
+		} finally {
+			if (pendingLaunchReviewBatch === batch) {
+				pendingLaunchReviewBatch = undefined;
+			}
+		}
+	};
+
+	const enqueueMergedLaunchReview = (request: Omit<PendingLaunchReviewRequest, "resolve" | "reject">) => {
+		return new Promise<ReviewedSubagentTask[] | null>((resolve, reject) => {
+			const requestWithCallbacks = { ...request, resolve, reject };
+			if (!pendingLaunchReviewBatch) {
+				pendingLaunchReviewBatch = {
+					requests: [],
+					mergedTasks: [],
+					mergedTaskRefs: [],
+					usedTaskIds: new Set<string>(),
+					ctx: request.ctx,
+					currentModelId: request.currentModelId,
+					currentThinkingLevel: request.currentThinkingLevel,
+					hasForkSource: request.hasForkSource,
+					status: "collecting",
+				};
+				pendingLaunchReviewBatch.timer = setTimeout(() => {
+					const batch = pendingLaunchReviewBatch;
+					if (!batch) {
+						return;
+					}
+					void flushPendingLaunchReviewBatch(batch);
+				}, 0);
+			}
+			const batch = pendingLaunchReviewBatch;
+			if (!batch) {
+				reject(new Error("expected pending launch review batch"));
+				return;
+			}
+			addRequestToLaunchReviewBatch(batch, requestWithCallbacks);
+		});
+	};
+
 	pi.registerTool({
 		name: "subagents",
 		label: "subagents",
 		description:
-			"Run one or more isolated research subagents in parallel with activity traces, interactive pre-launch review in UI mode, and run IDs for follow-up steering.",
+			"Launch one or more isolated subagents with activity traces, interactive pre-launch review in UI mode, and run IDs for follow-up steering.",
 		parameters: dependencies.subagentsSchema,
 		renderCall(args, theme) {
 			const tasks = (args.tasks as SubagentTask[] | undefined) ?? [];
+			const contextMode = resolveSubagentContextMode(args.context) ?? "fresh";
+			const requestedThinking = resolveSubagentThinkingLevel(args.thinking_level);
 			const lines: string[] = [
 				`${theme.fg("toolTitle", theme.bold("subagents "))}${theme.fg("accent", `${tasks.length} task${tasks.length === 1 ? "" : "s"}`)}`,
 			];
+			const settings: string[] = [];
+			if (contextMode === "fork") {
+				settings.push("context fork");
+			}
+			if (requestedThinking) {
+				settings.push(`thinking ${requestedThinking}`);
+			}
+			if (settings.length > 0) {
+				lines.push(theme.fg("muted", settings.join(" · ")));
+			}
 			for (const task of tasks.slice(0, SUBAGENT_PREVIEW_LIMIT)) {
 				const taskId = task.id?.trim() || "(auto-id)";
 				lines.push(`${theme.fg("muted", `- ${taskId}:`)} ${summarizeSnippet(task.prompt, 90)}`);
@@ -1040,6 +1256,9 @@ export function registerSubagentTools(
 				}
 				if (task.thinkingOverride) {
 					lines.push(`  ${theme.fg("muted", "Thinking override:")} ${task.thinkingOverride}`);
+				}
+				if (task.launchContext === "fork") {
+					lines.push(`  ${theme.fg("muted", "Context:")} fork`);
 				}
 				if (task.status === "cancelled") {
 					if (task.cancellationNote?.trim()) {
@@ -1105,11 +1324,41 @@ export function registerSubagentTools(
 				};
 			}
 
-			let reviewedTasks = createInitialReviewedSubagentTasks(tasks, ctx.cwd);
+			const currentThinkingLevel = resolveSubagentThinkingLevel(pi.getThinkingLevel());
+			const defaultThinkingLevel = resolveSubagentToolThinkingLevel(params.thinking_level, currentThinkingLevel);
+			if (defaultThinkingLevel === null) {
+				return {
+					isError: true,
+					content: [{ type: "text", text: 'thinking_level must be one of: off, minimal, low, medium, high, xhigh.' }],
+				};
+			}
+
+			const requestedContext = resolveSubagentContextMode(params.context);
+			if (requestedContext === null) {
+				return {
+					isError: true,
+					content: [{ type: "text", text: 'context must be either "fresh" or "fork".' }],
+				};
+			}
+
+			const currentSessionFile = buildCurrentSubagentSessionFile(ctx);
+			if (requestedContext === "fork" && !currentSessionFile) {
+				return {
+					isError: true,
+					content: [{ type: "text", text: 'context "fork" requires a saved current session.' }],
+				};
+			}
+			let reviewedTasks = createInitialReviewedSubagentTasks(tasks, ctx.cwd, {
+				defaultThinking: params.thinking_level === undefined ? undefined : defaultThinkingLevel ?? undefined,
+				launchContext: requestedContext,
+			});
 			if (ctx.hasUI) {
-				const reviewResult = await runSubagentLaunchReview(ctx, tasks, {
+				const reviewResult = await enqueueMergedLaunchReview({
+					ctx,
+					reviewedTasks,
 					currentModelId: buildCurrentSubagentModelId(ctx.model),
-					currentThinkingLevel: pi.getThinkingLevel(),
+					currentThinkingLevel,
+					hasForkSource: !!currentSessionFile,
 				});
 				if (reviewResult === null) {
 					return {
@@ -1120,11 +1369,22 @@ export function registerSubagentTools(
 				reviewedTasks = reviewResult;
 			}
 
+			if (
+				reviewedTasks.some((task) => task.launchStatus === "ready" && task.launchContext === "fork") &&
+				!currentSessionFile
+			) {
+				return {
+					isError: true,
+					content: [{ type: "text", text: 'context "fork" requires a saved current session.' }],
+				};
+			}
+
 			const preparedTasks = prepareSubagentTasks(
 				reviewedTasks,
 				{
 					model: buildCurrentSubagentModelId(ctx.model),
-					thinking: pi.getThinkingLevel(),
+					thinking: currentThinkingLevel,
+					forkSessionFile: currentSessionFile,
 				},
 				ctx.modelRegistry,
 			);
@@ -1265,12 +1525,14 @@ export function registerSubagentTools(
 						cwd: previousTask.cwd,
 						modelOverride: previousTask.modelOverride,
 						thinkingOverride: previousTask.thinkingOverride,
+						launchContext: previousTask.launchContext,
 						launchStatus: "ready",
 					},
 				],
 				{
 					model: previousTask.launchModel ?? buildCurrentSubagentModelId(ctx.model),
-					thinking: previousTask.launchThinking ?? pi.getThinkingLevel(),
+					thinking: previousTask.launchThinking ?? resolveSubagentThinkingLevel(pi.getThinkingLevel()),
+					forkSessionFile: previousTask.forkSessionFile,
 				},
 				ctx.modelRegistry,
 			)[0]!;

@@ -10,7 +10,13 @@ import {
 	registerSubagentTools,
 	resolveSubagentDir,
 } from "../subagents";
-import { resolveSubagentConcurrency } from "../utils";
+import type { ReviewedSubagentTask } from "../types";
+import {
+	resolveSubagentConcurrency,
+	resolveSubagentContextMode,
+	resolveSubagentThinkingLevel,
+	resolveSubagentToolThinkingLevel,
+} from "../utils";
 
 describe("normalizeSubagentTasks", () => {
 	test("sanitizes and deduplicates task ids", () => {
@@ -38,6 +44,31 @@ describe("resolveSubagentConcurrency", () => {
 		expect(resolveSubagentConcurrency(1.5)).toBeNull();
 		expect(resolveSubagentConcurrency(0)).toBeNull();
 		expect(resolveSubagentConcurrency(5)).toBeNull();
+	});
+});
+
+describe("resolveSubagentThinkingLevel", () => {
+	test("accepts supported thinking levels", () => {
+		expect(resolveSubagentThinkingLevel("low")).toBe("low");
+		expect(resolveSubagentThinkingLevel(" xhigh ")).toBe("xhigh");
+		expect(resolveSubagentThinkingLevel("unknown")).toBeUndefined();
+	});
+});
+
+describe("resolveSubagentToolThinkingLevel", () => {
+	test("defaults to the current thinking level and accepts all supported overrides", () => {
+		expect(resolveSubagentToolThinkingLevel(undefined, "minimal")).toBe("minimal");
+		expect(resolveSubagentToolThinkingLevel("high", "low")).toBe("high");
+		expect(resolveSubagentToolThinkingLevel("off", "low")).toBe("off");
+		expect(resolveSubagentToolThinkingLevel("minimal", "low")).toBe("minimal");
+	});
+});
+
+describe("resolveSubagentContextMode", () => {
+	test("defaults to fresh and validates context values", () => {
+		expect(resolveSubagentContextMode(undefined)).toBe("fresh");
+		expect(resolveSubagentContextMode("fork")).toBe("fork");
+		expect(resolveSubagentContextMode("other")).toBeNull();
 	});
 });
 
@@ -157,6 +188,8 @@ if (logPath) {
 		args,
 		model: getFlag("--model") || null,
 		thinking: getFlag("--thinking") || null,
+		forkSource: getFlag("--fork") || null,
+		hasNoSession: args.includes("--no-session"),
 		prompt,
 		steered: prompt.includes("Steering update from the main agent"),
 		subagentsDisabled: process.env.PI_TASK_SUBAGENTS_DISABLED || "",
@@ -195,6 +228,8 @@ async function readSpawnLog(spawnLogPath: string): Promise<Array<{
 	args: string[];
 	model: string | null;
 	thinking: string | null;
+	forkSource: string | null;
+	hasNoSession: boolean;
 	prompt: string;
 	steered: boolean;
 	subagentsDisabled: string;
@@ -239,6 +274,7 @@ function createExecuteContext(
 		reviewResult?: any;
 		availableModels?: Array<{ provider: string; id: string; name?: string; reasoning?: boolean; api?: string }>;
 		model?: { provider: string; id: string };
+		sessionFile?: string;
 	},
 ) {
 	const availableModels = options?.availableModels ?? [];
@@ -246,6 +282,9 @@ function createExecuteContext(
 		hasUI: options?.hasUI ?? false,
 		cwd,
 		model: options?.model,
+		sessionManager: {
+			getSessionFile: () => options?.sessionFile,
+		},
 		modelRegistry: {
 			getAvailable: () => availableModels,
 			find: (provider: string, modelId: string) =>
@@ -330,8 +369,669 @@ describe("subagents tool", () => {
 				expect(line.models).toBe(originalModels);
 				expect(line.model).toBe("openai/gpt-5");
 				expect(line.thinking).toBe("high");
+				expect(line.forkSource).toBeNull();
+				expect(line.hasNoSession).toBe(true);
 				expect(line.subagentsDisabled).toBe("1");
 			}
+		} finally {
+			if (previousAgentDir === undefined) {
+				delete process.env.PI_CODING_AGENT_DIR;
+			} else {
+				process.env.PI_CODING_AGENT_DIR = previousAgentDir;
+			}
+			if (previousPath === undefined) {
+				delete process.env.PATH;
+			} else {
+				process.env.PATH = previousPath;
+			}
+			if (previousSpawnLogPath === undefined) {
+				delete process.env.SUBAGENT_LOG_PATH;
+			} else {
+				process.env.SUBAGENT_LOG_PATH = previousSpawnLogPath;
+			}
+			await rm(tempDir, { recursive: true, force: true });
+		}
+	});
+
+	test("uses thinking_level as the default launch thinking", async () => {
+		const tempDir = await mkdtemp(path.join(os.tmpdir(), "task-subagents-thinking-param-"));
+		const { binDir, sourceAgentDir, spawnLogPath } = await setupStubPi(tempDir);
+		const tools = registerTools({ thinkingLevel: "low" });
+		const subagentsTool = tools.subagents;
+		let previousAgentDir: string | undefined;
+		let previousPath: string | undefined;
+		let previousSpawnLogPath: string | undefined;
+
+		try {
+			previousAgentDir = process.env.PI_CODING_AGENT_DIR;
+			previousPath = process.env.PATH;
+			previousSpawnLogPath = process.env.SUBAGENT_LOG_PATH;
+			process.env.PI_CODING_AGENT_DIR = sourceAgentDir;
+			process.env.PATH = [binDir, previousPath].filter(Boolean).join(path.delimiter);
+			process.env.SUBAGENT_LOG_PATH = spawnLogPath;
+
+			const result = await subagentsTool.execute(
+				"call-1",
+				{
+					tasks: [{ id: "task-a", prompt: "Inspect A", cwd: tempDir }],
+					concurrency: 1,
+					thinking_level: "minimal",
+				},
+				undefined,
+				undefined,
+				createExecuteContext(tempDir, {
+					model: { provider: "openai", id: "gpt-5" },
+				}),
+			);
+
+			expect(result.isError).toBe(false);
+			expect(result.details?.tasks[0]).toMatchObject({
+				thinkingOverride: undefined,
+				launchThinking: "minimal",
+			});
+
+			const logLines = await readSpawnLog(spawnLogPath);
+			expect(logLines).toHaveLength(1);
+			expect(logLines[0]?.thinking).toBe("minimal");
+		} finally {
+			if (previousAgentDir === undefined) {
+				delete process.env.PI_CODING_AGENT_DIR;
+			} else {
+				process.env.PI_CODING_AGENT_DIR = previousAgentDir;
+			}
+			if (previousPath === undefined) {
+				delete process.env.PATH;
+			} else {
+				process.env.PATH = previousPath;
+			}
+			if (previousSpawnLogPath === undefined) {
+				delete process.env.SUBAGENT_LOG_PATH;
+			} else {
+				process.env.SUBAGENT_LOG_PATH = previousSpawnLogPath;
+			}
+			await rm(tempDir, { recursive: true, force: true });
+		}
+	});
+
+	test("uses fork context to launch subagents from the current session", async () => {
+		const tempDir = await mkdtemp(path.join(os.tmpdir(), "task-subagents-fork-context-"));
+		const { binDir, sourceAgentDir, spawnLogPath } = await setupStubPi(tempDir);
+		const tools = registerTools({ thinkingLevel: "medium" });
+		const subagentsTool = tools.subagents;
+		const sessionFile = path.join(tempDir, "main-session.jsonl");
+		let previousAgentDir: string | undefined;
+		let previousPath: string | undefined;
+		let previousSpawnLogPath: string | undefined;
+
+		try {
+			previousAgentDir = process.env.PI_CODING_AGENT_DIR;
+			previousPath = process.env.PATH;
+			previousSpawnLogPath = process.env.SUBAGENT_LOG_PATH;
+			process.env.PI_CODING_AGENT_DIR = sourceAgentDir;
+			process.env.PATH = [binDir, previousPath].filter(Boolean).join(path.delimiter);
+			process.env.SUBAGENT_LOG_PATH = spawnLogPath;
+
+			const result = await subagentsTool.execute(
+				"call-1",
+				{
+					tasks: [{ id: "task-a", prompt: "Inspect A", cwd: tempDir }],
+					concurrency: 1,
+					context: "fork",
+				},
+				undefined,
+				undefined,
+				createExecuteContext(tempDir, {
+					model: { provider: "openai", id: "gpt-5" },
+					sessionFile,
+				}),
+			);
+
+			expect(result.isError).toBe(false);
+			expect(result.details?.tasks[0]).toMatchObject({
+				launchContext: "fork",
+				forkSessionFile: sessionFile,
+			});
+
+			const logLines = await readSpawnLog(spawnLogPath);
+			expect(logLines).toHaveLength(1);
+			expect(logLines[0]?.forkSource).toBe(sessionFile);
+			expect(logLines[0]?.hasNoSession).toBe(false);
+		} finally {
+			if (previousAgentDir === undefined) {
+				delete process.env.PI_CODING_AGENT_DIR;
+			} else {
+				process.env.PI_CODING_AGENT_DIR = previousAgentDir;
+			}
+			if (previousPath === undefined) {
+				delete process.env.PATH;
+			} else {
+				process.env.PATH = previousPath;
+			}
+			if (previousSpawnLogPath === undefined) {
+				delete process.env.SUBAGENT_LOG_PATH;
+			} else {
+				process.env.SUBAGENT_LOG_PATH = previousSpawnLogPath;
+			}
+			await rm(tempDir, { recursive: true, force: true });
+		}
+	});
+
+	test("uses the reviewed launch context from the pre-launch UI", async () => {
+		const tempDir = await mkdtemp(path.join(os.tmpdir(), "task-subagents-reviewed-context-"));
+		const { binDir, sourceAgentDir, spawnLogPath } = await setupStubPi(tempDir);
+		const tools = registerTools();
+		const subagentsTool = tools.subagents;
+		const sessionFile = path.join(tempDir, "main-session.jsonl");
+		let previousAgentDir: string | undefined;
+		let previousPath: string | undefined;
+		let previousSpawnLogPath: string | undefined;
+
+		try {
+			previousAgentDir = process.env.PI_CODING_AGENT_DIR;
+			previousPath = process.env.PATH;
+			previousSpawnLogPath = process.env.SUBAGENT_LOG_PATH;
+			process.env.PI_CODING_AGENT_DIR = sourceAgentDir;
+			process.env.PATH = [binDir, previousPath].filter(Boolean).join(path.delimiter);
+			process.env.SUBAGENT_LOG_PATH = spawnLogPath;
+
+			const result = await subagentsTool.execute(
+				"call-1",
+				{
+					tasks: [{ id: "task-a", prompt: "Inspect A", cwd: tempDir }],
+					concurrency: 1,
+				},
+				undefined,
+				undefined,
+				createExecuteContext(tempDir, {
+					hasUI: true,
+					sessionFile,
+					reviewResult: [{ taskId: "task-a", prompt: "Inspect A", cwd: tempDir, launchContext: "fork", launchStatus: "ready" }],
+				}),
+			);
+
+			expect(result.isError).toBe(false);
+			expect(result.details?.tasks[0]).toMatchObject({
+				launchContext: "fork",
+				forkSessionFile: sessionFile,
+			});
+
+			const logLines = await readSpawnLog(spawnLogPath);
+			expect(logLines).toHaveLength(1);
+			expect(logLines[0]?.forkSource).toBe(sessionFile);
+		} finally {
+			if (previousAgentDir === undefined) {
+				delete process.env.PI_CODING_AGENT_DIR;
+			} else {
+				process.env.PI_CODING_AGENT_DIR = previousAgentDir;
+			}
+			if (previousPath === undefined) {
+				delete process.env.PATH;
+			} else {
+				process.env.PATH = previousPath;
+			}
+			if (previousSpawnLogPath === undefined) {
+				delete process.env.SUBAGENT_LOG_PATH;
+			} else {
+				process.env.SUBAGENT_LOG_PATH = previousSpawnLogPath;
+			}
+			await rm(tempDir, { recursive: true, force: true });
+		}
+	});
+
+	test("steer_subagent reuses fork context from the original run", async () => {
+		const tempDir = await mkdtemp(path.join(os.tmpdir(), "task-subagents-steer-fork-context-"));
+		const { binDir, sourceAgentDir, spawnLogPath } = await setupStubPi(tempDir);
+		const tools = registerTools({ thinkingLevel: "medium" });
+		const subagentsTool = tools.subagents;
+		const steerSubagentTool = tools.steer_subagent;
+		const sessionFile = path.join(tempDir, "main-session.jsonl");
+		let previousAgentDir: string | undefined;
+		let previousPath: string | undefined;
+		let previousSpawnLogPath: string | undefined;
+
+		try {
+			previousAgentDir = process.env.PI_CODING_AGENT_DIR;
+			previousPath = process.env.PATH;
+			previousSpawnLogPath = process.env.SUBAGENT_LOG_PATH;
+			process.env.PI_CODING_AGENT_DIR = sourceAgentDir;
+			process.env.PATH = [binDir, previousPath].filter(Boolean).join(path.delimiter);
+			process.env.SUBAGENT_LOG_PATH = spawnLogPath;
+
+			const initialResult = await subagentsTool.execute(
+				"call-1",
+				{
+					tasks: [{ id: "task-a", prompt: "Inspect A", cwd: tempDir }],
+					concurrency: 1,
+					context: "fork",
+				},
+				undefined,
+				undefined,
+				createExecuteContext(tempDir, {
+					sessionFile,
+				}),
+			);
+
+			const rerunResult = await steerSubagentTool.execute(
+				"call-2",
+				{
+					runId: initialResult.details?.runId,
+					taskId: "task-a",
+					instruction: "Focus on config files.",
+				},
+				undefined,
+				undefined,
+				createExecuteContext(tempDir),
+			);
+
+			expect(rerunResult.isError).toBe(false);
+			expect(rerunResult.details?.tasks[0]).toMatchObject({
+				launchContext: "fork",
+				forkSessionFile: sessionFile,
+			});
+
+			const logLines = await readSpawnLog(spawnLogPath);
+			expect(logLines).toHaveLength(2);
+			expect(logLines[0]?.forkSource).toBe(sessionFile);
+			expect(logLines[1]?.forkSource).toBe(sessionFile);
+			expect(logLines[1]?.hasNoSession).toBe(false);
+		} finally {
+			if (previousAgentDir === undefined) {
+				delete process.env.PI_CODING_AGENT_DIR;
+			} else {
+				process.env.PI_CODING_AGENT_DIR = previousAgentDir;
+			}
+			if (previousPath === undefined) {
+				delete process.env.PATH;
+			} else {
+				process.env.PATH = previousPath;
+			}
+			if (previousSpawnLogPath === undefined) {
+				delete process.env.SUBAGENT_LOG_PATH;
+			} else {
+				process.env.SUBAGENT_LOG_PATH = previousSpawnLogPath;
+			}
+			await rm(tempDir, { recursive: true, force: true });
+		}
+	});
+
+	test("does not reject a cancelled fork task when ready tasks stay fresh", async () => {
+		const tempDir = await mkdtemp(path.join(os.tmpdir(), "task-subagents-cancelled-fork-unsaved-"));
+		const { binDir, sourceAgentDir, spawnLogPath } = await setupStubPi(tempDir);
+		const tools = registerTools();
+		const subagentsTool = tools.subagents;
+		let previousAgentDir: string | undefined;
+		let previousPath: string | undefined;
+		let previousSpawnLogPath: string | undefined;
+
+		try {
+			previousAgentDir = process.env.PI_CODING_AGENT_DIR;
+			previousPath = process.env.PATH;
+			previousSpawnLogPath = process.env.SUBAGENT_LOG_PATH;
+			process.env.PI_CODING_AGENT_DIR = sourceAgentDir;
+			process.env.PATH = [binDir, previousPath].filter(Boolean).join(path.delimiter);
+			process.env.SUBAGENT_LOG_PATH = spawnLogPath;
+
+			const result = await subagentsTool.execute(
+				"call-1",
+				{
+					tasks: [
+						{ id: "task-a", prompt: "Inspect A", cwd: tempDir },
+						{ id: "task-b", prompt: "Inspect B", cwd: tempDir },
+					],
+					concurrency: 2,
+				},
+				undefined,
+				undefined,
+				createExecuteContext(tempDir, {
+					hasUI: true,
+					reviewResult: [
+						{ taskId: "task-a", prompt: "Inspect A", cwd: tempDir, launchContext: "fresh", launchStatus: "ready" },
+						{
+							taskId: "task-b",
+							prompt: "Inspect B",
+							cwd: tempDir,
+							launchContext: "fork",
+							launchStatus: "cancelled",
+							cancellationNote: "skip the forked variant",
+						},
+					],
+				}),
+			);
+
+			expect(result.isError).toBe(false);
+			expect(result.details?.launchedCount).toBe(1);
+			expect(result.details?.cancelledCount).toBe(1);
+			expect(result.details?.tasks[1]).toMatchObject({
+				status: "cancelled",
+				launchContext: "fork",
+				cancellationNote: "skip the forked variant",
+			});
+			expect(await readSpawnLog(spawnLogPath)).toHaveLength(1);
+		} finally {
+			if (previousAgentDir === undefined) {
+				delete process.env.PI_CODING_AGENT_DIR;
+			} else {
+				process.env.PI_CODING_AGENT_DIR = previousAgentDir;
+			}
+			if (previousPath === undefined) {
+				delete process.env.PATH;
+			} else {
+				process.env.PATH = previousPath;
+			}
+			if (previousSpawnLogPath === undefined) {
+				delete process.env.SUBAGENT_LOG_PATH;
+			} else {
+				process.env.SUBAGENT_LOG_PATH = previousSpawnLogPath;
+			}
+			await rm(tempDir, { recursive: true, force: true });
+		}
+	});
+
+	test("rejects fork context when the current session is not saved", async () => {
+		const tempDir = await mkdtemp(path.join(os.tmpdir(), "task-subagents-fork-missing-session-"));
+		const { binDir, sourceAgentDir, spawnLogPath } = await setupStubPi(tempDir);
+		const tools = registerTools();
+		const subagentsTool = tools.subagents;
+		let previousAgentDir: string | undefined;
+		let previousPath: string | undefined;
+		let previousSpawnLogPath: string | undefined;
+
+		try {
+			previousAgentDir = process.env.PI_CODING_AGENT_DIR;
+			previousPath = process.env.PATH;
+			previousSpawnLogPath = process.env.SUBAGENT_LOG_PATH;
+			process.env.PI_CODING_AGENT_DIR = sourceAgentDir;
+			process.env.PATH = [binDir, previousPath].filter(Boolean).join(path.delimiter);
+			process.env.SUBAGENT_LOG_PATH = spawnLogPath;
+
+			const result = await subagentsTool.execute(
+				"call-1",
+				{
+					tasks: [{ id: "task-a", prompt: "Inspect A", cwd: tempDir }],
+					concurrency: 1,
+					context: "fork",
+				},
+				undefined,
+				undefined,
+				createExecuteContext(tempDir),
+			);
+
+			expect(result.isError).toBe(true);
+			expect(result.content[0]?.text).toBe('context "fork" requires a saved current session.');
+			expect(await readSpawnLog(spawnLogPath)).toEqual([]);
+		} finally {
+			if (previousAgentDir === undefined) {
+				delete process.env.PI_CODING_AGENT_DIR;
+			} else {
+				process.env.PI_CODING_AGENT_DIR = previousAgentDir;
+			}
+			if (previousPath === undefined) {
+				delete process.env.PATH;
+			} else {
+				process.env.PATH = previousPath;
+			}
+			if (previousSpawnLogPath === undefined) {
+				delete process.env.SUBAGENT_LOG_PATH;
+			} else {
+				process.env.SUBAGENT_LOG_PATH = previousSpawnLogPath;
+			}
+			await rm(tempDir, { recursive: true, force: true });
+		}
+	});
+
+	test("merges concurrent launch reviews into a single UI session", async () => {
+		const tempDir = await mkdtemp(path.join(os.tmpdir(), "task-subagents-merged-review-"));
+		const { binDir, sourceAgentDir, spawnLogPath } = await setupStubPi(tempDir);
+		const tools = registerTools();
+		const subagentsTool = tools.subagents;
+		let previousAgentDir: string | undefined;
+		let previousPath: string | undefined;
+		let previousSpawnLogPath: string | undefined;
+		let reviewCalls = 0;
+		const sharedContext = {
+			hasUI: true,
+			cwd: tempDir,
+			sessionManager: {
+				getSessionFile: () => undefined,
+			},
+			modelRegistry: {
+				getAvailable: () => [],
+				find: () => undefined,
+			},
+			ui: {
+				custom: async () => {
+					reviewCalls += 1;
+					return [
+						{ taskId: "task-a", prompt: "Inspect A", cwd: tempDir, launchContext: "fresh", launchStatus: "ready" },
+						{ taskId: "task-b", prompt: "Inspect B", cwd: tempDir, launchContext: "fresh", launchStatus: "ready" },
+					];
+				},
+			},
+		};
+
+		try {
+			previousAgentDir = process.env.PI_CODING_AGENT_DIR;
+			previousPath = process.env.PATH;
+			previousSpawnLogPath = process.env.SUBAGENT_LOG_PATH;
+			process.env.PI_CODING_AGENT_DIR = sourceAgentDir;
+			process.env.PATH = [binDir, previousPath].filter(Boolean).join(path.delimiter);
+			process.env.SUBAGENT_LOG_PATH = spawnLogPath;
+
+			const [resultA, resultB] = await Promise.all([
+				subagentsTool.execute(
+					"call-1",
+					{
+						tasks: [{ id: "task-a", prompt: "Inspect A", cwd: tempDir }],
+						concurrency: 1,
+					},
+					undefined,
+					undefined,
+					sharedContext as any,
+				),
+				subagentsTool.execute(
+					"call-2",
+					{
+						tasks: [{ id: "task-b", prompt: "Inspect B", cwd: tempDir }],
+						concurrency: 1,
+					},
+					undefined,
+					undefined,
+					sharedContext as any,
+				),
+			]);
+
+			expect(reviewCalls).toBe(1);
+			expect(resultA.isError).toBe(false);
+			expect(resultB.isError).toBe(false);
+			expect(resultA.details?.tasks).toHaveLength(1);
+			expect(resultB.details?.tasks).toHaveLength(1);
+			expect(resultA.details?.tasks[0]?.taskId).toBe("task-a");
+			expect(resultB.details?.tasks[0]?.taskId).toBe("task-b");
+			expect(await readSpawnLog(spawnLogPath)).toHaveLength(2);
+		} finally {
+			if (previousAgentDir === undefined) {
+				delete process.env.PI_CODING_AGENT_DIR;
+			} else {
+				process.env.PI_CODING_AGENT_DIR = previousAgentDir;
+			}
+			if (previousPath === undefined) {
+				delete process.env.PATH;
+			} else {
+				process.env.PATH = previousPath;
+			}
+			if (previousSpawnLogPath === undefined) {
+				delete process.env.SUBAGENT_LOG_PATH;
+			} else {
+				process.env.SUBAGENT_LOG_PATH = previousSpawnLogPath;
+			}
+			await rm(tempDir, { recursive: true, force: true });
+		}
+	});
+
+	test("merges subagents calls that arrive while the shared review is still open", async () => {
+		const tempDir = await mkdtemp(path.join(os.tmpdir(), "task-subagents-merged-review-open-"));
+		const { binDir, sourceAgentDir, spawnLogPath } = await setupStubPi(tempDir);
+		const tools = registerTools();
+		const subagentsTool = tools.subagents;
+		let previousAgentDir: string | undefined;
+		let previousPath: string | undefined;
+		let previousSpawnLogPath: string | undefined;
+		let reviewCalls = 0;
+		let markReviewStarted: (() => void) | undefined;
+		const reviewStarted = new Promise<void>((resolve) => {
+			markReviewStarted = resolve;
+		});
+		let resolveReview: ((tasks: ReviewedSubagentTask[]) => void) | undefined;
+		const reviewPromise = new Promise<ReviewedSubagentTask[]>((resolve) => {
+			resolveReview = resolve;
+		});
+		const sharedContext = {
+			hasUI: true,
+			cwd: tempDir,
+			sessionManager: {
+				getSessionFile: () => undefined,
+			},
+			modelRegistry: {
+				getAvailable: () => [],
+				find: () => undefined,
+			},
+			ui: {
+				custom: async () => {
+					reviewCalls += 1;
+					markReviewStarted?.();
+					return reviewPromise;
+				},
+			},
+		};
+
+		try {
+			previousAgentDir = process.env.PI_CODING_AGENT_DIR;
+			previousPath = process.env.PATH;
+			previousSpawnLogPath = process.env.SUBAGENT_LOG_PATH;
+			process.env.PI_CODING_AGENT_DIR = sourceAgentDir;
+			process.env.PATH = [binDir, previousPath].filter(Boolean).join(path.delimiter);
+			process.env.SUBAGENT_LOG_PATH = spawnLogPath;
+
+			const resultAPromise = subagentsTool.execute(
+				"call-1",
+				{
+					tasks: [{ id: "task-a", prompt: "Inspect A", cwd: tempDir }],
+					concurrency: 1,
+				},
+				undefined,
+				undefined,
+				sharedContext as any,
+			);
+			await reviewStarted;
+
+			const resultBPromise = subagentsTool.execute(
+				"call-2",
+				{
+					tasks: [{ id: "task-b", prompt: "Inspect B", cwd: tempDir }],
+					concurrency: 1,
+				},
+				undefined,
+				undefined,
+				sharedContext as any,
+			);
+
+			expect(reviewCalls).toBe(1);
+			resolveReview?.([
+				{ taskId: "task-a", prompt: "Inspect A", cwd: tempDir, launchContext: "fresh", launchStatus: "ready" },
+				{ taskId: "task-b", prompt: "Inspect B", cwd: tempDir, launchContext: "fresh", launchStatus: "ready" },
+			]);
+
+			const [resultA, resultB] = await Promise.all([resultAPromise, resultBPromise]);
+			expect(reviewCalls).toBe(1);
+			expect(resultA.isError).toBe(false);
+			expect(resultB.isError).toBe(false);
+			expect(resultA.details?.tasks[0]?.taskId).toBe("task-a");
+			expect(resultB.details?.tasks[0]?.taskId).toBe("task-b");
+			expect(await readSpawnLog(spawnLogPath)).toHaveLength(2);
+		} finally {
+			if (previousAgentDir === undefined) {
+				delete process.env.PI_CODING_AGENT_DIR;
+			} else {
+				process.env.PI_CODING_AGENT_DIR = previousAgentDir;
+			}
+			if (previousPath === undefined) {
+				delete process.env.PATH;
+			} else {
+				process.env.PATH = previousPath;
+			}
+			if (previousSpawnLogPath === undefined) {
+				delete process.env.SUBAGENT_LOG_PATH;
+			} else {
+				process.env.SUBAGENT_LOG_PATH = previousSpawnLogPath;
+			}
+			await rm(tempDir, { recursive: true, force: true });
+		}
+	});
+
+	test("cancelling a merged launch review cancels every waiting subagents call", async () => {
+		const tempDir = await mkdtemp(path.join(os.tmpdir(), "task-subagents-merged-review-cancel-"));
+		const { binDir, sourceAgentDir, spawnLogPath } = await setupStubPi(tempDir);
+		const tools = registerTools();
+		const subagentsTool = tools.subagents;
+		let previousAgentDir: string | undefined;
+		let previousPath: string | undefined;
+		let previousSpawnLogPath: string | undefined;
+		let reviewCalls = 0;
+		const sharedContext = {
+			hasUI: true,
+			cwd: tempDir,
+			sessionManager: {
+				getSessionFile: () => undefined,
+			},
+			modelRegistry: {
+				getAvailable: () => [],
+				find: () => undefined,
+			},
+			ui: {
+				custom: async () => {
+					reviewCalls += 1;
+					return null;
+				},
+			},
+		};
+
+		try {
+			previousAgentDir = process.env.PI_CODING_AGENT_DIR;
+			previousPath = process.env.PATH;
+			previousSpawnLogPath = process.env.SUBAGENT_LOG_PATH;
+			process.env.PI_CODING_AGENT_DIR = sourceAgentDir;
+			process.env.PATH = [binDir, previousPath].filter(Boolean).join(path.delimiter);
+			process.env.SUBAGENT_LOG_PATH = spawnLogPath;
+
+			const [resultA, resultB] = await Promise.all([
+				subagentsTool.execute(
+					"call-1",
+					{
+						tasks: [{ id: "task-a", prompt: "Inspect A", cwd: tempDir }],
+						concurrency: 1,
+					},
+					undefined,
+					undefined,
+					sharedContext as any,
+				),
+				subagentsTool.execute(
+					"call-2",
+					{
+						tasks: [{ id: "task-b", prompt: "Inspect B", cwd: tempDir }],
+						concurrency: 1,
+					},
+					undefined,
+					undefined,
+					sharedContext as any,
+				),
+			]);
+
+			expect(reviewCalls).toBe(1);
+			expect(resultA.isError).toBe(true);
+			expect(resultB.isError).toBe(true);
+			expect(resultA.content[0]?.text).toBe("Subagent launch cancelled before starting. No child processes were started.");
+			expect(resultB.content[0]?.text).toBe("Subagent launch cancelled before starting. No child processes were started.");
+			expect(await readSpawnLog(spawnLogPath)).toEqual([]);
 		} finally {
 			if (previousAgentDir === undefined) {
 				delete process.env.PI_CODING_AGENT_DIR;
@@ -434,11 +1134,12 @@ describe("subagents tool", () => {
 				createExecuteContext(tempDir, {
 					hasUI: true,
 					reviewResult: [
-						{ taskId: "task-a", prompt: "Inspect A", cwd: tempDir, launchStatus: "ready" },
+						{ taskId: "task-a", prompt: "Inspect A", cwd: tempDir, launchContext: "fresh", launchStatus: "ready" },
 						{
 							taskId: "task-b",
 							prompt: "Inspect B",
 							cwd: tempDir,
+							launchContext: "fresh",
 							launchStatus: "cancelled",
 							cancellationNote: "Already covered by task-a",
 						},
@@ -515,6 +1216,7 @@ describe("subagents tool", () => {
 							taskId: "task-a",
 							prompt: "Inspect A",
 							cwd: tempDir,
+							launchContext: "fresh",
 							launchStatus: "ready",
 						},
 					],
@@ -616,6 +1318,7 @@ describe("subagents tool", () => {
 							taskId: "task-a",
 							prompt: "Inspect A",
 							cwd: tempDir,
+							launchContext: "fresh",
 							launchStatus: "ready",
 							modelOverride: "openai/gpt-5",
 						},
@@ -712,11 +1415,12 @@ describe("subagents tool", () => {
 							taskId: "task-a",
 							prompt: "Inspect A",
 							cwd: tempDir,
+							launchContext: "fresh",
 							launchStatus: "ready",
 							modelOverride: "openai/gpt-5",
 							thinkingOverride: "high",
-						},
-					],
+							},
+						],
 				}),
 			);
 
@@ -787,11 +1491,12 @@ describe("subagents tool", () => {
 							taskId: "task-a",
 							prompt: "Inspect A",
 							cwd: tempDir,
+							launchContext: "fresh",
 							launchStatus: "ready",
 							modelOverride: "openai/gpt-5",
 							thinkingOverride: "medium",
-						},
-					],
+							},
+						],
 				}),
 			);
 
@@ -855,6 +1560,7 @@ describe("buildSubagentRunDetails", () => {
 				task: "One",
 				cwd: "/tmp",
 				status: "completed",
+				launchContext: "fresh",
 				output: "ok",
 				references: [],
 				exitCode: 0,
@@ -869,6 +1575,7 @@ describe("buildSubagentRunDetails", () => {
 				task: "Two",
 				cwd: "/tmp",
 				status: "failed",
+				launchContext: "fresh",
 				output: "",
 				references: [],
 				exitCode: 1,
@@ -883,6 +1590,7 @@ describe("buildSubagentRunDetails", () => {
 				task: "Three",
 				cwd: "/tmp",
 				status: "cancelled",
+				launchContext: "fresh",
 				output: "",
 				references: [],
 				exitCode: null,

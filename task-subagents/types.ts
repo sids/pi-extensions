@@ -1,3 +1,7 @@
+export const SUBAGENT_THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh"] as const;
+export const SUBAGENT_TOOL_THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh"] as const;
+export const SUBAGENT_CONTEXT_MODES = ["fresh", "fork"] as const;
+
 export type SubagentTask = {
 	id?: string;
 	prompt: string;
@@ -10,14 +14,18 @@ export type NormalizedSubagentTask = {
 	cwd?: string;
 };
 
-export type SubagentThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
+export type SubagentThinkingLevel = (typeof SUBAGENT_THINKING_LEVELS)[number];
+export type SubagentToolThinkingLevel = (typeof SUBAGENT_TOOL_THINKING_LEVELS)[number];
+export type SubagentContextMode = (typeof SUBAGENT_CONTEXT_MODES)[number];
 
 export type ReviewedSubagentTask = {
 	taskId: string;
 	prompt: string;
 	cwd: string;
 	modelOverride?: string;
+	defaultThinking?: SubagentThinkingLevel;
 	thinkingOverride?: SubagentThinkingLevel;
+	launchContext: SubagentContextMode;
 	launchStatus: "ready" | "cancelled";
 	cancellationNote?: string;
 };
@@ -39,6 +47,8 @@ export type SubagentTaskResult = {
 	thinkingOverride?: SubagentThinkingLevel;
 	launchModel?: string;
 	launchThinking?: SubagentThinkingLevel;
+	launchContext: SubagentContextMode;
+	forkSessionFile?: string;
 	cancellationNote?: string;
 	output: string;
 	references: string[];
@@ -57,6 +67,7 @@ export type SubagentTaskProgress = {
 	status: "queued" | "running" | "completed" | "failed" | "cancelled";
 	modelOverride?: string;
 	thinkingOverride?: SubagentThinkingLevel;
+	launchContext: SubagentContextMode;
 	cancellationNote?: string;
 	latestActivity?: string;
 	activityCount: number;

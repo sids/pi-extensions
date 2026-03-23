@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+	buildSubagentContextOptions,
 	buildSubagentLaunchReviewResult,
 	buildSubagentModelOptions,
 	buildSubagentThinkingOptions,
@@ -7,7 +8,9 @@ import {
 	normalizeSubagentCancellationNote,
 	parseSubagentScopedModelPatterns,
 	resolveConfiguredSubagentModelPatterns,
+	runSubagentLaunchReview,
 } from "../launch-tui";
+import type { ReviewedSubagentTask } from "../types";
 
 describe("createInitialReviewedSubagentTasks", () => {
 	test("resolves cwd and defaults tasks to ready", () => {
@@ -24,6 +27,8 @@ describe("createInitialReviewedSubagentTasks", () => {
 				taskId: "task-a",
 				prompt: "Inspect A",
 				cwd: "/tmp/default",
+				defaultThinking: undefined,
+				launchContext: "fresh",
 				launchStatus: "ready",
 				cancellationNote: undefined,
 			},
@@ -31,6 +36,8 @@ describe("createInitialReviewedSubagentTasks", () => {
 				taskId: "task-b",
 				prompt: "Inspect B",
 				cwd: "/tmp/custom",
+				defaultThinking: undefined,
+				launchContext: "fresh",
 				launchStatus: "ready",
 				cancellationNote: undefined,
 			},
@@ -91,6 +98,38 @@ describe("buildSubagentThinkingOptions", () => {
 			"xhigh",
 		]);
 	});
+
+	test("labels requested launch defaults distinctly from current thinking", () => {
+		const options = buildSubagentThinkingOptions("high", { inheritedFromCurrent: false });
+		expect(options[0]).toEqual({
+			label: "high (default)",
+			description: "Use the requested subagent thinking level.",
+		});
+	});
+});
+
+describe("buildSubagentContextOptions", () => {
+	test("describes fresh and fork launch modes", () => {
+		expect(buildSubagentContextOptions(true)).toEqual([
+			{
+				value: "fresh",
+				label: "fresh",
+				description: "Start each subagent in a fresh ephemeral session.",
+			},
+			{
+				value: "fork",
+				label: "fork",
+				description: "Fork each subagent from the current session.",
+				disabled: false,
+			},
+		]);
+		expect(buildSubagentContextOptions(false)[1]).toEqual({
+			value: "fork",
+			label: "fork",
+			description: "Fork each subagent from the current session. Unavailable until the current session is saved.",
+			disabled: true,
+		});
+	});
 });
 
 describe("parseSubagentScopedModelPatterns", () => {
@@ -124,6 +163,8 @@ describe("buildSubagentLaunchReviewResult", () => {
 				taskId: "task-a",
 				prompt: "Inspect A",
 				cwd: "/tmp/project",
+				defaultThinking: undefined,
+				launchContext: "fresh",
 				launchStatus: "ready",
 				cancellationNote: "should be dropped",
 			},
@@ -131,14 +172,108 @@ describe("buildSubagentLaunchReviewResult", () => {
 				taskId: "task-b",
 				prompt: "Inspect B",
 				cwd: "/tmp/project",
+				defaultThinking: undefined,
+				launchContext: "fork",
 				launchStatus: "cancelled",
 				cancellationNote: "  Already covered  ",
 			},
 		]);
-
 		expect(result.readyCount).toBe(1);
 		expect(result.cancelledCount).toBe(1);
 		expect(result.tasks[0]?.cancellationNote).toBeUndefined();
 		expect(result.tasks[1]?.cancellationNote).toBe("Already covered");
+	});
+});
+
+describe("runSubagentLaunchReview", () => {
+	test("appends late tasks into the live review state", async () => {
+		const previousArgv = process.argv;
+		process.argv = ["bun", "test", "--models", ""];
+		const initialTasks: ReviewedSubagentTask[] = [
+			{
+				taskId: "task-a",
+				prompt: "Inspect A",
+				cwd: "/tmp/project",
+				defaultThinking: undefined,
+				launchContext: "fresh",
+				launchStatus: "ready",
+				cancellationNote: undefined,
+			},
+		];
+		const lateTask: ReviewedSubagentTask = {
+			taskId: "task-b",
+			prompt: "Inspect B",
+			cwd: "/tmp/project",
+			defaultThinking: undefined,
+			launchContext: "fresh",
+			launchStatus: "ready",
+			cancellationNote: undefined,
+		};
+		let reviewHandle:
+			| {
+					appendTasks: (tasks: ReviewedSubagentTask[]) => void;
+			  }
+			| undefined;
+
+		try {
+			const result = await runSubagentLaunchReview(
+				{
+					hasUI: true,
+					cwd: "/tmp/project",
+					modelRegistry: {
+						getAvailable: () => [],
+						find: () => undefined,
+					},
+					ui: {
+						custom: async (render: any) => {
+							return await new Promise<ReviewedSubagentTask[] | null>((resolve) => {
+								const component = render(
+									{ requestRender: () => {} },
+									{
+										fg: (_token: string, text: string) => text,
+										bold: (text: string) => text,
+									},
+									undefined,
+									resolve,
+								);
+								expect(reviewHandle).toBeDefined();
+								reviewHandle?.appendTasks([lateTask]);
+								resolve(buildSubagentLaunchReviewResult((component as any).tasks).tasks);
+							});
+						},
+					},
+				} as any,
+				initialTasks,
+				{
+					onReady: (handle) => {
+						reviewHandle = handle;
+					},
+				},
+			);
+
+			expect(initialTasks).toHaveLength(1);
+			expect(result).toEqual([
+				{
+					taskId: "task-a",
+					prompt: "Inspect A",
+					cwd: "/tmp/project",
+					defaultThinking: undefined,
+					launchContext: "fresh",
+					launchStatus: "ready",
+					cancellationNote: undefined,
+				},
+				{
+					taskId: "task-b",
+					prompt: "Inspect B",
+					cwd: "/tmp/project",
+					defaultThinking: undefined,
+					launchContext: "fresh",
+					launchStatus: "ready",
+					cancellationNote: undefined,
+				},
+			]);
+		} finally {
+			process.argv = previousArgv;
+		}
 	});
 });
