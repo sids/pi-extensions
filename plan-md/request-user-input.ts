@@ -72,14 +72,14 @@ export function buildRequestUserInputAnswer(
 		if (trimmed.length === 0) {
 			return { answers: [] };
 		}
-		return { answers: [`user_note: ${trimmed}`] };
+		return { answers: [trimmed] };
 	}
 
 	if (response.selectedOptionIndex === otherIndex) {
 		if (trimmed.length === 0) {
 			return { answers: [] };
 		}
-		return { answers: ["Other", `user_note: ${trimmed}`] };
+		return { answers: [trimmed] };
 	}
 
 	const label = question.options[response.selectedOptionIndex]?.label;
@@ -101,29 +101,12 @@ export function buildRequestUserInputResponse(
 }
 
 export function summarizeRequestUserInputAnswer(answer: RequestUserInputAnswer | undefined): string {
-	const entries = answer?.answers ?? [];
+	const entries = (answer?.answers ?? []).map((entry) => entry.trim()).filter((entry) => entry.length > 0);
 	if (entries.length === 0) {
 		return "(no answer)";
 	}
 
-	const notes = entries
-		.filter((entry) => entry.startsWith("user_note: "))
-		.map((entry) => entry.slice("user_note: ".length).trim())
-		.filter((entry) => entry.length > 0);
-	const selected = entries
-		.filter((entry) => !entry.startsWith("user_note: "))
-		.map((entry) => entry.trim())
-		.filter((entry) => entry.length > 0);
-
-	if (selected.length === 0 && notes.length > 0) {
-		return notes.join(" · ");
-	}
-
-	if (selected.length > 0 && notes.length > 0) {
-		return `${selected.join(", ")} (${notes.join(" · ")})`;
-	}
-
-	return selected.join(", ") || "(no answer)";
+	return entries.join(", ");
 }
 
 export function buildRequestUserInputSummary(details: RequestUserInputDetails): string {

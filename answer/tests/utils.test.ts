@@ -207,4 +207,25 @@ describe("shared qna helpers", () => {
 		const responses = normalizeResponses(questions, undefined, ["Need more context"], false);
 		expect(formatResponseAnswer(questions[0], responses[0])).toBe("Need more context");
 	});
+
+	test("returns only custom text for other selections", () => {
+		const questions = [
+			{
+				question: "Preferred runtime?",
+				options: [
+					{ label: "Node", description: "Use Node.js" },
+					{ label: "Bun", description: "Use Bun" },
+				],
+			},
+		];
+
+		expect(
+			formatResponseAnswer(questions[0], {
+				selectedOptionIndex: 2,
+				customText: "Deno",
+				selectionTouched: true,
+				committed: true,
+			}),
+		).toBe("Deno");
+	});
 });

@@ -39,7 +39,7 @@ describe("normalizeRequestUserInputQuestions", () => {
 });
 
 describe("buildRequestUserInputResponse", () => {
-	test("preserves option, other, and note semantics", () => {
+	test("returns selected options and raw custom text", () => {
 		const normalized = normalizeRequestUserInputQuestions([
 			{
 				id: "runtime",
@@ -76,8 +76,8 @@ describe("buildRequestUserInputResponse", () => {
 		];
 
 		const response = buildRequestUserInputResponse(normalized.questions, responses);
-		expect(response.answers.runtime.answers).toEqual(["Other", "user_note: Need Bun APIs"]);
-		expect(response.answers.notes.answers).toEqual(["user_note: Ship in two phases"]);
+		expect(response.answers.runtime.answers).toEqual(["Need Bun APIs"]);
+		expect(response.answers.notes.answers).toEqual(["Ship in two phases"]);
 	});
 });
 
@@ -93,7 +93,7 @@ describe("summary helpers", () => {
 			],
 			response: {
 				answers: {
-					runtime: { answers: ["user_note: Bun for startup"] },
+					runtime: { answers: ["Bun for startup"] },
 				},
 			},
 		};
