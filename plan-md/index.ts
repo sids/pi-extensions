@@ -3,7 +3,7 @@ import path from "node:path";
 import type { AgentToolResult } from "@mariozechner/pi-agent-core";
 import { keyHint, type ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
-import { registerPlanModeCommand } from "./flow";
+import { PLAN_MODE_PROMPT_ENTRY_TYPE, registerPlanModeCommand } from "./flow";
 import { resolveActivePlanFilePath } from "./plan-files";
 import { loadPlanModePrompt } from "./prompts";
 import { registerRequestUserInputTool } from "./request-user-input";
@@ -30,10 +30,34 @@ interface PlanModeExitDetails {
 	planText?: string;
 }
 
+interface PlanModePromptDetails {
+	instructionsPrompt: string;
+}
+
 const PLAN_MODE_EXIT_ENTRY_TYPE = "plan-md:exit";
 
 export default function (pi: ExtensionAPI) {
 	const stateManager = createPlanModeStateManager(pi);
+
+	pi.registerMessageRenderer(PLAN_MODE_PROMPT_ENTRY_TYPE, (message, { expanded }, theme) => {
+		const render = (text: string) => new Text(text, 1, 0, (segment) => theme.bg("customMessageBg", segment));
+		const details = message.details as PlanModePromptDetails | undefined;
+		const prompt = details?.instructionsPrompt ?? String(message.content ?? "");
+
+		if (!expanded) {
+			const allPromptLines = prompt.split("\n");
+			const previewLineCount = 8;
+			const previewLines = allPromptLines.slice(0, previewLineCount);
+			const lines = [...previewLines];
+			if (allPromptLines.length > previewLineCount) {
+				lines.push(theme.fg("dim", "..."));
+			}
+			lines.push(keyHint("expandTools", "to expand"));
+			return render(lines.join("\n"));
+		}
+
+		return render(prompt);
+	});
 
 	pi.registerMessageRenderer(PLAN_MODE_EXIT_ENTRY_TYPE, (message, { expanded }, theme) => {
 		const render = (text: string) => new Text(text, 1, 0, (segment) => theme.bg("customMessageBg", segment));
@@ -158,11 +182,17 @@ export default function (pi: ExtensionAPI) {
 		},
 	});
 
-	pi.on("before_agent_start", async () => {
+	pi.on("before_agent_start", async (_event, ctx) => {
 		stateManager.syncTools();
-		if (!stateManager.getState().active) {
+		const state = stateManager.getState();
+		if (!state.active || state.promptPending === false) {
 			return;
 		}
+
+		stateManager.setState(ctx, {
+			...state,
+			promptPending: false,
+		});
 
 		const prompt = await loadPlanModePrompt();
 		return {
@@ -172,6 +202,28 @@ export default function (pi: ExtensionAPI) {
 				display: false,
 			},
 		};
+	});
+
+	pi.on("session_compact", async (_event, ctx) => {
+		const state = stateManager.getState();
+		if (!state.active || state.promptPending) {
+			return;
+		}
+
+		stateManager.setState(ctx, {
+			...state,
+			promptPending: true,
+		});
+
+		const prompt = await loadPlanModePrompt();
+		pi.sendMessage({
+			customType: PLAN_MODE_PROMPT_ENTRY_TYPE,
+			content: "Plan mode instructions",
+			display: true,
+			details: {
+				instructionsPrompt: prompt,
+			},
+		});
 	});
 
 	pi.on("session_start", async (_event, ctx) => {

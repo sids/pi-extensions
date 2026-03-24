@@ -1,5 +1,6 @@
 import path from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import { loadPlanModePrompt } from "./prompts";
 import { buildImplementationPrefill, PLAN_MODE_END_OPTIONS, PLAN_MODE_START_OPTIONS } from "./utils";
 import {
 	createFreshPlanFilePath,
@@ -13,6 +14,20 @@ import {
 } from "./plan-files";
 import { getFirstUserMessageId, hasEntryInSession } from "./state";
 import type { PlanModeState } from "./types";
+
+export const PLAN_MODE_PROMPT_ENTRY_TYPE = "plan-md:prompt";
+
+async function sendPlanModePromptMessage(pi: ExtensionAPI) {
+	const prompt = await loadPlanModePrompt();
+	pi.sendMessage({
+		customType: PLAN_MODE_PROMPT_ENTRY_TYPE,
+		content: "Plan mode instructions",
+		display: true,
+		details: {
+			instructionsPrompt: prompt,
+		},
+	});
+}
 
 type PlanModeStateManager = {
 	getState: () => PlanModeState;
@@ -762,6 +777,7 @@ export function registerPlanModeCommand(
 			originLeafId,
 			planFilePath,
 		});
+		await sendPlanModePromptMessage(pi);
 	};
 
 	pi.registerCommand("plan-md", {

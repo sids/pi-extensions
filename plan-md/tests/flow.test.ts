@@ -32,6 +32,7 @@ function createRegisteredBindings(stateManager: {
 	let handler: ((args: string, ctx: any) => Promise<void>) | undefined;
 	let shortcutHandler: ((ctx: any) => Promise<void>) | undefined;
 	const shortcutKeys: string[] = [];
+	const sentMessages: any[] = [];
 
 	registerPlanModeCommand(
 		{
@@ -41,6 +42,9 @@ function createRegisteredBindings(stateManager: {
 			registerShortcut: (shortcut: string, options: { handler: (ctx: any) => Promise<void> }) => {
 				shortcutKeys.push(shortcut);
 				shortcutHandler = options.handler;
+			},
+			sendMessage: (message: any) => {
+				sentMessages.push(message);
 			},
 		} as any,
 		{ stateManager },
@@ -57,6 +61,7 @@ function createRegisteredBindings(stateManager: {
 		handler,
 		shortcutHandler,
 		shortcutKeys,
+		sentMessages,
 	};
 }
 
@@ -91,7 +96,7 @@ describe("/plan-md Alt+P shortcut", () => {
 			lastPlanLeafId: undefined,
 		};
 
-		const { shortcutHandler } = createRegisteredBindings({
+		const { shortcutHandler, sentMessages } = createRegisteredBindings({
 			getState: () => state,
 			setState: (_ctx, nextState) => {
 				state = nextState;
@@ -123,6 +128,15 @@ describe("/plan-md Alt+P shortcut", () => {
 				planFilePath,
 			},
 		]);
+		expect(sentMessages).toHaveLength(1);
+		expect(sentMessages[0]).toMatchObject({
+			customType: "plan-md:prompt",
+			content: "Plan mode instructions",
+			display: true,
+			details: {
+				instructionsPrompt: expect.any(String),
+			},
+		});
 	});
 
 	test("shows start location choices when shortcut enters plan mode from branchable history", async () => {

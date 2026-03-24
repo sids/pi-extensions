@@ -155,6 +155,7 @@ export function createPlanModeStateManager(pi: ExtensionAPI) {
 			originLeafId: options.originLeafId,
 			planFilePath: options.planFilePath,
 			lastPlanLeafId: state.lastPlanLeafId,
+			promptPending: true,
 		});
 	};
 
