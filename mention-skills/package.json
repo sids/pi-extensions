@@ -1,6 +1,6 @@
 {
   "name": "pi-mention-skills",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "type": "module",
   "description": "Skill mention autocomplete and expansion extension for pi",
   "license": "MIT",
@@ -20,6 +20,9 @@
   "peerDependencies": {
     "@mariozechner/pi-coding-agent": "*",
     "@mariozechner/pi-tui": "*"
+  },
+  "dependencies": {
+    "@siddr/pi-shared-qna": "^0.1.2"
   },
   "publishConfig": {
     "registry": "https://registry.npmjs.org/",

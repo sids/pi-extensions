@@ -1,7 +1,7 @@
 import { CustomEditor, type ExtensionAPI, type ExtensionUIContext } from "@mariozechner/pi-coding-agent";
 import type { KeybindingsManager } from "@mariozechner/pi-coding-agent";
 import { Key, matchesKey, type AutocompleteItem, type AutocompleteProvider, type EditorTheme, type TUI } from "@mariozechner/pi-tui";
-import { setRememberedSessionEditorComponent } from "../shared/session-editor-component";
+import { setRememberedSessionEditorComponent } from "@siddr/pi-shared-qna/session-editor-component";
 import {
 	buildThinkingAutocompleteItems,
 	createThinkingAutocompleteProvider,

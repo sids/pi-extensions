@@ -1,15 +1,17 @@
 {
   "name": "@siddr/pi-shared-qna",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "type": "module",
-  "description": "Shared Q&A TUI helpers for siddr pi extensions",
+  "description": "Shared TUI helpers for siddr pi extensions",
   "license": "MIT",
   "main": "./qna-tui.ts",
   "exports": {
-    ".": "./qna-tui.ts"
+    ".": "./qna-tui.ts",
+    "./session-editor-component": "./session-editor-component.ts"
   },
   "files": [
     "qna-tui.ts",
+    "session-editor-component.ts",
     "README.md"
   ],
   "repository": {

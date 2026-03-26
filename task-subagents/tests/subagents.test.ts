@@ -14,7 +14,7 @@ import {
 import {
 	clearRememberedSessionEditorComponentFactory,
 	rememberSessionEditorComponentFactory,
-} from "../../shared/session-editor-component";
+} from "@siddr/pi-shared-qna/session-editor-component";
 import type { ReviewedSubagentTask } from "../types";
 import {
 	resolveSubagentConcurrency,

@@ -14,7 +14,7 @@ import {
 	buildSessionEditorComponentKey,
 	getRememberedSessionEditorComponentFactory,
 	setRememberedSessionEditorComponent,
-} from "../shared/session-editor-component";
+} from "@siddr/pi-shared-qna/session-editor-component";
 import type {
 	NormalizedSubagentTask,
 	ReviewedSubagentTask,

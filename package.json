@@ -7,7 +7,8 @@
     "plan-md"
   ],
   "scripts": {
-    "check:peer-runtime": "node scripts/check-peer-runtime.js"
+    "check:peer-runtime": "node scripts/check-peer-runtime.js",
+    "check:package-boundaries": "node scripts/check-package-boundaries.js"
   },
   "devDependencies": {
     "@mariozechner/pi-agent-core": "*",

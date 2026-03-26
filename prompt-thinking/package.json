@@ -1,6 +1,6 @@
 {
   "name": "@siddr/pi-prompt-thinking",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "type": "module",
   "description": "Per-prompt thinking level override extension for pi",
   "license": "MIT",
@@ -21,6 +21,9 @@
     "@mariozechner/pi-ai": "*",
     "@mariozechner/pi-coding-agent": "*",
     "@mariozechner/pi-tui": "*"
+  },
+  "dependencies": {
+    "@siddr/pi-shared-qna": "^0.1.2"
   },
   "publishConfig": {
     "registry": "https://registry.npmjs.org/",
