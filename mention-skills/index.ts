@@ -1,7 +1,7 @@
 import { CustomEditor, type ExtensionAPI, type ExtensionUIContext } from "@mariozechner/pi-coding-agent";
 import type { AutocompleteItem, AutocompleteProvider, EditorTheme, TUI } from "@mariozechner/pi-tui";
 import type { KeybindingsManager } from "@mariozechner/pi-coding-agent";
-import { setRememberedSessionEditorComponent } from "@siddr/pi-shared-qna/session-editor-component";
+import { composeRememberedSessionEditorComponent } from "@siddr/pi-shared-qna/session-editor-component";
 import {
 	buildSkillAutocompleteItems,
 	collectDiscoveredSkills,
@@ -69,6 +69,55 @@ class MentionSkillsEditor extends CustomEditor {
 	}
 }
 
+const SKILL_MENTION_EDITOR_ENHANCED = Symbol("mention-skills-editor-enhanced");
+
+function enhanceEditorWithSkillMentions<TEditor extends CustomEditor>(
+	editor: TEditor,
+	getSkillItems: () => AutocompleteItem[],
+): TEditor {
+	const enhancedEditor = editor as TEditor & { [SKILL_MENTION_EDITOR_ENHANCED]?: boolean };
+	if (enhancedEditor[SKILL_MENTION_EDITOR_ENHANCED]) {
+		return editor;
+	}
+	enhancedEditor[SKILL_MENTION_EDITOR_ENHANCED] = true;
+	const baseSetAutocompleteProvider = editor.setAutocompleteProvider?.bind(editor);
+	if (baseSetAutocompleteProvider) {
+		editor.setAutocompleteProvider = (provider: AutocompleteProvider) => {
+			const wrapped = createMentionAutocompleteProvider(provider, getSkillItems);
+			baseSetAutocompleteProvider(wrapped);
+		};
+	}
+
+	const baseHandleInput = editor.handleInput.bind(editor);
+	editor.handleInput = (data: string) => {
+		baseHandleInput(data);
+
+		if (editor.isShowingAutocomplete()) {
+			return;
+		}
+
+		const isSinglePrintable = data.length === 1 && data.charCodeAt(0) >= 32;
+		if (!isSinglePrintable) {
+			return;
+		}
+
+		const lines = editor.getLines();
+		const cursor = editor.getCursor();
+		const line = lines[cursor.line] || "";
+		const mention = findMentionTokenAtCursor(line, cursor.col);
+		if (!mention) {
+			return;
+		}
+
+		const self = editor as any;
+		if (typeof self.tryTriggerAutocomplete === "function") {
+			self.tryTriggerAutocomplete();
+		}
+	};
+
+	return editor;
+}
+
 export default function (pi: ExtensionAPI) {
 	let skillMap = new Map<string, string>();
 	let skillItems: AutocompleteItem[] = [];
@@ -83,11 +132,16 @@ export default function (pi: ExtensionAPI) {
 			ui: Pick<ExtensionUIContext, "setEditorComponent">;
 		},
 	) {
-		setRememberedSessionEditorComponent(
-			ctx,
-			(tui: TUI, theme: EditorTheme, keybindings: KeybindingsManager) =>
-				new MentionSkillsEditor(tui, theme, keybindings, () => skillItems),
-		);
+		composeRememberedSessionEditorComponent(ctx, (previousFactory) => {
+			return (tui: TUI, theme: EditorTheme, keybindings: KeybindingsManager) => {
+				const previousEditor = previousFactory?.(tui, theme, keybindings) as CustomEditor | undefined;
+				if (previousEditor) {
+					return enhanceEditorWithSkillMentions(previousEditor, () => skillItems);
+				}
+
+				return new MentionSkillsEditor(tui, theme, keybindings, () => skillItems);
+			};
+		});
 	}
 
 	pi.on("session_start", (_event, ctx) => {

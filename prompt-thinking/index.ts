@@ -1,7 +1,7 @@
 import { CustomEditor, type ExtensionAPI, type ExtensionUIContext } from "@mariozechner/pi-coding-agent";
 import type { KeybindingsManager } from "@mariozechner/pi-coding-agent";
 import { Key, matchesKey, type AutocompleteItem, type AutocompleteProvider, type EditorTheme, type TUI } from "@mariozechner/pi-tui";
-import { setRememberedSessionEditorComponent } from "@siddr/pi-shared-qna/session-editor-component";
+import { composeRememberedSessionEditorComponent } from "@siddr/pi-shared-qna/session-editor-component";
 import {
 	buildThinkingAutocompleteItems,
 	createThinkingAutocompleteProvider,
@@ -121,6 +121,57 @@ export class PromptThinkingEditor extends CustomEditor {
 	}
 }
 
+const PROMPT_THINKING_EDITOR_ENHANCED = Symbol("prompt-thinking-editor-enhanced");
+
+function enhanceEditorWithPromptThinking<TEditor extends CustomEditor>(
+	editor: TEditor,
+	getThinkingItems: () => AutocompleteItem[],
+	getCurrentThinkingLevel: () => ThinkingLevel,
+): TEditor {
+	const enhancedEditor = editor as TEditor & { [PROMPT_THINKING_EDITOR_ENHANCED]?: boolean };
+	if (enhancedEditor[PROMPT_THINKING_EDITOR_ENHANCED]) {
+		return editor;
+	}
+	enhancedEditor[PROMPT_THINKING_EDITOR_ENHANCED] = true;
+	const baseSetAutocompleteProvider = editor.setAutocompleteProvider?.bind(editor);
+	if (baseSetAutocompleteProvider) {
+		editor.setAutocompleteProvider = (provider: AutocompleteProvider) => {
+			const wrapped = createThinkingAutocompleteProvider(provider, getThinkingItems);
+			baseSetAutocompleteProvider(wrapped);
+		};
+	}
+
+	const baseHandleInput = editor.handleInput.bind(editor);
+	editor.handleInput = (data: string) => {
+		baseHandleInput(data);
+
+		if (!isTextUpdateInput(data)) {
+			return;
+		}
+
+		const lines = editor.getLines();
+		const cursor = editor.getCursor();
+		const line = lines[cursor.line] || "";
+		const thinkingToken = findThinkingTokenAtCursor(line, cursor.col);
+		if (!thinkingToken) {
+			return;
+		}
+
+		if (!editor.isShowingAutocomplete()) {
+			const self = editor as any;
+			if (typeof self.tryTriggerAutocomplete === "function") {
+				self.tryTriggerAutocomplete();
+				selectAutocompleteValue(editor, getCurrentThinkingLevel());
+			}
+			return;
+		}
+
+		selectAutocompleteValue(editor, getCurrentThinkingLevel());
+	};
+
+	return editor;
+}
+
 export default function (pi: ExtensionAPI) {
 	let currentModel: ThinkingModel | null = null;
 	let availableThinkingLevels: ThinkingLevel[] = ["off"];
@@ -160,17 +211,23 @@ export default function (pi: ExtensionAPI) {
 			ui: Pick<ExtensionUIContext, "setEditorComponent">;
 		},
 	) {
-		setRememberedSessionEditorComponent(
-			ctx,
-			(tui: TUI, theme: EditorTheme, keybindings: KeybindingsManager) =>
-				new PromptThinkingEditor(
+		composeRememberedSessionEditorComponent(ctx, (previousFactory) => {
+			return (tui: TUI, theme: EditorTheme, keybindings: KeybindingsManager) => {
+				const getThinkingItems = () => buildThinkingAutocompleteItems(availableThinkingLevels, getLiveThinkingLevel());
+				const previousEditor = previousFactory?.(tui, theme, keybindings) as CustomEditor | undefined;
+				if (previousEditor) {
+					return enhanceEditorWithPromptThinking(previousEditor, getThinkingItems, () => getLiveThinkingLevel());
+				}
+
+				return new PromptThinkingEditor(
 					tui,
 					theme,
 					keybindings,
-					() => buildThinkingAutocompleteItems(availableThinkingLevels, getLiveThinkingLevel()),
+					getThinkingItems,
 					() => getLiveThinkingLevel(),
-				),
-		);
+				);
+			};
+		});
 	}
 
 	pi.on("session_start", (_event, ctx) => {

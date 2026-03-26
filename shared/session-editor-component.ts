@@ -10,7 +10,23 @@ type SessionEditorComponentContext = {
 	};
 };
 
-const rememberedSessionEditorComponents = new Map<string, SessionEditorComponentFactory>();
+const SESSION_EDITOR_COMPONENT_STORE_KEY = Symbol.for("@siddr/pi-shared-qna/session-editor-component/store");
+
+type SessionEditorComponentStore = {
+	rememberedSessionEditorComponents: Map<string, SessionEditorComponentFactory>;
+};
+
+function getSessionEditorComponentStore(): SessionEditorComponentStore {
+	const globalState = globalThis as typeof globalThis & {
+		[SESSION_EDITOR_COMPONENT_STORE_KEY]?: SessionEditorComponentStore;
+	};
+	if (!globalState[SESSION_EDITOR_COMPONENT_STORE_KEY]) {
+		globalState[SESSION_EDITOR_COMPONENT_STORE_KEY] = {
+			rememberedSessionEditorComponents: new Map<string, SessionEditorComponentFactory>(),
+		};
+	}
+	return globalState[SESSION_EDITOR_COMPONENT_STORE_KEY]!;
+}
 
 export function buildSessionEditorComponentKey(ctx: SessionEditorComponentContext): string {
 	const sessionFile = ctx.sessionManager?.getSessionFile?.();
@@ -28,13 +44,13 @@ export function rememberSessionEditorComponentFactory(
 	ctx: SessionEditorComponentContext,
 	factory: SessionEditorComponentFactory,
 ): void {
-	rememberedSessionEditorComponents.set(buildSessionEditorComponentKey(ctx), factory);
+	getSessionEditorComponentStore().rememberedSessionEditorComponents.set(buildSessionEditorComponentKey(ctx), factory);
 }
 
 export function getRememberedSessionEditorComponentFactory(
 	ctx: SessionEditorComponentContext,
 ): SessionEditorComponentFactory {
-	return rememberedSessionEditorComponents.get(buildSessionEditorComponentKey(ctx));
+	return getSessionEditorComponentStore().rememberedSessionEditorComponents.get(buildSessionEditorComponentKey(ctx));
 }
 
 export function setRememberedSessionEditorComponent(
@@ -45,6 +61,14 @@ export function setRememberedSessionEditorComponent(
 	ctx.ui.setEditorComponent(factory);
 }
 
+export function composeRememberedSessionEditorComponent(
+	ctx: SessionEditorComponentContext & { ui: Pick<ExtensionUIContext, "setEditorComponent"> },
+	buildFactory: (previousFactory: SessionEditorComponentFactory | undefined) => SessionEditorComponentFactory,
+): void {
+	const previousFactory = getRememberedSessionEditorComponentFactory(ctx);
+	setRememberedSessionEditorComponent(ctx, buildFactory(previousFactory));
+}
+
 export function clearRememberedSessionEditorComponentFactory(ctx: SessionEditorComponentContext): void {
-	rememberedSessionEditorComponents.delete(buildSessionEditorComponentKey(ctx));
+	getSessionEditorComponentStore().rememberedSessionEditorComponents.delete(buildSessionEditorComponentKey(ctx));
 }
