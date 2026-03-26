@@ -2,7 +2,7 @@
   "name": "@siddr/pi-status",
   "version": "0.1.2",
   "type": "module",
-  "description": "Status line and terminal title extension for pi",
+  "description": "Status widget extension for pi",
   "license": "MIT",
   "keywords": ["pi-package"],
   "repository": {

@@ -16,7 +16,7 @@ A collection of pi extensions. Each extension lives in its own directory with it
 - [`openai-params/`](openai-params/) – OpenAI settings UI for fast mode and verbosity request parameters
 - [`fetch-url/`](fetch-url/) – URL fetch tool with main-content extraction and markdown/html/raw output
 - [`web-search/`](web-search/) – Brave Search `web_search` tool for single or multi-query result sets
-- [`status/`](status/) – Live status line and terminal title indicators for model, repo, timing, and PR context
+- [`status/`](status/) – Live status widget for model, repo, timing, and PR context
 
 ## Documentation
 

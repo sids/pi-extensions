@@ -19,32 +19,6 @@ export function formatThinkingLevel(level?: string): string {
 	return level?.trim() ? level : "off";
 }
 
-export function applyTitleAttention(attentionIds: Set<string>, id: string, active: boolean): boolean {
-	const previousSize = attentionIds.size;
-	if (active) {
-		attentionIds.add(id);
-	} else {
-		attentionIds.delete(id);
-	}
-	return attentionIds.size !== previousSize;
-}
-
-export function clearTitleAttention(attentionIds: Set<string>): boolean {
-	if (attentionIds.size === 0) {
-		return false;
-	}
-	attentionIds.clear();
-	return true;
-}
-
-export function shouldPromoteLongRunningToolWarning(
-	toolCallId: string,
-	timers: ReadonlyMap<string, unknown>,
-	timerRef: unknown,
-): boolean {
-	return timers.get(toolCallId) === timerRef;
-}
-
 export function formatWorkingDirectory(cwd: string): string {
 	const home = os.homedir();
 	if (cwd === home) {
