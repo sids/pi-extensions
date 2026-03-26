@@ -1832,7 +1832,7 @@ export function registerSubagentTools(
 		name: "subagents",
 		label: "subagents",
 		description:
-			"Launch one or more isolated subagents with activity traces, interactive pre-launch review in UI mode, and run IDs for follow-up steering.",
+			"Launch one or more isolated subagents with activity traces, interactive pre-launch review in UI mode, and run IDs for follow-up steering. Use this only when asked to use subagents.",
 		parameters: dependencies.subagentsSchema,
 		renderCall(args, theme) {
 			const tasks = (args.tasks as SubagentTask[] | undefined) ?? [];

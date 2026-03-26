@@ -143,6 +143,7 @@ describe("createSubagentDir", () => {
 
 type RegisteredTool = {
 	name: string;
+	description?: string;
 	execute: (
 		toolCallId: string,
 		params: any,
@@ -397,6 +398,7 @@ describe("subagents tool", () => {
 	test("registers subagents, steer_subagent, and the dashboard shortcut", () => {
 		const { tools, shortcuts } = registerBindings();
 		expect(Object.keys(tools).sort()).toEqual(["steer_subagent", "subagents"]);
+		expect(tools.subagents.description).toContain("Use this only when asked to use subagents.");
 		expect([...shortcuts.keys()]).toEqual(["ctrl+shift+o"]);
 	});
 
