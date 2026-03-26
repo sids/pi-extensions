@@ -174,18 +174,18 @@ export function createDeletePromptSaveMutation(itemId: string): DeletePromptSave
 	};
 }
 
-function collapseWhitespace(text: string): string {
-	return text.replace(/\s+/g, " ").trim();
-}
-
-export function buildPromptPreview(text: string): { label: string; description?: string } {
-	const normalized = text.replace(/\r\n/g, "\n");
-	const lines = normalized.split("\n");
-	const collapsedLines = lines.map(collapseWhitespace).filter((line) => line.length > 0);
-	const label = collapsedLines[0] ?? "(blank prompt)";
+export function buildPromptPreview(text: string): { label: string; additionalLineCount: number } {
+	const lines = text.replace(/\r\n/g, "\n").split("\n");
+	const firstLine = lines[0] ?? "";
+	const hasMeaningfulContent = lines.some((line) => line.trim().length > 0);
+	const label = firstLine.trim().length > 0
+		? firstLine.trim()
+		: hasMeaningfulContent
+			? "(blank first line)"
+			: "(blank prompt)";
 
 	return {
 		label,
-		description: collapsedLines.length > 1 || lines.length > 1 ? "…" : undefined,
+		additionalLineCount: Math.max(0, lines.length - 1),
 	};
 }

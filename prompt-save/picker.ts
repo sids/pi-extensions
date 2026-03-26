@@ -39,6 +39,8 @@ export class PromptSavePicker implements Component {
 	private items: SavedPromptItem[] = [];
 	private selectList: SelectList | null = null;
 	private selectedId: string | undefined;
+	private selectedIndex = 0;
+	private maxVisible = 1;
 	private cachedWidth: number | undefined;
 	private cachedLines: string[] | undefined;
 
@@ -56,22 +58,32 @@ export class PromptSavePicker implements Component {
 	}
 
 	private rebuildSelectList(preferredSelectedId?: string): void {
+		this.maxVisible = Math.min(Math.max(this.items.length, 1), 8);
+
 		if (this.items.length === 0) {
 			this.selectList = null;
 			this.selectedId = undefined;
+			this.selectedIndex = 0;
 			return;
 		}
 
 		this.selectList = new SelectList(
-			this.items.map((item) => ({
-				value: item.id,
-				...buildPromptPreview(item.text),
-			})),
-			Math.min(Math.max(this.items.length, 1), 8),
+			this.items.map((item) => {
+				const preview = buildPromptPreview(item.text);
+				return {
+					value: item.id,
+					label: preview.label,
+				};
+			}),
+			this.maxVisible,
 			createSelectListTheme(this.theme),
 		);
 		this.selectList.onSelectionChange = (item) => {
 			this.selectedId = item.value;
+			this.selectedIndex = Math.max(
+				0,
+				this.items.findIndex((savedItem) => savedItem.id === item.value),
+			);
 		};
 
 		const nextSelectedId = preferredSelectedId && this.items.some((item) => item.id === preferredSelectedId)
@@ -85,6 +97,7 @@ export class PromptSavePicker implements Component {
 		);
 		this.selectList.setSelectedIndex(nextSelectedIndex);
 		this.selectedId = this.items[nextSelectedIndex]?.id;
+		this.selectedIndex = nextSelectedIndex;
 	}
 
 	private getSelectedItem(): SavedPromptItem | null {
@@ -112,6 +125,51 @@ export class PromptSavePicker implements Component {
 		}
 
 		return this.items[selectedIndex + 1]?.id ?? this.items[selectedIndex - 1]?.id;
+	}
+
+	private getVisibleItemRange(): { startIndex: number; endIndex: number } {
+		const startIndex = Math.max(
+			0,
+			Math.min(this.selectedIndex - Math.floor(this.maxVisible / 2), this.items.length - this.maxVisible),
+		);
+		const endIndex = Math.min(startIndex + this.maxVisible, this.items.length);
+
+		return { startIndex, endIndex };
+	}
+
+	private renderItemLine(item: SavedPromptItem, isSelected: boolean, width: number): string {
+		const preview = buildPromptPreview(item.text);
+		const prefix = isSelected ? this.theme.fg("accent", "→ ") : "  ";
+		const prefixWidth = visibleWidth(prefix);
+		const availableTextWidth = Math.max(0, width - prefixWidth);
+		if (availableTextWidth === 0) {
+			return truncateToWidth(prefix, width, "");
+		}
+
+		const label = isSelected ? this.theme.fg("accent", preview.label) : preview.label;
+		const ellipsis = isSelected ? this.theme.fg("accent", "...") : "...";
+		if (preview.additionalLineCount === 0) {
+			return `${prefix}${truncateToWidth(label, availableTextWidth, ellipsis)}`;
+		}
+
+		const suffixLabel = `(+${preview.additionalLineCount} lines)`;
+		const suffixWidth = visibleWidth(suffixLabel);
+		const separatedSuffixLabel = ` ${suffixLabel}`;
+		const separatedSuffixWidth = suffixWidth + 1;
+		const labelWidth = Math.max(0, availableTextWidth - separatedSuffixWidth);
+		if (labelWidth > 0) {
+			return `${prefix}${truncateToWidth(label, labelWidth, ellipsis)}${this.theme.fg("dim", separatedSuffixLabel)}`;
+		}
+
+		if (availableTextWidth >= separatedSuffixWidth) {
+			return `${prefix}${this.theme.fg("dim", separatedSuffixLabel)}`;
+		}
+
+		if (availableTextWidth >= suffixWidth) {
+			return `${prefix}${this.theme.fg("dim", suffixLabel)}`;
+		}
+
+		return `${prefix}${truncateToWidth(this.theme.fg("dim", suffixLabel), availableTextWidth, "")}`;
 	}
 
 	invalidate(): void {
@@ -151,6 +209,10 @@ export class PromptSavePicker implements Component {
 
 		this.selectList.handleInput(data);
 		this.selectedId = this.selectList.getSelectedItem()?.value;
+		this.selectedIndex = Math.max(
+			0,
+			this.items.findIndex((item) => item.id === this.selectedId),
+		);
 		this.invalidate();
 		this.tui.requestRender();
 	}
@@ -165,6 +227,7 @@ export class PromptSavePicker implements Component {
 			return [truncateToWidth("Saved prompts", width)];
 		}
 		const contentWidth = Math.max(1, boxWidth - 4);
+		const listWidth = Math.max(1, contentWidth - 2);
 		const lines: string[] = [];
 		const separator = this.theme.fg("accent", " · ");
 		const formatHint = (shortcut: string, action: string) => `${this.theme.bold(shortcut)} ${this.theme.italic(action)}`;
@@ -199,8 +262,19 @@ export class PromptSavePicker implements Component {
 		lines.push(padToWidth(emptyBoxLine()));
 
 		if (this.selectList) {
-			for (const line of this.selectList.render(contentWidth)) {
-				lines.push(padToWidth(boxLine(line)));
+			const { startIndex, endIndex } = this.getVisibleItemRange();
+			for (let index = startIndex; index < endIndex; index++) {
+				const item = this.items[index];
+				if (!item) {
+					continue;
+				}
+
+				lines.push(padToWidth(boxLine(this.renderItemLine(item, index === this.selectedIndex, listWidth))));
+			}
+
+			if (startIndex > 0 || endIndex < this.items.length) {
+				const scrollText = this.theme.fg("dim", truncateToWidth(`  (${this.selectedIndex + 1}/${this.items.length})`, listWidth, ""));
+				lines.push(padToWidth(boxLine(scrollText)));
 			}
 		} else {
 			for (const line of wrapTextWithAnsi(this.theme.fg("dim", "No saved prompts in this session yet."), contentWidth)) {

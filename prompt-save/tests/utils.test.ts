@@ -91,17 +91,32 @@ describe("appendPromptToEditor", () => {
 });
 
 describe("buildPromptPreview", () => {
-	test("shows the first line plus an ellipsis for multiline prompts", () => {
+	test("returns the first line and literal additional line count for multiline prompts", () => {
 		expect(buildPromptPreview("first line\n\nsecond line\nthird line")).toEqual({
 			label: "first line",
-			description: "…",
+			additionalLineCount: 3,
 		});
 	});
 
-	test("omits the ellipsis for single-line prompts", () => {
+	test("normalizes CRLF and keeps single-line prompts suffix-free", () => {
 		expect(buildPromptPreview("first line only")).toEqual({
 			label: "first line only",
-			description: undefined,
+			additionalLineCount: 0,
+		});
+		expect(buildPromptPreview("first line\r\nsecond line")).toEqual({
+			label: "first line",
+			additionalLineCount: 1,
+		});
+	});
+
+	test("uses fallbacks for blank prompts and blank first lines", () => {
+		expect(buildPromptPreview("")).toEqual({
+			label: "(blank prompt)",
+			additionalLineCount: 0,
+		});
+		expect(buildPromptPreview("\nsecond line")).toEqual({
+			label: "(blank first line)",
+			additionalLineCount: 1,
 		});
 	});
 });
