@@ -36,7 +36,7 @@ When enabled, it patches provider requests right before send:
 Config uses the same project-over-global pattern as the fast-mode package:
 
 - project: `.pi/extensions/openai-params.json`
-- global: `~/.pi/agent/extensions/openai-params.json`
+- global: `~/.pi/agent/openai-params.json`
 
 If neither file exists, the extension creates the global file on first run.
 

@@ -86,7 +86,7 @@ export function getConfigPaths(
 } {
 	return {
 		projectConfigPath: join(cwd, ".pi", "extensions", OPENAI_PARAMS_CONFIG_BASENAME),
-		globalConfigPath: join(homeDir, ".pi", "agent", "extensions", OPENAI_PARAMS_CONFIG_BASENAME),
+		globalConfigPath: join(homeDir, ".pi", "agent", OPENAI_PARAMS_CONFIG_BASENAME),
 	};
 }
 
