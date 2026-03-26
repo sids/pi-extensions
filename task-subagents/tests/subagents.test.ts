@@ -511,15 +511,18 @@ describe("subagents tool", () => {
 			const editor = installedFactory?.(
 				{ requestRender: () => {}, terminal: { rows: 24 } },
 				{
+					fg: (color: string, text: string) => `<${color}>${text}</${color}>`,
 					borderColor: (text: string) => text,
 					selectList: {
-						matchHighlight: (text: string) => text,
+						matchHighlight: (text: string) => `<match>${text}</match>`,
 						itemSecondary: (text: string) => text,
 					},
 				},
 				{} as any,
 			);
-			expect(editor?.render(100).join("\n")).toContain("task-a");
+			const renderedEditor = editor?.render(100).join("\n") ?? "";
+			expect(renderedEditor).toContain("task-a");
+			expect(renderedEditor).toContain("<match><accent>[ ");
 			await executionPromise;
 			expect(installedFactory).toBeUndefined();
 		} finally {

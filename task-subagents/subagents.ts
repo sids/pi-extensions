@@ -1492,7 +1492,10 @@ export function registerSubagentTools(
 			new SubagentSteeringEditorComponent(
 				tui,
 				{
-					accentColor: (text) => theme.selectList?.matchHighlight?.(text) ?? text,
+					accentColor: (text) => {
+						const accented = theme.fg?.("accent", text) ?? text;
+						return theme.selectList?.matchHighlight?.(accented) ?? accented;
+					},
 					mutedColor: (text) => theme.selectList?.itemSecondary?.(text) ?? text,
 					dimColor: theme.borderColor,
 				},
