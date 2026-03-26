@@ -186,6 +186,60 @@ describe("buildSubagentLaunchReviewResult", () => {
 });
 
 describe("runSubagentLaunchReview", () => {
+	test("cycles thinking from the currently selected effective value", async () => {
+		const previousArgv = process.argv;
+		process.argv = ["bun", "test", "--models", ""];
+
+		try {
+			const result = await runSubagentLaunchReview(
+				{
+					hasUI: true,
+					cwd: "/tmp/project",
+					modelRegistry: {
+						getAvailable: () => [],
+						find: () => undefined,
+					},
+					ui: {
+						custom: async (render: any) => {
+							return await new Promise<ReviewedSubagentTask[] | null>((resolve) => {
+								const component = render(
+									{ requestRender: () => {} },
+									{
+										fg: (_token: string, text: string) => text,
+										bold: (text: string) => text,
+									},
+									undefined,
+									resolve,
+								);
+								component.handleInput("\u001b[Z");
+								component.handleInput("\r");
+								component.handleInput("\r");
+							});
+						},
+					},
+				} as any,
+				[
+					{
+						taskId: "task-a",
+						prompt: "Inspect A",
+						cwd: "/tmp/project",
+						defaultThinking: undefined,
+						launchContext: "fresh",
+						launchStatus: "ready",
+						cancellationNote: undefined,
+					},
+				],
+				{
+					currentThinkingLevel: "medium",
+				},
+			);
+
+			expect(result?.[0]?.thinkingOverride).toBe("high");
+		} finally {
+			process.argv = previousArgv;
+		}
+	});
+
 	test("appends late tasks into the live review state", async () => {
 		const previousArgv = process.argv;
 		process.argv = ["bun", "test", "--models", ""];

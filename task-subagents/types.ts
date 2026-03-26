@@ -1,3 +1,5 @@
+import type { AssistantMessage, ToolResultMessage } from "@mariozechner/pi-ai";
+
 export const SUBAGENT_THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh"] as const;
 export const SUBAGENT_TOOL_THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh"] as const;
 export const SUBAGENT_CONTEXT_MODES = ["fresh", "fork"] as const;
@@ -38,6 +40,23 @@ export type SubagentActivity = {
 	timestamp: number;
 };
 
+export type SubagentTranscriptEntry =
+	| {
+			kind: "assistantMessage";
+			timestamp: number;
+			message: AssistantMessage;
+	  }
+	| {
+			kind: "toolResultMessage";
+			timestamp: number;
+			message: ToolResultMessage;
+	  }
+	| {
+			kind: "status" | "stderr";
+			timestamp: number;
+			text: string;
+	  };
+
 export type SubagentTaskResult = {
 	taskId: string;
 	task: string;
@@ -55,6 +74,7 @@ export type SubagentTaskResult = {
 	exitCode: number | null;
 	stderr: string;
 	activities: SubagentActivity[];
+	transcript: SubagentTranscriptEntry[];
 	startedAt: number | null;
 	finishedAt: number | null;
 	steeringNotes: string[];
@@ -94,8 +114,42 @@ export type SubagentProgressDetails = {
 	tasks: SubagentTaskProgress[];
 };
 
+export type SubagentDashboardTaskState = {
+	taskId: string;
+	prompt: string;
+	cwd: string;
+	status: SubagentTaskProgress["status"];
+	modelOverride?: string;
+	thinkingOverride?: SubagentThinkingLevel;
+	launchModel?: string;
+	launchThinking?: SubagentThinkingLevel;
+	launchContext: SubagentContextMode;
+	forkSessionFile?: string;
+	cancellationNote?: string;
+	latestActivity?: string;
+	activityCount: number;
+	transcript: SubagentTranscriptEntry[];
+	output: string;
+	references: string[];
+	stderr: string;
+	startedAt: number | null;
+	finishedAt: number | null;
+	steeringNotes: string[];
+};
+
+export type SubagentDashboardRunState = {
+	runId: string;
+	createdAt: number;
+	updatedAt: number;
+	active: boolean;
+	tasks: SubagentDashboardTaskState[];
+};
+
 export type SubagentRunRecord = {
 	runId: string;
 	createdAt: number;
+	updatedAt: number;
+	active: boolean;
 	tasks: SubagentTaskResult[];
+	sessionKey: string;
 };

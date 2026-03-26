@@ -7,9 +7,14 @@ import {
 	createSubagentDir,
 	isSubagentExtensionDisabled,
 	normalizeSubagentTasks,
+	reconstructSubagentRunsFromEntries,
 	registerSubagentTools,
 	resolveSubagentDir,
 } from "../subagents";
+import {
+	clearRememberedSessionEditorComponentFactory,
+	rememberSessionEditorComponentFactory,
+} from "../../shared/session-editor-component";
 import type { ReviewedSubagentTask } from "../types";
 import {
 	resolveSubagentConcurrency,
@@ -147,6 +152,10 @@ type RegisteredTool = {
 	) => Promise<{ isError?: boolean; content: Array<{ type: string; text?: string }>; details?: any }>;
 };
 
+type RegisteredShortcut = {
+	handler: (ctx: any) => Promise<void> | void;
+};
+
 async function setupStubPi(tempDir: string) {
 	const sourceAgentDir = path.join(tempDir, "source-agent");
 	const binDir = path.join(tempDir, "bin");
@@ -196,11 +205,53 @@ if (logPath) {
 	}) + "\\n");
 }
 const output = prompt.includes("Steering update from the main agent") ? "steered output" : path.basename(agentDir) || "ok";
+const usage = {
+	input: 0,
+	output: 0,
+	cacheRead: 0,
+	cacheWrite: 0,
+	totalTokens: 0,
+	cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+};
 setTimeout(() => {
 	process.stdout.write(JSON.stringify({
 		type: "message_end",
 		message: {
 			role: "assistant",
+			api: "openai-responses",
+			provider: "openai",
+			model: "gpt-5",
+			usage,
+			stopReason: "toolUse",
+			timestamp: Date.now(),
+			content: [
+				{ type: "text", text: "Inspecting files" },
+				{ type: "toolCall", id: "tool-call-1", name: "read", arguments: { path: "README.md" } },
+			],
+		},
+	}) + "\\n");
+	process.stdout.write(JSON.stringify({
+		type: "tool_result_end",
+		message: {
+			role: "toolResult",
+			toolCallId: "tool-call-1",
+			toolName: "read",
+			content: [{ type: "text", text: "README contents" }],
+			details: { path: "README.md" },
+			isError: false,
+			timestamp: Date.now(),
+		},
+	}) + "\\n");
+	process.stdout.write(JSON.stringify({
+		type: "message_end",
+		message: {
+			role: "assistant",
+			api: "openai-responses",
+			provider: "openai",
+			model: "gpt-5",
+			usage,
+			stopReason: "stop",
+			timestamp: Date.now(),
 			content: [{ type: "text", text: output }],
 		},
 	}) + "\\n");
@@ -250,12 +301,16 @@ async function readSpawnLog(spawnLogPath: string): Promise<Array<{
 	}
 }
 
-function registerTools(options?: { thinkingLevel?: string }): Record<string, RegisteredTool> {
+function registerBindings(options?: { thinkingLevel?: string }) {
 	const tools: Record<string, RegisteredTool> = {};
+	const shortcuts = new Map<string, RegisteredShortcut>();
 	registerSubagentTools(
 		{
 			registerTool: (tool: RegisteredTool) => {
 				tools[tool.name] = tool;
+			},
+			registerShortcut: (shortcut: string, shortcutOptions: RegisteredShortcut) => {
+				shortcuts.set(shortcut, shortcutOptions);
 			},
 			getThinkingLevel: () => options?.thinkingLevel ?? "medium",
 		} as any,
@@ -264,7 +319,11 @@ function registerTools(options?: { thinkingLevel?: string }): Record<string, Reg
 			steerSubagentSchema: {},
 		},
 	);
-	return tools;
+	return { tools, shortcuts };
+}
+
+function registerTools(options?: { thinkingLevel?: string }): Record<string, RegisteredTool> {
+	return registerBindings(options).tools;
 }
 
 function createExecuteContext(
@@ -275,15 +334,24 @@ function createExecuteContext(
 		availableModels?: Array<{ provider: string; id: string; name?: string; reasoning?: boolean; api?: string }>;
 		model?: { provider: string; id: string };
 		sessionFile?: string;
+		sessionId?: string;
+		customHandler?: (factory: any) => Promise<any>;
+		notify?: (message: string, type?: string) => void;
+		editorText?: string;
+		onSetEditorComponent?: (factory: any) => void;
+		branchEntries?: any[];
 	},
 ) {
 	const availableModels = options?.availableModels ?? [];
+	let editorText = options?.editorText ?? "";
 	return {
 		hasUI: options?.hasUI ?? false,
 		cwd,
 		model: options?.model,
 		sessionManager: {
 			getSessionFile: () => options?.sessionFile,
+			getSessionId: () => options?.sessionId ?? "session-1",
+			getBranch: () => options?.branchEntries ?? [],
 		},
 		modelRegistry: {
 			getAvailable: () => availableModels,
@@ -291,7 +359,20 @@ function createExecuteContext(
 				availableModels.find((model) => model.provider === provider && model.id === modelId),
 		},
 		ui: {
-			custom: async () => options?.reviewResult ?? null,
+			custom: async (factory: any) => {
+				if (options?.customHandler) {
+					return await options.customHandler(factory);
+				}
+				return options?.reviewResult ?? null;
+			},
+			notify: options?.notify ?? (() => {}),
+			getEditorText: () => editorText,
+			setEditorText: (text: string) => {
+				editorText = text;
+			},
+			setEditorComponent: (factory: any) => {
+				options?.onSetEditorComponent?.(factory);
+			},
 		},
 	};
 }
@@ -313,9 +394,305 @@ describe("registerSubagentTools", () => {
 });
 
 describe("subagents tool", () => {
-	test("registers subagents and steer_subagent", () => {
-		const tools = registerTools();
+	test("registers subagents, steer_subagent, and the dashboard shortcut", () => {
+		const { tools, shortcuts } = registerBindings();
 		expect(Object.keys(tools).sort()).toEqual(["steer_subagent", "subagents"]);
+		expect([...shortcuts.keys()]).toEqual(["ctrl+shift+o"]);
+	});
+
+	test("captures structured transcripts in run details", async () => {
+		const tempDir = await mkdtemp(path.join(os.tmpdir(), "task-subagents-transcript-capture-"));
+		const { binDir, sourceAgentDir, spawnLogPath } = await setupStubPi(tempDir);
+		const tools = registerTools();
+		const subagentsTool = tools.subagents;
+		let previousAgentDir: string | undefined;
+		let previousPath: string | undefined;
+		let previousSpawnLogPath: string | undefined;
+
+		try {
+			previousAgentDir = process.env.PI_CODING_AGENT_DIR;
+			previousPath = process.env.PATH;
+			previousSpawnLogPath = process.env.SUBAGENT_LOG_PATH;
+			process.env.PI_CODING_AGENT_DIR = sourceAgentDir;
+			process.env.PATH = [binDir, previousPath].filter(Boolean).join(path.delimiter);
+			process.env.SUBAGENT_LOG_PATH = spawnLogPath;
+
+			const result = await subagentsTool.execute(
+				"call-1",
+				{
+					tasks: [{ id: "task-a", prompt: "Inspect A", cwd: tempDir }],
+					concurrency: 1,
+				},
+				undefined,
+				undefined,
+				createExecuteContext(tempDir),
+			);
+
+			const transcript = result.details?.tasks[0]?.transcript;
+			expect(transcript.map((entry: any) => entry.kind)).toEqual([
+				"status",
+				"assistantMessage",
+				"toolResultMessage",
+				"assistantMessage",
+				"status",
+			]);
+			expect(transcript[1]?.message?.content?.[1]).toMatchObject({
+				type: "toolCall",
+				name: "read",
+			});
+			expect(transcript[2]?.message?.toolName).toBe("read");
+		} finally {
+			if (previousAgentDir === undefined) {
+				delete process.env.PI_CODING_AGENT_DIR;
+			} else {
+				process.env.PI_CODING_AGENT_DIR = previousAgentDir;
+			}
+			if (previousPath === undefined) {
+				delete process.env.PATH;
+			} else {
+				process.env.PATH = previousPath;
+			}
+			if (previousSpawnLogPath === undefined) {
+				delete process.env.SUBAGENT_LOG_PATH;
+			} else {
+				process.env.SUBAGENT_LOG_PATH = previousSpawnLogPath;
+			}
+			await rm(tempDir, { recursive: true, force: true });
+		}
+	});
+
+	test("activates the inline inspector editor for an active run via ctrl+shift+o", async () => {
+		const tempDir = await mkdtemp(path.join(os.tmpdir(), "task-subagents-active-dashboard-"));
+		const { binDir, sourceAgentDir, spawnLogPath } = await setupStubPi(tempDir);
+		const { tools, shortcuts } = registerBindings();
+		const subagentsTool = tools.subagents;
+		const shortcut = shortcuts.get("ctrl+shift+o")?.handler;
+		let previousAgentDir: string | undefined;
+		let previousPath: string | undefined;
+		let previousSpawnLogPath: string | undefined;
+		let installedFactory: ((tui: any, theme: any, keybindings: any) => any) | undefined;
+
+		if (!shortcut) {
+			throw new Error("Expected ctrl+shift+o shortcut");
+		}
+
+		try {
+			previousAgentDir = process.env.PI_CODING_AGENT_DIR;
+			previousPath = process.env.PATH;
+			previousSpawnLogPath = process.env.SUBAGENT_LOG_PATH;
+			process.env.PI_CODING_AGENT_DIR = sourceAgentDir;
+			process.env.PATH = [binDir, previousPath].filter(Boolean).join(path.delimiter);
+			process.env.SUBAGENT_LOG_PATH = spawnLogPath;
+
+			const executionPromise = subagentsTool.execute(
+				"call-1",
+				{
+					tasks: [{ id: "task-a", prompt: "Inspect A", cwd: tempDir }],
+					concurrency: 1,
+				},
+				undefined,
+				undefined,
+				createExecuteContext(tempDir, { sessionId: "session-live" }),
+			);
+
+			await shortcut(
+				createExecuteContext(tempDir, {
+					hasUI: true,
+					sessionId: "session-live",
+					onSetEditorComponent: (factory) => {
+						installedFactory = factory;
+					},
+				}) as any,
+			);
+
+			expect(typeof installedFactory).toBe("function");
+			const editor = installedFactory?.(
+				{ requestRender: () => {}, terminal: { rows: 24 } },
+				{
+					borderColor: (text: string) => text,
+					selectList: {
+						matchHighlight: (text: string) => text,
+						itemSecondary: (text: string) => text,
+					},
+				},
+				{} as any,
+			);
+			expect(editor?.render(100).join("\n")).toContain("task-a");
+			await executionPromise;
+			expect(installedFactory).toBeUndefined();
+		} finally {
+			if (previousAgentDir === undefined) {
+				delete process.env.PI_CODING_AGENT_DIR;
+			} else {
+				process.env.PI_CODING_AGENT_DIR = previousAgentDir;
+			}
+			if (previousPath === undefined) {
+				delete process.env.PATH;
+			} else {
+				process.env.PATH = previousPath;
+			}
+			if (previousSpawnLogPath === undefined) {
+				delete process.env.SUBAGENT_LOG_PATH;
+			} else {
+				process.env.SUBAGENT_LOG_PATH = previousSpawnLogPath;
+			}
+			await rm(tempDir, { recursive: true, force: true });
+		}
+	});
+
+	test("restores the previous custom editor when the inspector closes", async () => {
+		const tempDir = await mkdtemp(path.join(os.tmpdir(), "task-subagents-editor-restore-"));
+		const { binDir, sourceAgentDir, spawnLogPath } = await setupStubPi(tempDir);
+		const { tools, shortcuts } = registerBindings();
+		const subagentsTool = tools.subagents;
+		const shortcut = shortcuts.get("ctrl+shift+o")?.handler;
+		const sessionId = "session-restore";
+		let previousAgentDir: string | undefined;
+		let previousPath: string | undefined;
+		let previousSpawnLogPath: string | undefined;
+		const setEditorComponentCalls: any[] = [];
+		const previousFactory = () => ({ render: () => ["remembered editor"], handleInput: () => {}, invalidate: () => {} });
+
+		if (!shortcut) {
+			throw new Error("Expected ctrl+shift+o shortcut");
+		}
+
+		try {
+			rememberSessionEditorComponentFactory(
+				{
+					cwd: tempDir,
+					sessionManager: {
+						getSessionId: () => sessionId,
+					},
+				},
+				previousFactory,
+			);
+			previousAgentDir = process.env.PI_CODING_AGENT_DIR;
+			previousPath = process.env.PATH;
+			previousSpawnLogPath = process.env.SUBAGENT_LOG_PATH;
+			process.env.PI_CODING_AGENT_DIR = sourceAgentDir;
+			process.env.PATH = [binDir, previousPath].filter(Boolean).join(path.delimiter);
+			process.env.SUBAGENT_LOG_PATH = spawnLogPath;
+
+			const executionPromise = subagentsTool.execute(
+				"call-1",
+				{
+					tasks: [{ id: "task-a", prompt: "Inspect A", cwd: tempDir }],
+					concurrency: 1,
+				},
+				undefined,
+				undefined,
+				createExecuteContext(tempDir, { sessionId }),
+			);
+
+			const openCtx = createExecuteContext(tempDir, {
+				hasUI: true,
+				sessionId,
+				onSetEditorComponent: (factory) => {
+					setEditorComponentCalls.push(factory);
+				},
+			}) as any;
+			await shortcut(openCtx);
+			await shortcut(createExecuteContext(tempDir, { hasUI: true, sessionId }) as any);
+
+			expect(setEditorComponentCalls).toHaveLength(2);
+			expect(setEditorComponentCalls[0]).not.toBe(previousFactory);
+			expect(setEditorComponentCalls[1]).toBe(previousFactory);
+			await executionPromise;
+		} finally {
+			clearRememberedSessionEditorComponentFactory({
+				cwd: tempDir,
+				sessionManager: {
+					getSessionId: () => sessionId,
+				},
+			});
+			if (previousAgentDir === undefined) {
+				delete process.env.PI_CODING_AGENT_DIR;
+			} else {
+				process.env.PI_CODING_AGENT_DIR = previousAgentDir;
+			}
+			if (previousPath === undefined) {
+				delete process.env.PATH;
+			} else {
+				process.env.PATH = previousPath;
+			}
+			if (previousSpawnLogPath === undefined) {
+				delete process.env.SUBAGENT_LOG_PATH;
+			} else {
+				process.env.SUBAGENT_LOG_PATH = previousSpawnLogPath;
+			}
+			await rm(tempDir, { recursive: true, force: true });
+		}
+	});
+
+	test("does not open the inline inspector after subagents finish", async () => {
+		const tempDir = await mkdtemp(path.join(os.tmpdir(), "task-subagents-completed-dashboard-"));
+		const { binDir, sourceAgentDir, spawnLogPath } = await setupStubPi(tempDir);
+		const { tools, shortcuts } = registerBindings();
+		const subagentsTool = tools.subagents;
+		const shortcut = shortcuts.get("ctrl+shift+o")?.handler;
+		let previousAgentDir: string | undefined;
+		let previousPath: string | undefined;
+		let previousSpawnLogPath: string | undefined;
+		let installedFactory: ((tui: any, theme: any, keybindings: any) => any) | undefined;
+		const notifications: string[] = [];
+
+		if (!shortcut) {
+			throw new Error("Expected ctrl+shift+o shortcut");
+		}
+
+		try {
+			previousAgentDir = process.env.PI_CODING_AGENT_DIR;
+			previousPath = process.env.PATH;
+			previousSpawnLogPath = process.env.SUBAGENT_LOG_PATH;
+			process.env.PI_CODING_AGENT_DIR = sourceAgentDir;
+			process.env.PATH = [binDir, previousPath].filter(Boolean).join(path.delimiter);
+			process.env.SUBAGENT_LOG_PATH = spawnLogPath;
+
+			await subagentsTool.execute(
+				"call-1",
+				{
+					tasks: [{ id: "task-a", prompt: "Inspect A", cwd: tempDir }],
+					concurrency: 1,
+				},
+				undefined,
+				undefined,
+				createExecuteContext(tempDir, { sessionId: "session-done" }),
+			);
+
+			await shortcut(
+				createExecuteContext(tempDir, {
+					hasUI: true,
+					sessionId: "session-done",
+					notify: (message) => {
+						notifications.push(message);
+					},
+					onSetEditorComponent: (factory) => {
+						installedFactory = factory;
+					},
+				}) as any,
+			);
+
+			expect(installedFactory).toBeUndefined();
+			expect(notifications).toEqual(["No active subagent run is available right now."]);
+		} finally {
+			if (previousAgentDir === undefined) {
+				delete process.env.PI_CODING_AGENT_DIR;
+			} else {
+				process.env.PI_CODING_AGENT_DIR = previousAgentDir;
+			}
+			if (previousPath === undefined) {
+				delete process.env.PATH;
+			} else {
+				process.env.PATH = previousPath;
+			}
+			if (previousSpawnLogPath === undefined) {
+				delete process.env.SUBAGENT_LOG_PATH;
+			} else {
+				process.env.SUBAGENT_LOG_PATH = previousSpawnLogPath;
+			}
+			await rm(tempDir, { recursive: true, force: true });
+		}
 	});
 
 	test("uses a separate agent dir and inherits the current model/thinking in headless mode", async () => {
@@ -1552,6 +1929,107 @@ describe("subagents tool", () => {
 	});
 });
 
+describe("reconstructSubagentRunsFromEntries", () => {
+	test("keeps the latest saved details per run id", () => {
+		const runs = reconstructSubagentRunsFromEntries(
+			[
+				{
+					type: "message",
+					id: "entry-1",
+					parentId: null,
+					timestamp: new Date().toISOString(),
+					message: {
+						role: "toolResult",
+						toolCallId: "tool-call-1",
+						toolName: "subagents",
+						content: [{ type: "text", text: "first" }],
+						details: {
+							runId: "run-1",
+							tasks: [
+								{
+									taskId: "task-a",
+									task: "Inspect A",
+									cwd: "/tmp",
+									status: "completed",
+									launchContext: "fresh",
+									output: "first output",
+									references: [],
+									exitCode: 0,
+									stderr: "",
+									activities: [],
+									transcript: [],
+									startedAt: 1,
+									finishedAt: 2,
+									steeringNotes: [],
+								},
+							],
+							launchedCount: 1,
+							successCount: 1,
+							failedCount: 0,
+							cancelledCount: 0,
+							totalCount: 1,
+						},
+						isError: false,
+						timestamp: 10,
+					},
+				},
+				{
+					type: "message",
+					id: "entry-2",
+					parentId: "entry-1",
+					timestamp: new Date().toISOString(),
+					message: {
+						role: "toolResult",
+						toolCallId: "tool-call-2",
+						toolName: "steer_subagent",
+						content: [{ type: "text", text: "second" }],
+						details: {
+							runId: "run-1",
+							tasks: [
+								{
+									taskId: "task-a",
+									task: "Inspect A",
+									cwd: "/tmp",
+									status: "completed",
+									launchContext: "fresh",
+									output: "second output",
+									references: [],
+									exitCode: 0,
+									stderr: "",
+									activities: [],
+									transcript: [],
+									startedAt: 1,
+									finishedAt: 3,
+									steeringNotes: ["focus"],
+								},
+							],
+							launchedCount: 1,
+							successCount: 1,
+							failedCount: 0,
+							cancelledCount: 0,
+							totalCount: 1,
+						},
+						isError: false,
+						timestamp: 20,
+					},
+				},
+			] as any,
+			{ sessionKey: "session:test" },
+		);
+
+		expect(runs).toHaveLength(1);
+		expect(runs[0]).toMatchObject({
+			runId: "run-1",
+			updatedAt: 20,
+			sessionKey: "session:test",
+		});
+		expect(runs[0]?.tasks[0]).toMatchObject({
+			output: "second output",
+			steeringNotes: ["focus"],
+		});
+	});
+});
+
 describe("buildSubagentRunDetails", () => {
 	test("counts completed, failed, and cancelled tasks", () => {
 		const details = buildSubagentRunDetails("run-1", [
@@ -1566,6 +2044,7 @@ describe("buildSubagentRunDetails", () => {
 				exitCode: 0,
 				stderr: "",
 				activities: [],
+				transcript: [],
 				startedAt: 1,
 				finishedAt: 2,
 				steeringNotes: [],
@@ -1581,6 +2060,7 @@ describe("buildSubagentRunDetails", () => {
 				exitCode: 1,
 				stderr: "failed",
 				activities: [],
+				transcript: [],
 				startedAt: 1,
 				finishedAt: 2,
 				steeringNotes: [],
@@ -1596,6 +2076,7 @@ describe("buildSubagentRunDetails", () => {
 				exitCode: null,
 				stderr: "",
 				activities: [],
+				transcript: [],
 				startedAt: null,
 				finishedAt: null,
 				steeringNotes: [],
@@ -1607,5 +2088,69 @@ describe("buildSubagentRunDetails", () => {
 		expect(details.cancelledCount).toBe(1);
 		expect(details.launchedCount).toBe(2);
 		expect(details.totalCount).toBe(3);
+	});
+
+	test("bounds stored transcript entries and truncates large payloads", () => {
+		const longText = "x".repeat(5000);
+		const usage = {
+			input: 0,
+			output: 0,
+			cacheRead: 0,
+			cacheWrite: 0,
+			totalTokens: 0,
+			cost: {
+				input: 0,
+				output: 0,
+				cacheRead: 0,
+				cacheWrite: 0,
+				total: 0,
+			},
+		};
+		const transcript = Array.from({ length: 130 }, (_, index) => ({
+			kind: "assistantMessage" as const,
+			timestamp: index,
+			message: {
+				role: "assistant" as const,
+				api: "openai-responses" as const,
+				provider: "openai" as const,
+				model: "gpt-5",
+				usage,
+				stopReason: "stop" as const,
+				timestamp: index,
+				content: [{ type: "text" as const, text: `${index}:${longText}` }],
+			},
+		}));
+		const details = buildSubagentRunDetails("run-1", [
+			{
+				taskId: "task-1",
+				task: "One",
+				cwd: "/tmp",
+				status: "completed",
+				launchContext: "fresh",
+				output: "ok",
+				references: [],
+				exitCode: 0,
+				stderr: "",
+				activities: [],
+				transcript,
+				startedAt: 1,
+				finishedAt: 2,
+				steeringNotes: [],
+			},
+		]);
+
+		expect(details.tasks[0]?.transcript).toHaveLength(120);
+		expect(details.tasks[0]?.transcript[0]?.timestamp).toBe(10);
+		const firstMessage = details.tasks[0]?.transcript[0];
+		expect(firstMessage?.kind).toBe("assistantMessage");
+		if (firstMessage?.kind !== "assistantMessage") {
+			throw new Error("expected assistant transcript entry");
+		}
+		expect(firstMessage.message.content[0]).toMatchObject({ type: "text" });
+		if (firstMessage.message.content[0]?.type !== "text") {
+			throw new Error("expected text content");
+		}
+		expect(firstMessage.message.content[0].text.length).toBeLessThan(longText.length);
+		expect(firstMessage.message.content[0].text).toContain("[truncated");
 	});
 });

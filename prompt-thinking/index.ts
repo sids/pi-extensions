@@ -1,6 +1,7 @@
 import { CustomEditor, type ExtensionAPI, type ExtensionUIContext } from "@mariozechner/pi-coding-agent";
 import type { KeybindingsManager } from "@mariozechner/pi-coding-agent";
 import { Key, matchesKey, type AutocompleteItem, type AutocompleteProvider, type EditorTheme, type TUI } from "@mariozechner/pi-tui";
+import { setRememberedSessionEditorComponent } from "../shared/session-editor-component";
 import {
 	buildThinkingAutocompleteItems,
 	createThinkingAutocompleteProvider,
@@ -154,15 +155,21 @@ export default function (pi: ExtensionAPI) {
 		return pendingPrompts.shift();
 	}
 
-	function installEditor(ctx: { ui: Pick<ExtensionUIContext, "setEditorComponent"> }) {
-		ctx.ui.setEditorComponent((tui: TUI, theme: EditorTheme, keybindings: KeybindingsManager) =>
-			new PromptThinkingEditor(
-				tui,
-				theme,
-				keybindings,
-				() => buildThinkingAutocompleteItems(availableThinkingLevels, getLiveThinkingLevel()),
-				() => getLiveThinkingLevel(),
-			),
+	function installEditor(
+		ctx: Pick<ExtensionUIContext, "cwd" | "sessionManager" | "ui"> & {
+			ui: Pick<ExtensionUIContext, "setEditorComponent">;
+		},
+	) {
+		setRememberedSessionEditorComponent(
+			ctx,
+			(tui: TUI, theme: EditorTheme, keybindings: KeybindingsManager) =>
+				new PromptThinkingEditor(
+					tui,
+					theme,
+					keybindings,
+					() => buildThinkingAutocompleteItems(availableThinkingLevels, getLiveThinkingLevel()),
+					() => getLiveThinkingLevel(),
+				),
 		);
 	}
 

@@ -26,9 +26,12 @@ In interactive UI mode, `subagents` opens a pre-launch review screen before any 
 
 Run results now report launched, succeeded, failed, and cancelled counts, and `steer_subagent` reuses any reviewed model/thinking overrides and fork context when it reruns a task.
 
+After a run starts, press `Ctrl+Shift+O` to enable an inline inspector for the latest active run. The selected task's expanded-style details render directly in the main tool result, while the input editor becomes a per-task steering editor with task tabs above it. Enter submits steering for the current tab and Shift+Enter inserts a newline. The inspector closes when the run finishes.
+
 ## Notes
 
 - This extension is optional and works on its own.
 - It complements `pi-plan-md`, but `pi-plan-md` does not require it.
 - If both extensions are installed, `subagents` and `steer_subagent` are also available during plan mode.
 - `subagents` keeps recent run IDs in memory so `steer_subagent` can target prior tasks from the same session.
+- The inline inspector can also reconstruct completed runs from saved `subagents`/`steer_subagent` tool results on the current branch.

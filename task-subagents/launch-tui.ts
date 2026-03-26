@@ -277,6 +277,13 @@ function cycleOption<T extends { value?: unknown }>(options: T[], currentValue: 
 	return options[nextIndex];
 }
 
+function getSelectedThinkingValue(
+	task: Pick<ReviewedSubagentTask, "thinkingOverride" | "defaultThinking"> | undefined,
+	currentThinkingLevel: SubagentThinkingLevel | undefined,
+): SubagentThinkingLevel | undefined {
+	return task?.thinkingOverride ?? task?.defaultThinking ?? currentThinkingLevel;
+}
+
 function resolveLaunchReviewAgentDir(env: NodeJS.ProcessEnv = process.env): string {
 	const value = env.PI_CODING_AGENT_DIR?.trim();
 	if (!value) {
@@ -523,7 +530,7 @@ class SubagentLaunchReviewComponent implements TuiComponent {
 			return;
 		}
 
-		const next = cycleOption(this.getThinkingOptions(current), current.thinkingOverride);
+		const next = cycleOption(this.getThinkingOptions(current), getSelectedThinkingValue(current, this.currentThinkingLevel));
 		if (!next) {
 			return;
 		}

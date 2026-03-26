@@ -1,6 +1,7 @@
 import { CustomEditor, type ExtensionAPI, type ExtensionUIContext } from "@mariozechner/pi-coding-agent";
 import type { AutocompleteItem, AutocompleteProvider, EditorTheme, TUI } from "@mariozechner/pi-tui";
 import type { KeybindingsManager } from "@mariozechner/pi-coding-agent";
+import { setRememberedSessionEditorComponent } from "../shared/session-editor-component";
 import {
 	buildSkillAutocompleteItems,
 	collectDiscoveredSkills,
@@ -77,9 +78,15 @@ export default function (pi: ExtensionAPI) {
 		skillItems = buildSkillAutocompleteItems(skillMap);
 	}
 
-	function installEditor(ctx: { ui: Pick<ExtensionUIContext, "setEditorComponent"> }) {
-		ctx.ui.setEditorComponent((tui: TUI, theme: EditorTheme, keybindings: KeybindingsManager) =>
-			new MentionSkillsEditor(tui, theme, keybindings, () => skillItems),
+	function installEditor(
+		ctx: Pick<ExtensionUIContext, "cwd" | "sessionManager" | "ui"> & {
+			ui: Pick<ExtensionUIContext, "setEditorComponent">;
+		},
+	) {
+		setRememberedSessionEditorComponent(
+			ctx,
+			(tui: TUI, theme: EditorTheme, keybindings: KeybindingsManager) =>
+				new MentionSkillsEditor(tui, theme, keybindings, () => skillItems),
 		);
 	}
 
