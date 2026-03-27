@@ -25,6 +25,7 @@ Behavior:
 - `Working` while the agent is running
 - `Waiting` while another extension emits `pi:waiting-for-user-input` with `{ waiting: true }`
 - `Error` after a tool finishes with an error, until the next session or new agent run
+- named sessions clear their cmux status again once the agent finishes and the session returns to idle
 
 Conflict handling across multiple pi instances in the same cmux workspace:
 

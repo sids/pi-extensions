@@ -53,6 +53,7 @@ export default function (pi: ExtensionAPI) {
 	let currentCtx: ExtensionContext | null = null;
 	let agentRunning = false;
 	let hasError = false;
+	let clearNamedStatusWhenIdle = false;
 	let activeToolCallIds = new Set<string>();
 	let waitingForUserInputIds = new Set<string>();
 	let cmuxSidebarState = createCmuxSidebarState();
@@ -64,6 +65,7 @@ export default function (pi: ExtensionAPI) {
 	const resetRuntimeState = () => {
 		agentRunning = false;
 		hasError = false;
+		clearNamedStatusWhenIdle = false;
 		activeToolCallIds = new Set<string>();
 		waitingForUserInputIds = new Set<string>();
 	};
@@ -177,7 +179,10 @@ export default function (pi: ExtensionAPI) {
 	};
 
 	const updateCmuxStatus = async (ctx: ExtensionContext) => {
-		await syncCmuxStatus(ctx.cwd, enabled ? resolveStatus() : null);
+		const nextStatus = enabled ? resolveStatus() : null;
+		const sessionName = pi.getSessionName()?.trim();
+		const shouldClearNamedStatus = Boolean(sessionName) && clearNamedStatusWhenIdle && nextStatus === "Ready";
+		await syncCmuxStatus(ctx.cwd, shouldClearNamedStatus ? null : nextStatus);
 	};
 
 	pi.events.on(USER_INPUT_WAIT_EVENT, (data) => {
@@ -220,6 +225,7 @@ export default function (pi: ExtensionAPI) {
 	pi.on("agent_start", async (_event, ctx) => {
 		rememberCtx(ctx);
 		hasError = false;
+		clearNamedStatusWhenIdle = false;
 		agentRunning = true;
 		await updateCmuxStatus(ctx);
 	});
@@ -227,6 +233,7 @@ export default function (pi: ExtensionAPI) {
 	pi.on("agent_end", async (_event, ctx) => {
 		rememberCtx(ctx);
 		agentRunning = false;
+		clearNamedStatusWhenIdle = true;
 		activeToolCallIds = new Set<string>();
 		await updateCmuxStatus(ctx);
 	});

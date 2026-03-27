@@ -216,6 +216,40 @@ describe("cmux-status extension", () => {
 		expect(harness.getWorkspaceStatusText(statusKey)).toBe("π - Ready");
 	});
 
+	test("clears a named session status when the agent finishes", async () => {
+		process.env.CMUX_WORKSPACE_ID = "workspace:1";
+		process.env.CMUX_SURFACE_ID = "surface:1";
+		const statusKey = formatCmuxStatusKey("build");
+		const harness = createHarness({ sessionName: "build" });
+
+		await harness.emit("session_start");
+		await harness.emit("agent_start");
+		await harness.emit("agent_end");
+
+		expect(harness.getWorkspaceStatusText(statusKey)).toBeNull();
+		expect(
+			harness.execCalls.filter(
+				(call) => call.command === "cmux" && ["set-status", "clear-status"].includes(call.args[0] ?? ""),
+			),
+		).toEqual([
+			{
+				command: "cmux",
+				args: ["set-status", statusKey, "π build: Ready", "--workspace", "workspace:1"],
+				options: { cwd: "/tmp/project", timeout: 1500 },
+			},
+			{
+				command: "cmux",
+				args: ["set-status", statusKey, "π build: Working", "--workspace", "workspace:1"],
+				options: { cwd: "/tmp/project", timeout: 1500 },
+			},
+			{
+				command: "cmux",
+				args: ["clear-status", statusKey, "--workspace", "workspace:1"],
+				options: { cwd: "/tmp/project", timeout: 1500 },
+			},
+		]);
+	});
+
 	test("does not touch another session's named key", async () => {
 		process.env.CMUX_WORKSPACE_ID = "workspace:1";
 		process.env.CMUX_SURFACE_ID = "surface:1";
