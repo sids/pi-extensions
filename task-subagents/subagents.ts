@@ -61,6 +61,7 @@ function createText(text: string) {
 }
 
 const SUBAGENT_PREVIEW_LIMIT = 4;
+const USER_INPUT_WAIT_EVENT = "pi:waiting-for-user-input";
 // Each subagent gets its own agent dir copy for auth/settings/models so concurrent
 // child `pi` startup does not contend on global lock files.
 const SUBAGENT_DIR_ENV = "PI_CODING_AGENT_DIR";
@@ -1336,6 +1337,14 @@ export function registerSubagentTools(
 		};
 	};
 
+	const emitWaitingForUserInput = (id: string, waiting: boolean) => {
+		pi.events.emit(USER_INPUT_WAIT_EVENT, {
+			source: "task-subagents:launch-review",
+			id,
+			waiting,
+		});
+	};
+
 	const rememberSubagentRun = (run: SubagentRunRecord) => {
 		const normalizedRun: SubagentRunRecord = {
 			...run,
@@ -1987,7 +1996,7 @@ export function registerSubagentTools(
 			}
 			return createText(lines.join("\n"));
 		},
-		async execute(_toolCallId, params, signal, onUpdate, ctx): Promise<AgentToolResult<SubagentRunDetails>> {
+		async execute(toolCallId, params, signal, onUpdate, ctx): Promise<AgentToolResult<SubagentRunDetails>> {
 			const tasks = normalizeSubagentTasks(params.tasks as SubagentTask[]);
 			const concurrency = resolveSubagentConcurrency(params.concurrency);
 			if (concurrency === null) {
@@ -2026,20 +2035,25 @@ export function registerSubagentTools(
 				launchContext: requestedContext,
 			});
 			if (ctx.hasUI) {
-				const reviewResult = await enqueueMergedLaunchReview({
-					ctx,
-					reviewedTasks,
-					currentModelId: buildCurrentSubagentModelId(ctx.model),
-					currentThinkingLevel,
-					hasForkSource: !!currentSessionFile,
-				});
-				if (reviewResult === null) {
-					return {
-						isError: true,
-						content: [{ type: "text", text: "Subagent launch cancelled before starting. No child processes were started." }],
-					};
+				emitWaitingForUserInput(toolCallId, true);
+				try {
+					const reviewResult = await enqueueMergedLaunchReview({
+						ctx,
+						reviewedTasks,
+						currentModelId: buildCurrentSubagentModelId(ctx.model),
+						currentThinkingLevel,
+						hasForkSource: !!currentSessionFile,
+					});
+					if (reviewResult === null) {
+						return {
+							isError: true,
+							content: [{ type: "text", text: "Subagent launch cancelled before starting. No child processes were started." }],
+						};
+					}
+					reviewedTasks = reviewResult;
+				} finally {
+					emitWaitingForUserInput(toolCallId, false);
 				}
-				reviewedTasks = reviewResult;
 			}
 
 			if (

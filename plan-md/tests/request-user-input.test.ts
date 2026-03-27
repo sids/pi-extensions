@@ -4,6 +4,7 @@ import {
 	buildRequestUserInputResponse,
 	buildRequestUserInputSummary,
 	normalizeRequestUserInputQuestions,
+	registerRequestUserInputTool,
 	summarizeRequestUserInputAnswer,
 } from "../request-user-input";
 
@@ -101,5 +102,79 @@ describe("summary helpers", () => {
 		const summary = buildRequestUserInputSummary(details);
 		expect(summary).toContain("1. Which runtime?");
 		expect(summary).toContain("Bun for startup");
+	});
+});
+
+describe("registerRequestUserInputTool", () => {
+	test("emits waiting-for-user-input events while collecting answers", async () => {
+		const emittedEvents: Array<{ channel: string; data: unknown }> = [];
+		let execute:
+			| ((toolCallId: string, params: any, signal?: AbortSignal, onUpdate?: unknown, ctx?: any) => Promise<any>)
+			| undefined;
+
+		registerRequestUserInputTool(
+			{
+				registerTool: (tool: { execute: typeof execute }) => {
+					execute = tool.execute;
+				},
+				events: {
+					emit: (channel: string, data: unknown) => {
+						emittedEvents.push({ channel, data });
+					},
+				},
+			} as any,
+			{
+				getState: () => ({ active: true }),
+				requestUserInputSchema: {},
+			},
+		);
+
+		if (!execute) {
+			throw new Error("request_user_input tool was not registered");
+		}
+
+		const result = await execute(
+			"call-1",
+			{
+				questions: [{ id: "runtime", question: "Which runtime?" }],
+			},
+			undefined,
+			undefined,
+			{
+				hasUI: true,
+				ui: {
+					custom: async () => ({
+						responses: [
+							{
+								selectedOptionIndex: 0,
+								customText: "Bun",
+								selectionTouched: true,
+								committed: true,
+							},
+						],
+					}),
+				},
+			},
+		);
+
+		expect(result.isError).toBeUndefined();
+		expect(emittedEvents).toEqual([
+			{
+				channel: "pi:waiting-for-user-input",
+				data: {
+					source: "plan-md:request_user_input",
+					id: "call-1",
+					waiting: true,
+				},
+			},
+			{
+				channel: "pi:waiting-for-user-input",
+				data: {
+					source: "plan-md:request_user_input",
+					id: "call-1",
+					waiting: false,
+				},
+			},
+		]);
 	});
 });

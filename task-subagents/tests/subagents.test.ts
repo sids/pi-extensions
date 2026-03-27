@@ -302,9 +302,13 @@ async function readSpawnLog(spawnLogPath: string): Promise<Array<{
 	}
 }
 
+const USER_INPUT_WAIT_EVENT = "pi:waiting-for-user-input";
+
 function registerBindings(options?: { thinkingLevel?: string }) {
 	const tools: Record<string, RegisteredTool> = {};
 	const shortcuts = new Map<string, RegisteredShortcut>();
+	const emittedEvents: Array<{ channel: string; data: unknown }> = [];
+	const eventHandlers = new Map<string, Array<(data: unknown) => void>>();
 	registerSubagentTools(
 		{
 			registerTool: (tool: RegisteredTool) => {
@@ -314,13 +318,32 @@ function registerBindings(options?: { thinkingLevel?: string }) {
 				shortcuts.set(shortcut, shortcutOptions);
 			},
 			getThinkingLevel: () => options?.thinkingLevel ?? "medium",
+			events: {
+				on: (channel: string, handler: (data: unknown) => void) => {
+					const current = eventHandlers.get(channel) ?? [];
+					current.push(handler);
+					eventHandlers.set(channel, current);
+					return () => {
+						eventHandlers.set(
+							channel,
+							(eventHandlers.get(channel) ?? []).filter((candidate) => candidate !== handler),
+						);
+					};
+				},
+				emit: (channel: string, data: unknown) => {
+					emittedEvents.push({ channel, data });
+					for (const handler of eventHandlers.get(channel) ?? []) {
+						handler(data);
+					}
+				},
+			},
 		} as any,
 		{
 			subagentsSchema: {},
 			steerSubagentSchema: {},
 		},
 	);
-	return { tools, shortcuts };
+	return { tools, shortcuts, emittedEvents };
 }
 
 function registerTools(options?: { thinkingLevel?: string }): Record<string, RegisteredTool> {
@@ -1465,6 +1488,96 @@ describe("subagents tool", () => {
 			expect(result.isError).toBe(true);
 			expect(result.content[0]?.text).toBe("Subagent launch cancelled before starting. No child processes were started.");
 			expect(await readSpawnLog(spawnLogPath)).toEqual([]);
+		} finally {
+			if (previousAgentDir === undefined) {
+				delete process.env.PI_CODING_AGENT_DIR;
+			} else {
+				process.env.PI_CODING_AGENT_DIR = previousAgentDir;
+			}
+			if (previousPath === undefined) {
+				delete process.env.PATH;
+			} else {
+				process.env.PATH = previousPath;
+			}
+			if (previousSpawnLogPath === undefined) {
+				delete process.env.SUBAGENT_LOG_PATH;
+			} else {
+				process.env.SUBAGENT_LOG_PATH = previousSpawnLogPath;
+			}
+			await rm(tempDir, { recursive: true, force: true });
+		}
+	});
+
+	test("emits waiting-for-user-input events while the launch review is open", async () => {
+		const tempDir = await mkdtemp(path.join(os.tmpdir(), "task-subagents-waiting-event-"));
+		const { binDir, sourceAgentDir, spawnLogPath } = await setupStubPi(tempDir);
+		const { tools, emittedEvents } = registerBindings();
+		const subagentsTool = tools.subagents;
+		let previousAgentDir: string | undefined;
+		let previousPath: string | undefined;
+		let previousSpawnLogPath: string | undefined;
+		let resolveReview: ((value: ReviewedSubagentTask[] | null) => void) | undefined;
+		const reviewPromise = new Promise<ReviewedSubagentTask[] | null>((resolve) => {
+			resolveReview = resolve;
+		});
+
+		try {
+			previousAgentDir = process.env.PI_CODING_AGENT_DIR;
+			previousPath = process.env.PATH;
+			previousSpawnLogPath = process.env.SUBAGENT_LOG_PATH;
+			process.env.PI_CODING_AGENT_DIR = sourceAgentDir;
+			process.env.PATH = [binDir, previousPath].filter(Boolean).join(path.delimiter);
+			process.env.SUBAGENT_LOG_PATH = spawnLogPath;
+
+			const executionPromise = subagentsTool.execute(
+				"call-1",
+				{
+					tasks: [{ id: "task-a", prompt: "Inspect A", cwd: tempDir }],
+					concurrency: 1,
+				},
+				undefined,
+				undefined,
+				createExecuteContext(tempDir, {
+					hasUI: true,
+					customHandler: async () => reviewPromise,
+				}),
+			);
+
+			await new Promise((resolve) => setTimeout(resolve, 0));
+			expect(emittedEvents).toEqual([
+				{
+					channel: USER_INPUT_WAIT_EVENT,
+					data: {
+						source: "task-subagents:launch-review",
+						id: "call-1",
+						waiting: true,
+					},
+				},
+			]);
+
+			resolveReview?.([
+				{ taskId: "task-a", prompt: "Inspect A", cwd: tempDir, launchContext: "fresh", launchStatus: "ready" },
+			]);
+			await executionPromise;
+
+			expect(emittedEvents).toEqual([
+				{
+					channel: USER_INPUT_WAIT_EVENT,
+					data: {
+						source: "task-subagents:launch-review",
+						id: "call-1",
+						waiting: true,
+					},
+				},
+				{
+					channel: USER_INPUT_WAIT_EVENT,
+					data: {
+						source: "task-subagents:launch-review",
+						id: "call-1",
+						waiting: false,
+					},
+				},
+			]);
 		} finally {
 			if (previousAgentDir === undefined) {
 				delete process.env.PI_CODING_AGENT_DIR;

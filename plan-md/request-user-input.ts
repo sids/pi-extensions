@@ -15,6 +15,7 @@ import type {
 import { findDuplicateId } from "./utils";
 
 const require = createRequire(import.meta.url);
+const USER_INPUT_WAIT_EVENT = "pi:waiting-for-user-input";
 
 function requirePiTui() {
 	try {
@@ -189,7 +190,7 @@ export function registerRequestUserInputTool(
 
 			return createText(lines.join("\n"));
 		},
-		async execute(_toolCallId, params, _signal, _onUpdate, ctx): Promise<AgentToolResult<RequestUserInputDetails>> {
+		async execute(toolCallId, params, _signal, _onUpdate, ctx): Promise<AgentToolResult<RequestUserInputDetails>> {
 			if (!dependencies.getState().active) {
 				return {
 					isError: true,
@@ -212,19 +213,32 @@ export function registerRequestUserInputTool(
 				};
 			}
 
-			const response = await collectRequestUserInputAnswers(ctx, normalized.questions);
-			if (!response) {
-				return {
-					isError: true,
-					content: [{ type: "text", text: "request_user_input was cancelled before receiving a response" }],
-				};
-			}
+			pi.events.emit(USER_INPUT_WAIT_EVENT, {
+				source: "plan-md:request_user_input",
+				id: toolCallId,
+				waiting: true,
+			});
+			try {
+				const response = await collectRequestUserInputAnswers(ctx, normalized.questions);
+				if (!response) {
+					return {
+						isError: true,
+						content: [{ type: "text", text: "request_user_input was cancelled before receiving a response" }],
+					};
+				}
 
-			const details: RequestUserInputDetails = { questions: normalized.questions, response };
-			return {
-				content: [{ type: "text", text: buildRequestUserInputSummary(details) }],
-				details,
-			};
+				const details: RequestUserInputDetails = { questions: normalized.questions, response };
+				return {
+					content: [{ type: "text", text: buildRequestUserInputSummary(details) }],
+					details,
+				};
+			} finally {
+				pi.events.emit(USER_INPUT_WAIT_EVENT, {
+					source: "plan-md:request_user_input",
+					id: toolCallId,
+					waiting: false,
+				});
+			}
 		},
 	});
 }
