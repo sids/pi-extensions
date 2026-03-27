@@ -24,7 +24,7 @@ Behavior:
 
 - `Ready` when idle
 - `Working` while the agent is running, with an animated textual spinner prefix
-- `Waiting` while another extension emits `pi:waiting-for-user-input` with `{ waiting: true }`, with a dedicated icon and a one-shot `cmux notify`
+- `Waiting` while another extension emits `pi:waiting-for-user-input` with `{ waiting: true }`, with a dedicated icon and a one-shot waiting notification
 - `Error` after a tool finishes with an error, until the next session or new agent run, with a dedicated icon
 - named and unnamed sessions both show `Ready` again once the session returns to idle
 
@@ -42,11 +42,12 @@ Or symlink it locally into `~/.pi/agent/extensions/cmux-status` and run `/reload
 
 ## Usage
 
-The extension manages the session-specific cmux sidebar status entry via:
+The extension manages the session-specific cmux sidebar status entry through the cmux socket API by default.
 
-- `cmux set-status`
-- `cmux clear-status`
-- `cmux notify`
+- Sidebar status updates use the socket first and fall back to the `cmux` CLI if the socket is unavailable or rejects the request.
+- Waiting notifications also use the socket first, with the same CLI fallback behavior.
+- The socket address defaults to `/tmp/cmux.sock` and can be overridden with `CMUX_SOCKET_PATH`. Remote `cmux ssh` sessions may expose this as a relay address like `127.0.0.1:<port>`.
+- cmux socket access is also affected by cmux's access mode settings, including `CMUX_SOCKET_MODE`.
 
 Notes:
 
@@ -59,15 +60,15 @@ For `Waiting`, cooperating extensions can emit the shared inter-extension event:
 
 ```ts
 pi.events.emit("pi:waiting-for-user-input", {
-  source: "my-extension",
-  id: "some-stable-id",
-  waiting: true,
+	source: "my-extension",
+	id: "some-stable-id",
+	waiting: true,
 });
 
 pi.events.emit("pi:waiting-for-user-input", {
-  source: "my-extension",
-  id: "some-stable-id",
-  waiting: false,
+	source: "my-extension",
+	id: "some-stable-id",
+	waiting: false,
 });
 ```
 
@@ -77,5 +78,6 @@ Toggle the behavior with `/custom-cmux-status`.
 
 ```bash
 bun test cmux-status/tests/utils.test.ts
+bun test cmux-status/tests/cmux.test.ts
 bun test cmux-status/tests/index.test.ts
 ```

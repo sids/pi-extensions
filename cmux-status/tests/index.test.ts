@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import cmuxStatusExtension from "../index";
+import { createCmuxStatusExtension } from "../index";
+import type { CmuxTransport, CmuxTransportResult, CreateCmuxTransportOptions } from "../cmux";
+import type { CmuxStatusPresentation } from "../utils";
 import { formatCmuxStatusKey, formatCmuxStatusText, getCmuxStatusOwnerId, getCmuxStatusPresentation } from "../utils";
 
 type Handler = (event: any, ctx: any) => Promise<void> | void;
@@ -18,6 +20,19 @@ type IntervalCall = {
 	callback: () => void;
 	active: boolean;
 };
+
+type TransportCall = {
+	method: "setStatus" | "clearStatus" | "notify";
+	transport: "socket" | "cli";
+	workspaceId: string;
+	statusKey?: string;
+	presentation?: CmuxStatusPresentation;
+	title?: string;
+	body?: string;
+	subtitle?: string;
+};
+
+type HarnessTransportFactory = (helpers: { statuses: Map<string, string>; transportCalls: TransportCall[] }) => CmuxTransport;
 
 const USER_INPUT_WAIT_EVENT = "pi:waiting-for-user-input";
 const ORIGINAL_CMUX_WORKSPACE_ID = process.env.CMUX_WORKSPACE_ID;
@@ -93,13 +108,7 @@ function buildStatusKey() {
 	return formatCmuxStatusKey(getCmuxStatusOwnerId());
 }
 
-function buildSetStatusArgs(
-	statusKey: string,
-	sessionName: string | undefined,
-	status: "Ready" | "Working" | "Waiting" | "Error",
-	workspaceId = "workspace:1",
-	animationFrame = 0,
-) {
+function buildSetStatusArgs(statusKey: string, sessionName: string | undefined, status: "Ready" | "Working" | "Waiting" | "Error", workspaceId = "workspace:1", animationFrame = 0) {
 	const presentation = getCmuxStatusPresentation(sessionName, status, animationFrame);
 	const args = ["set-status", statusKey, presentation.text];
 	if (presentation.icon) {
@@ -112,18 +121,100 @@ function buildSetStatusArgs(
 	return args;
 }
 
-function createHarness(options?: {
-	initialStatuses?: Record<string, string>;
-	sessionName?: string;
-	notifyFails?: boolean;
-	blockedSetStatusTexts?: string[];
-}) {
+function createMemoryTransport(options?: { fallbackToCliOnSetStatus?: boolean; fallbackToCliOnNotify?: boolean; notifyFails?: boolean }): HarnessTransportFactory {
+	return ({ statuses, transportCalls }) => {
+		let prefersCli = false;
+
+		const recordCall = (call: TransportCall) => {
+			transportCalls.push(call);
+		};
+
+		const succeed = (transport: "socket" | "cli"): CmuxTransportResult => ({
+			ok: true,
+			transport,
+		});
+		const fail = (transport: "socket" | "cli"): CmuxTransportResult => ({
+			ok: false,
+			transport,
+		});
+
+		return {
+			async setStatus(_cwd, workspaceId, statusKey, presentation) {
+				if (!prefersCli && options?.fallbackToCliOnSetStatus) {
+					recordCall({
+						method: "setStatus",
+						transport: "socket",
+						workspaceId,
+						statusKey,
+						presentation,
+					});
+					prefersCli = true;
+				}
+
+				const transport = prefersCli ? "cli" : "socket";
+				recordCall({
+					method: "setStatus",
+					transport,
+					workspaceId,
+					statusKey,
+					presentation,
+				});
+				statuses.set(statusKey, presentation.text);
+				return succeed(transport);
+			},
+			async clearStatus(_cwd, workspaceId, statusKey) {
+				const transport = prefersCli ? "cli" : "socket";
+				recordCall({
+					method: "clearStatus",
+					transport,
+					workspaceId,
+					statusKey,
+				});
+				statuses.delete(statusKey);
+				return succeed(transport);
+			},
+			async notify(_cwd, workspaceId, title, body, subtitle) {
+				if (!prefersCli && options?.fallbackToCliOnNotify) {
+					recordCall({
+						method: "notify",
+						transport: "socket",
+						workspaceId,
+						title,
+						body,
+						subtitle,
+					});
+					if (options.notifyFails) {
+						return fail("socket");
+					}
+					prefersCli = true;
+				}
+
+				const transport = prefersCli ? "cli" : "socket";
+				recordCall({
+					method: "notify",
+					transport,
+					workspaceId,
+					title,
+					body,
+					subtitle,
+				});
+				if (options.notifyFails) {
+					return fail(transport);
+				}
+				return succeed(transport);
+			},
+		};
+	};
+}
+
+function createHarness(options?: { initialStatuses?: Record<string, string>; sessionName?: string; notifyFails?: boolean; blockedSetStatusTexts?: string[]; createTransport?: HarnessTransportFactory }) {
 	const handlers = new Map<string, Handler[]>();
 	const eventHandlers = new Map<string, Array<(data: unknown) => void>>();
 	const execCalls: ExecCall[] = [];
 	const setWidgetCalls: unknown[] = [];
 	const setFooterCalls: unknown[] = [];
 	const notifications: Array<{ message: string; level?: string }> = [];
+	const transportCalls: TransportCall[] = [];
 	let commandHandler: ((args: string, ctx: any) => Promise<void>) | undefined;
 	const statuses = new Map<string, string>(Object.entries(options?.initialStatuses ?? {}));
 	const blockedSetStatusTexts = [...(options?.blockedSetStatusTexts ?? [])];
@@ -185,7 +276,12 @@ function createHarness(options?: {
 			}
 			if (command === "cmux" && args[0] === "notify") {
 				if (options?.notifyFails) {
-					return { stdout: "", stderr: "notify failed", code: 1, killed: false };
+					return {
+						stdout: "",
+						stderr: "notify failed",
+						code: 1,
+						killed: false,
+					};
 				}
 				return { stdout: "", stderr: "", code: 0, killed: false };
 			}
@@ -196,6 +292,7 @@ function createHarness(options?: {
 		},
 	} as any;
 
+	const cmuxStatusExtension = options?.createTransport ? createCmuxStatusExtension((_transportOptions: CreateCmuxTransportOptions) => options.createTransport!({ statuses, transportCalls })) : createCmuxStatusExtension();
 	cmuxStatusExtension(pi);
 
 	const ctx = {
@@ -239,6 +336,7 @@ function createHarness(options?: {
 			return blockedSetStatusResolvers.length;
 		},
 		execCalls,
+		transportCalls,
 		setWidgetCalls,
 		setFooterCalls,
 		notifications,
@@ -312,9 +410,7 @@ describe("cmux-status extension", () => {
 		await harness.emit("session_start");
 
 		expect(harness.getWorkspaceStatusText(statusKey)).toBe("π build: Ready");
-		expect(
-			harness.execCalls.filter((call) => call.command === "cmux" && call.args[0] === "set-status"),
-		).toEqual([
+		expect(harness.execCalls.filter((call) => call.command === "cmux" && call.args[0] === "set-status")).toEqual([
 			{
 				command: "cmux",
 				args: buildSetStatusArgs(statusKey, "build", "Ready"),
@@ -333,6 +429,148 @@ describe("cmux-status extension", () => {
 		await harness.emit("session_start");
 
 		expect(harness.getWorkspaceStatusText(statusKey)).toBe("π - Ready");
+	});
+
+	test("uses the socket transport for status updates when available", async () => {
+		process.env.CMUX_WORKSPACE_ID = "workspace:1";
+		process.env.CMUX_SURFACE_ID = "surface:1";
+		process.env.CMUX_PANEL_ID = "panel:1";
+		const statusKey = buildStatusKey();
+		const harness = createHarness({
+			sessionName: "build",
+			createTransport: createMemoryTransport(),
+		});
+
+		await harness.emit("session_start");
+
+		expect(harness.getWorkspaceStatusText(statusKey)).toBe("π build: Ready");
+		expect(harness.execCalls).toEqual([]);
+		expect(harness.transportCalls).toEqual([
+			{
+				method: "setStatus",
+				transport: "socket",
+				workspaceId: "workspace:1",
+				statusKey,
+				presentation: getCmuxStatusPresentation("build", "Ready"),
+			},
+		]);
+	});
+
+	test("sticks to the cli transport after a socket fallback", async () => {
+		process.env.CMUX_WORKSPACE_ID = "workspace:1";
+		process.env.CMUX_SURFACE_ID = "surface:1";
+		process.env.CMUX_PANEL_ID = "panel:1";
+		const statusKey = buildStatusKey();
+		const harness = createHarness({
+			createTransport: createMemoryTransport({
+				fallbackToCliOnSetStatus: true,
+			}),
+		});
+
+		await harness.emit("session_start");
+		await harness.emit("agent_start");
+
+		expect(harness.getWorkspaceStatusText(statusKey)).toBe("⠋ π - Working");
+		expect(harness.transportCalls).toEqual([
+			{
+				method: "setStatus",
+				transport: "socket",
+				workspaceId: "workspace:1",
+				statusKey,
+				presentation: getCmuxStatusPresentation(undefined, "Ready"),
+			},
+			{
+				method: "setStatus",
+				transport: "cli",
+				workspaceId: "workspace:1",
+				statusKey,
+				presentation: getCmuxStatusPresentation(undefined, "Ready"),
+			},
+			{
+				method: "setStatus",
+				transport: "cli",
+				workspaceId: "workspace:1",
+				statusKey,
+				presentation: getCmuxStatusPresentation(undefined, "Working", 0),
+			},
+		]);
+	});
+
+	test("keeps status updates working when socket waiting notifications fail", async () => {
+		process.env.CMUX_WORKSPACE_ID = "workspace:1";
+		process.env.CMUX_SURFACE_ID = "surface:1";
+		process.env.CMUX_PANEL_ID = "panel:1";
+		const statusKey = buildStatusKey();
+		const harness = createHarness({
+			sessionName: "build",
+			createTransport: createMemoryTransport({ notifyFails: true }),
+		});
+
+		await harness.emit("session_start");
+		await harness.emit("agent_start");
+		harness.emitExtensionEvent(USER_INPUT_WAIT_EVENT, {
+			source: "plan-md:request_user_input",
+			id: "call-1",
+			waiting: true,
+		});
+		await flushAsyncWork();
+		harness.emitExtensionEvent(USER_INPUT_WAIT_EVENT, {
+			source: "plan-md:request_user_input",
+			id: "call-1",
+			waiting: false,
+		});
+		await flushAsyncWork();
+		await harness.emit("agent_end");
+
+		expect(harness.getWorkspaceStatusText(statusKey)).toBe("π build: Ready");
+		expect(harness.transportCalls.filter((call) => call.method === "notify")).toEqual([
+			{
+				method: "notify",
+				transport: "socket",
+				workspaceId: "workspace:1",
+				title: formatCmuxStatusText("build", "Waiting"),
+				body: "Waiting for user input.",
+				subtitle: undefined,
+			},
+		]);
+	});
+
+	test("falls back to the cli for waiting notifications after a socket failure", async () => {
+		process.env.CMUX_WORKSPACE_ID = "workspace:1";
+		process.env.CMUX_SURFACE_ID = "surface:1";
+		process.env.CMUX_PANEL_ID = "panel:1";
+		const harness = createHarness({
+			sessionName: "build",
+			createTransport: createMemoryTransport({ fallbackToCliOnNotify: true }),
+		});
+
+		await harness.emit("session_start");
+		await harness.emit("agent_start");
+		harness.emitExtensionEvent(USER_INPUT_WAIT_EVENT, {
+			source: "plan-md:request_user_input",
+			id: "call-1",
+			waiting: true,
+		});
+		await flushAsyncWork();
+
+		expect(harness.transportCalls.filter((call) => call.method === "notify")).toEqual([
+			{
+				method: "notify",
+				transport: "socket",
+				workspaceId: "workspace:1",
+				title: formatCmuxStatusText("build", "Waiting"),
+				body: "Waiting for user input.",
+				subtitle: undefined,
+			},
+			{
+				method: "notify",
+				transport: "cli",
+				workspaceId: "workspace:1",
+				title: formatCmuxStatusText("build", "Waiting"),
+				body: "Waiting for user input.",
+				subtitle: undefined,
+			},
+		]);
 	});
 
 	test("keeps a same-session status from another owner separate", async () => {
@@ -367,9 +605,7 @@ describe("cmux-status extension", () => {
 
 		expect(harness.getWorkspaceStatusText(statusKey)).toBe("π build: Ready");
 		expect(getActiveIntervalCount()).toBe(0);
-		expect(
-			harness.execCalls.filter((call) => call.command === "cmux" && call.args[0] === "set-status"),
-		).toEqual([
+		expect(harness.execCalls.filter((call) => call.command === "cmux" && call.args[0] === "set-status")).toEqual([
 			{
 				command: "cmux",
 				args: buildSetStatusArgs(statusKey, "build", "Ready"),
@@ -421,33 +657,15 @@ describe("cmux-status extension", () => {
 		});
 		await flushAsyncWork();
 
-		expect(
-			harness.execCalls.filter((call) => call.command === "cmux" && call.args[0] === "notify"),
-		).toEqual([
+		expect(harness.execCalls.filter((call) => call.command === "cmux" && call.args[0] === "notify")).toEqual([
 			{
 				command: "cmux",
-				args: [
-					"notify",
-					"--title",
-					formatCmuxStatusText("build", "Waiting"),
-					"--body",
-					"Waiting for user input.",
-					"--workspace",
-					"workspace:1",
-				],
+				args: ["notify", "--title", formatCmuxStatusText("build", "Waiting"), "--body", "Waiting for user input.", "--workspace", "workspace:1", "--surface", "surface:1"],
 				options: { cwd: "/tmp/project", timeout: 1500 },
 			},
 			{
 				command: "cmux",
-				args: [
-					"notify",
-					"--title",
-					formatCmuxStatusText("build", "Waiting"),
-					"--body",
-					"Waiting for user input.",
-					"--workspace",
-					"workspace:1",
-				],
+				args: ["notify", "--title", formatCmuxStatusText("build", "Waiting"), "--body", "Waiting for user input.", "--workspace", "workspace:1", "--surface", "surface:1"],
 				options: { cwd: "/tmp/project", timeout: 1500 },
 			},
 		]);
@@ -477,9 +695,7 @@ describe("cmux-status extension", () => {
 		await harness.emit("agent_end");
 
 		expect(harness.getWorkspaceStatusText(statusKey)).toBe("π build: Ready");
-		expect(
-			harness.execCalls.filter((call) => call.command === "cmux" && call.args[0] === "notify").length,
-		).toBe(1);
+		expect(harness.execCalls.filter((call) => call.command === "cmux" && call.args[0] === "notify").length).toBe(1);
 	});
 
 	test("animates Working and stops when leaving Working", async () => {
@@ -497,9 +713,7 @@ describe("cmux-status extension", () => {
 		await harness.emit("agent_end");
 
 		expect(getActiveIntervalCount()).toBe(0);
-		expect(
-			harness.execCalls.filter((call) => call.command === "cmux" && call.args[0] === "set-status"),
-		).toEqual([
+		expect(harness.execCalls.filter((call) => call.command === "cmux" && call.args[0] === "set-status")).toEqual([
 			{
 				command: "cmux",
 				args: buildSetStatusArgs(statusKey, undefined, "Ready"),
@@ -533,7 +747,9 @@ describe("cmux-status extension", () => {
 		process.env.CMUX_SURFACE_ID = "surface:1";
 		process.env.CMUX_PANEL_ID = "panel:1";
 		const statusKey = buildStatusKey();
-		const harness = createHarness({ blockedSetStatusTexts: [getCmuxStatusPresentation(undefined, "Working", 0).text] });
+		const harness = createHarness({
+			blockedSetStatusTexts: [getCmuxStatusPresentation(undefined, "Working", 0).text],
+		});
 
 		await harness.emit("session_start");
 		const startPromise = harness.emit("agent_start");
@@ -547,9 +763,7 @@ describe("cmux-status extension", () => {
 		await Promise.all([startPromise, endPromise]);
 
 		expect(harness.getWorkspaceStatusText(statusKey)).toBe("π - Ready");
-		expect(
-			harness.execCalls.filter((call) => call.command === "cmux" && call.args[0] === "set-status"),
-		).toEqual([
+		expect(harness.execCalls.filter((call) => call.command === "cmux" && call.args[0] === "set-status")).toEqual([
 			{
 				command: "cmux",
 				args: buildSetStatusArgs(statusKey, undefined, "Ready"),
@@ -573,7 +787,9 @@ describe("cmux-status extension", () => {
 		process.env.CMUX_SURFACE_ID = "surface:1";
 		process.env.CMUX_PANEL_ID = "panel:1";
 		const statusKey = buildStatusKey();
-		const harness = createHarness({ blockedSetStatusTexts: [getCmuxStatusPresentation(undefined, "Working", 0).text] });
+		const harness = createHarness({
+			blockedSetStatusTexts: [getCmuxStatusPresentation(undefined, "Working", 0).text],
+		});
 
 		await harness.emit("session_start");
 		const startPromise = harness.emit("agent_start");
@@ -588,9 +804,7 @@ describe("cmux-status extension", () => {
 		await Promise.all([startPromise, shutdownPromise]);
 
 		expect(harness.getWorkspaceStatusText(statusKey)).toBeNull();
-		expect(
-			harness.execCalls.filter((call) => call.command === "cmux" && ["set-status", "clear-status"].includes(call.args[0] ?? "")),
-		).toEqual([
+		expect(harness.execCalls.filter((call) => call.command === "cmux" && ["set-status", "clear-status"].includes(call.args[0] ?? ""))).toEqual([
 			{
 				command: "cmux",
 				args: buildSetStatusArgs(statusKey, undefined, "Ready"),
@@ -614,7 +828,9 @@ describe("cmux-status extension", () => {
 		process.env.CMUX_SURFACE_ID = "surface:1";
 		process.env.CMUX_PANEL_ID = "panel:1";
 		const statusKey = buildStatusKey();
-		const harness = createHarness({ blockedSetStatusTexts: [getCmuxStatusPresentation(undefined, "Working", 0).text] });
+		const harness = createHarness({
+			blockedSetStatusTexts: [getCmuxStatusPresentation(undefined, "Working", 0).text],
+		});
 
 		await harness.emit("session_start");
 		const startPromise = harness.emit("agent_start");
@@ -629,7 +845,10 @@ describe("cmux-status extension", () => {
 		await Promise.all([startPromise, disablePromise]);
 
 		expect(harness.getWorkspaceStatusText(statusKey)).toBeNull();
-		expect(harness.notifications).toContainEqual({ message: "cmux status disabled", level: "info" });
+		expect(harness.notifications).toContainEqual({
+			message: "cmux status disabled",
+			level: "info",
+		});
 	});
 
 	test("clears only this owner key on shutdown and toggle off", async () => {
@@ -650,7 +869,10 @@ describe("cmux-status extension", () => {
 
 		expect(harness.getWorkspaceStatusText(statusKey)).toBeNull();
 		expect(harness.getWorkspaceStatusText(otherKey)).toBe("π build: Waiting");
-		expect(harness.notifications).toContainEqual({ message: "cmux status disabled", level: "info" });
+		expect(harness.notifications).toContainEqual({
+			message: "cmux status disabled",
+			level: "info",
+		});
 
 		await harness.getCommandHandler()("", harness.ctx);
 		await harness.emit("session_shutdown");
