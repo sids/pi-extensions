@@ -8,14 +8,18 @@ import {
 	formatContextLabel,
 	formatElapsedMinutes,
 	formatModelLabel,
+	formatOpenAIParamsLabel,
 	formatPullRequestLabel,
 	formatRepoLabel,
 	formatThinkingLevel,
 	isGitHubHost,
+	OPENAI_PARAMS_EVENT_CHANNEL,
 	parseAllowedGitHubHosts,
 	parseGitRemoteRepo,
+	parseOpenAIParamsEvent,
 	pickPullRequest,
 	type GitRemoteRepo,
+	type OpenAIParamsEventPayload,
 	type PullRequestSummary,
 } from "./utils";
 
@@ -28,6 +32,7 @@ const PR_POLL_INTERVAL_MS = 30_000;
 type StatusPayload = {
 	modelLabel: string;
 	thinkingLevel: string;
+	openAIParamsLabel?: string;
 	contextLabel: string;
 	contextUsage: number | null;
 	repoLabel: string;
@@ -46,14 +51,16 @@ type WidgetUpdateOptions = {
 const createStatusWidget = (payload: StatusPayload) => (_tui: unknown, theme: { fg: (name: string, text: string) => string }) => ({
 	render: (width: number) => {
 		const modelLabel = theme.fg("muted", payload.modelLabel);
-		const thinkingLabel = theme.fg(resolveThinkingColor(payload.thinkingLevel), `(${payload.thinkingLevel})`);
+		const thinkingLevelLabel = theme.fg(resolveThinkingColor(payload.thinkingLevel), payload.thinkingLevel);
+		const openAIParamsLabel = payload.openAIParamsLabel ? ` ${theme.fg("muted", payload.openAIParamsLabel)}` : "";
+		const thinkingLabel = `${theme.fg("muted", "(")}${thinkingLevelLabel}${openAIParamsLabel}${theme.fg("muted", ")")}`;
 		const contextLabel = theme.fg(resolveContextColor(payload.contextUsage), payload.contextLabel);
 		const timingLabel = theme.fg(
 			"muted",
 			`· ${payload.loopMinutesLabel} loop · ${payload.agentMinutesLabel} agent · ${payload.sessionMinutesLabel} session`,
 		);
 		const repoLabel = theme.fg("muted", payload.repoLabel);
-		const right = `${modelLabel} ${thinkingLabel} ${contextLabel} ${timingLabel}`;
+		const right = [modelLabel, thinkingLabel, contextLabel, timingLabel].join(" ");
 		const lines = [renderAlignedLine(repoLabel, right, width, 1)];
 		if (payload.pullRequestLabel) {
 			const prContent = payload.pullRequestLabel.replace(/^PR:\s*/, "").trim();
@@ -311,10 +318,16 @@ export default function (pi: ExtensionAPI) {
 	let remoteRepoRequestsInFlight = new Map<string, Promise<GitRemoteRepo | null>>();
 	let prCache = new Map<string, PullRequestCacheEntry>();
 	let prRequestsInFlight = new Map<string, Promise<PullRequestSummary | null>>();
+	let openAIParamsByCwd = new Map<string, OpenAIParamsEventPayload>();
 	let lastPeriodicPrRefreshAt = 0;
+	let currentCtx: ExtensionContext | null = null;
 	let pendingWidgetUpdateCtx: ExtensionContext | null = null;
 	let pendingWidgetUpdateOptions: WidgetUpdateOptions | null = null;
 	let widgetUpdateRunner: Promise<void> | null = null;
+
+	const rememberCtx = (ctx: ExtensionContext) => {
+		currentCtx = ctx;
+	};
 
 	const resetTimingState = (now = Date.now(), preserveTotals = false) => {
 		if (preserveTotals) {
@@ -500,9 +513,11 @@ export default function (pi: ExtensionAPI) {
 
 		const usage = ctx.getContextUsage();
 		const timings = getTimingMinutes();
+		const openAIParamsLabel = formatOpenAIParamsLabel(openAIParamsByCwd.get(ctx.cwd) ?? null);
 		const payload: StatusPayload = {
 			modelLabel: formatModelLabel(ctx.model),
 			thinkingLevel: formatThinkingLevel(pi.getThinkingLevel()),
+			...(openAIParamsLabel ? { openAIParamsLabel } : {}),
 			contextLabel: formatContextLabel(usage),
 			contextUsage: usage?.percent ?? null,
 			repoLabel: formatRepoLabel(ctx.cwd, branch),
@@ -532,6 +547,7 @@ export default function (pi: ExtensionAPI) {
 	};
 
 	const requestWidgetUpdate = (ctx: ExtensionContext, options?: WidgetUpdateOptions): Promise<void> => {
+		rememberCtx(ctx);
 		pendingWidgetUpdateCtx = ctx;
 		pendingWidgetUpdateOptions = mergeWidgetUpdateOptions(pendingWidgetUpdateOptions, options);
 		if (widgetUpdateRunner) {
@@ -556,7 +572,21 @@ export default function (pi: ExtensionAPI) {
 		return widgetUpdateRunner;
 	};
 
+	pi.events.on(OPENAI_PARAMS_EVENT_CHANNEL, (data) => {
+		const parsed = parseOpenAIParamsEvent(data);
+		if (!parsed) {
+			return;
+		}
+
+		openAIParamsByCwd.set(parsed.cwd, parsed);
+		if (!currentCtx || !currentCtx.hasUI || !enabled || currentCtx.cwd !== parsed.cwd) {
+			return;
+		}
+		void requestWidgetUpdate(currentCtx, { skipPullRequestLookup: true });
+	});
+
 	const applyEnabledState = async (ctx: ExtensionContext) => {
+		rememberCtx(ctx);
 		if (!ctx.hasUI) {
 			return;
 		}
@@ -645,6 +675,7 @@ export default function (pi: ExtensionAPI) {
 		finalizeActiveTurn();
 		finalizeActiveLoop();
 		stopTypingWatcher();
+		currentCtx = null;
 	});
 
 	pi.registerCommand("custom-status", {

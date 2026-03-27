@@ -53,6 +53,17 @@ Default config:
 }
 ```
 
+## Integration
+
+This extension emits its current state on pi's extension event bus over `pi:openai-params` with:
+
+- `source`
+- `cwd`
+- `fast`
+- `verbosity`
+
+That lets other extensions, including `status`, show the active non-default fast/verbosity settings for the current workspace.
+
 ## Notes
 
 This extension combines the behavior of:

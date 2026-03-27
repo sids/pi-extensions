@@ -2,6 +2,16 @@ import os from "node:os";
 import path from "node:path";
 
 export const UNKNOWN_VALUE = "--";
+export const OPENAI_PARAMS_EVENT_CHANNEL = "pi:openai-params";
+
+export type OpenAIParamsVerbosity = "low" | "medium" | "high";
+
+export type OpenAIParamsEventPayload = {
+	source: "openai-params";
+	cwd: string;
+	fast: boolean;
+	verbosity: OpenAIParamsVerbosity | null;
+};
 
 export type ModelLabelInput = {
 	provider?: string;
@@ -17,6 +27,63 @@ export function formatModelLabel(model?: ModelLabelInput | null): string {
 
 export function formatThinkingLevel(level?: string): string {
 	return level?.trim() ? level : "off";
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function normalizeOpenAIParamsVerbosity(value: unknown): OpenAIParamsVerbosity | null | undefined {
+	if (value === null) {
+		return null;
+	}
+	if (typeof value !== "string") {
+		return undefined;
+	}
+
+	const normalized = value.trim().toLowerCase();
+	if (normalized === "low" || normalized === "medium" || normalized === "high") {
+		return normalized;
+	}
+	return undefined;
+}
+
+export function parseOpenAIParamsEvent(data: unknown): OpenAIParamsEventPayload | null {
+	if (!isObject(data)) {
+		return null;
+	}
+
+	const source = typeof data.source === "string" ? data.source.trim() : "";
+	const cwd = typeof data.cwd === "string" ? data.cwd.trim() : "";
+	const fast = typeof data.fast === "boolean" ? data.fast : null;
+	const verbosity = normalizeOpenAIParamsVerbosity(data.verbosity);
+	if (source !== "openai-params" || !cwd || fast === null || verbosity === undefined) {
+		return null;
+	}
+
+	return {
+		source: "openai-params",
+		cwd,
+		fast,
+		verbosity,
+	};
+}
+
+export function formatOpenAIParamsLabel(
+	params?: Pick<OpenAIParamsEventPayload, "fast" | "verbosity"> | null,
+): string | null {
+	if (!params) {
+		return null;
+	}
+
+	const labels: string[] = [];
+	if (params.fast) {
+		labels.push("/fast");
+	}
+	if (params.verbosity) {
+		labels.push(`🗣️${params.verbosity}`);
+	}
+	return labels.length > 0 ? labels.join(" ") : null;
 }
 
 export function formatWorkingDirectory(cwd: string): string {

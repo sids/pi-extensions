@@ -5,6 +5,7 @@ import type { Api, Model } from "@mariozechner/pi-ai";
 
 export const OPENAI_PARAMS_COMMAND = "openai-params";
 export const OPENAI_PARAMS_CONFIG_BASENAME = "openai-params.json";
+export const OPENAI_PARAMS_EVENT_CHANNEL = "pi:openai-params";
 export const OPENAI_FAST_SERVICE_TIER = "priority";
 export const DEFAULT_SUPPORTED_MODEL_KEYS = ["openai/gpt-5.4", "openai-codex/gpt-5.4"] as const;
 
@@ -13,6 +14,13 @@ export type Verbosity = "low" | "medium" | "high";
 export interface OpenAIParamsState {
 	fast: boolean;
 	verbosity: Verbosity | undefined;
+}
+
+export interface OpenAIParamsEventPayload {
+	source: typeof OPENAI_PARAMS_COMMAND;
+	cwd: string;
+	fast: boolean;
+	verbosity: Verbosity | null;
 }
 
 export interface SupportedModel {
@@ -223,6 +231,15 @@ export function toConfigFile(config: ResolvedOpenAIParamsConfig | OpenAIParamsSt
 		fast: config.fast,
 		verbosity: config.verbosity ?? null,
 		supportedModels: supportedModels.map((model) => `${model.provider}/${model.id}`),
+	};
+}
+
+export function toOpenAIParamsEventPayload(cwd: string, config: ResolvedOpenAIParamsConfig | OpenAIParamsState): OpenAIParamsEventPayload {
+	return {
+		source: OPENAI_PARAMS_COMMAND,
+		cwd,
+		fast: config.fast,
+		verbosity: config.verbosity ?? null,
 	};
 }
 

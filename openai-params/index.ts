@@ -5,9 +5,11 @@ import {
 	DEFAULT_SUPPORTED_MODEL_KEYS,
 	getCurrentModelKey,
 	OPENAI_PARAMS_COMMAND,
+	OPENAI_PARAMS_EVENT_CHANNEL,
 	parseSupportedModels,
 	persistConfig,
 	resolveConfig,
+	toOpenAIParamsEventPayload,
 	type OpenAIParamsState,
 	type ResolvedOpenAIParamsConfig,
 } from "./utils";
@@ -36,12 +38,18 @@ export default function openAIParams(pi: ExtensionAPI): void {
 		};
 	}
 
+	function emitOpenAIParamsState(ctx: ExtensionContext) {
+		pi.events.emit(OPENAI_PARAMS_EVENT_CHANNEL, toOpenAIParamsEventPayload(getConfigCwd(ctx), state));
+	}
+
 	pi.on("session_start", async (_event, ctx) => {
 		refreshConfig(ctx);
+		emitOpenAIParamsState(ctx);
 	});
 
 	pi.on("session_switch", async (_event, ctx) => {
 		refreshConfig(ctx);
+		emitOpenAIParamsState(ctx);
 	});
 
 	pi.registerCommand(OPENAI_PARAMS_COMMAND, {
@@ -72,6 +80,7 @@ export default function openAIParams(pi: ExtensionAPI): void {
 				verbosity: state.verbosity,
 			};
 			persistConfig(config);
+			emitOpenAIParamsState(ctx);
 			ctx.ui.notify(
 				`Saved OpenAI params: fast ${state.fast ? "on" : "off"}, verbosity ${state.verbosity ?? "default"}`,
 				"info",

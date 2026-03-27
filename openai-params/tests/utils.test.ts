@@ -9,6 +9,7 @@ import {
 	getConfigPaths,
 	patchPayloadVerbosity,
 	resolveConfig,
+	toOpenAIParamsEventPayload,
 	type ResolvedOpenAIParamsConfig,
 } from "../utils";
 
@@ -53,6 +54,22 @@ describe("patchPayloadVerbosity", () => {
 				format: { type: "text" },
 				verbosity: "low",
 			},
+		});
+	});
+});
+
+describe("toOpenAIParamsEventPayload", () => {
+	test("serializes unset verbosity as null", () => {
+		expect(
+			toOpenAIParamsEventPayload("/work", {
+				fast: true,
+				verbosity: undefined,
+			}),
+		).toEqual({
+			source: "openai-params",
+			cwd: "/work",
+			fast: true,
+			verbosity: null,
 		});
 	});
 });

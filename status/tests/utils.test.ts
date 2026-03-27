@@ -10,6 +10,7 @@ import {
 	formatContextPercent,
 	formatElapsedMinutes,
 	formatModelLabel,
+	formatOpenAIParamsLabel,
 	formatPullRequestLabel,
 	formatRepoLabel,
 	formatTokenCount,
@@ -19,6 +20,7 @@ import {
 	normalizeGitBranch,
 	parseAllowedGitHubHosts,
 	parseGitRemoteRepo,
+	parseOpenAIParamsEvent,
 	pickPullRequest,
 } from "../utils";
 
@@ -35,6 +37,42 @@ describe("formatModelLabel", () => {
 describe("formatThinkingLevel", () => {
 	test("uses fallback", () => {
 		expect(formatThinkingLevel(" ")).toBe("off");
+	});
+});
+
+describe("parseOpenAIParamsEvent", () => {
+	test("parses a valid openai-params event payload", () => {
+		expect(
+			parseOpenAIParamsEvent({
+				source: "openai-params",
+				cwd: "/work",
+				fast: true,
+				verbosity: "medium",
+			}),
+		).toEqual({
+			source: "openai-params",
+			cwd: "/work",
+			fast: true,
+			verbosity: "medium",
+		});
+	});
+
+	test("rejects invalid payloads", () => {
+		expect(parseOpenAIParamsEvent({ source: "other", cwd: "/work", fast: true, verbosity: "low" })).toBeNull();
+		expect(parseOpenAIParamsEvent({ source: "openai-params", cwd: "/work", fast: "yes", verbosity: "low" })).toBeNull();
+		expect(parseOpenAIParamsEvent({ source: "openai-params", cwd: "/work", fast: true, verbosity: "default" })).toBeNull();
+	});
+});
+
+describe("formatOpenAIParamsLabel", () => {
+	test("omits default state", () => {
+		expect(formatOpenAIParamsLabel({ fast: false, verbosity: null })).toBeNull();
+	});
+
+	test("formats fast-only, verbosity-only, and combined labels", () => {
+		expect(formatOpenAIParamsLabel({ fast: true, verbosity: null })).toBe("/fast");
+		expect(formatOpenAIParamsLabel({ fast: false, verbosity: "low" })).toBe("🗣️low");
+		expect(formatOpenAIParamsLabel({ fast: true, verbosity: "high" })).toBe("/fast 🗣️high");
 	});
 });
 
