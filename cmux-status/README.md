@@ -4,8 +4,9 @@ Sets cmux sidebar status entries for pi when running inside cmux (`CMUX_WORKSPAC
 
 Keys:
 
-- named session: `pi-cmux-status:<name>`
-- unnamed session: `pi-cmux-status`
+- all sessions: `pi-cmux-status:<owner>`
+
+`<owner>` is derived from the current cmux surface and panel ids, so each pi instance manages its own deterministic sidebar entry. If cmux does not expose an owner id for the current process, the extension does nothing.
 
 The status text is:
 
@@ -22,17 +23,12 @@ Status values:
 Behavior:
 
 - `Ready` when idle
-- `Working` while the agent is running
-- `Waiting` while another extension emits `pi:waiting-for-user-input` with `{ waiting: true }`
-- `Error` after a tool finishes with an error, until the next session or new agent run
-- named sessions clear their cmux status again once the agent finishes and the session returns to idle
+- `Working` while the agent is running, with an animated textual spinner prefix
+- `Waiting` while another extension emits `pi:waiting-for-user-input` with `{ waiting: true }`, with a dedicated icon and a one-shot `cmux notify`
+- `Error` after a tool finishes with an error, until the next session or new agent run, with a dedicated icon
+- named and unnamed sessions both show `Ready` again once the session returns to idle
 
-Conflict handling across multiple pi instances in the same cmux workspace:
-
-- if the current sidebar value still matches what this instance last wrote, it overwrites freely
-- otherwise it only overwrites when the new status has higher priority than the current one
-- priority: `Error > Waiting > Working > Ready`
-- on disable/shutdown it only clears the status if the current value still matches what this instance last wrote
+Multiple pi instances in the same cmux workspace do not share a sidebar key anymore: each instance writes to its own surface/panel-specific key and clears only that key on disable/shutdown.
 
 This extension does not render any TUI widget or footer content, and it does not use the cmux progress bar.
 
@@ -48,9 +44,16 @@ Or symlink it locally into `~/.pi/agent/extensions/cmux-status` and run `/reload
 
 The extension manages the session-specific cmux sidebar status entry via:
 
-- `cmux list-status`
 - `cmux set-status`
 - `cmux clear-status`
+- `cmux notify`
+
+Notes:
+
+- `Ready` uses a `checkmark` icon.
+- `Waiting` uses an `hourglass` icon.
+- `Error` uses an `exclamationmark.triangle.fill` icon.
+- `Working` does not use a cmux icon; it animates with the same braille-style textual spinner frames pi uses, such as `⠋`.
 
 For `Waiting`, cooperating extensions can emit the shared inter-extension event:
 

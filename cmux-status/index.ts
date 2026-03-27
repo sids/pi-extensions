@@ -1,21 +1,24 @@
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import {
+	areCmuxStatusPresentationsEqual,
 	formatCmuxStatusKey,
 	formatCmuxStatusText,
+	getCmuxStatusOwnerId,
+	getCmuxStatusPresentation,
 	getCmuxWorkspaceId,
-	parseCmuxStatusList,
-	shouldOverwriteCmuxStatus,
 	type CmuxStatusLabel,
+	type CmuxStatusPresentation,
 } from "./utils";
 
 const CMUX_COMMAND_TIMEOUT_MS = 1500;
 const USER_INPUT_WAIT_EVENT = "pi:waiting-for-user-input";
+const WORKING_ANIMATION_INTERVAL_MS = 400;
 
 type CmuxSidebarState = {
 	workspaceId: string | null;
 	available: boolean;
 	lastWrittenStatusKey: string | null;
-	lastWrittenStatusText: string | null;
+	lastWrittenStatusPresentation: CmuxStatusPresentation | null;
 };
 
 type WaitingForUserInputEvent = {
@@ -29,7 +32,7 @@ function createCmuxSidebarState(): CmuxSidebarState {
 		workspaceId: null,
 		available: true,
 		lastWrittenStatusKey: null,
-		lastWrittenStatusText: null,
+		lastWrittenStatusPresentation: null,
 	};
 }
 
@@ -53,30 +56,44 @@ export default function (pi: ExtensionAPI) {
 	let currentCtx: ExtensionContext | null = null;
 	let agentRunning = false;
 	let hasError = false;
-	let clearNamedStatusWhenIdle = false;
 	let activeToolCallIds = new Set<string>();
 	let waitingForUserInputIds = new Set<string>();
+	let waitingNotificationSent = false;
+	let workingAnimationFrame = 0;
+	let workingAnimationTimer: ReturnType<typeof setInterval> | null = null;
+	let queuedUpdate: { ctx: ExtensionContext; animationFrame: number } | null = null;
+	let updatePromise: Promise<void> | null = null;
 	let cmuxSidebarState = createCmuxSidebarState();
 
 	const rememberCtx = (ctx: ExtensionContext) => {
 		currentCtx = ctx;
 	};
 
+	const forgetLastWrittenStatus = () => {
+		cmuxSidebarState.lastWrittenStatusKey = null;
+		cmuxSidebarState.lastWrittenStatusPresentation = null;
+	};
+
+	const stopWorkingAnimation = () => {
+		if (workingAnimationTimer !== null) {
+			clearInterval(workingAnimationTimer);
+			workingAnimationTimer = null;
+		}
+		workingAnimationFrame = 0;
+	};
+
 	const resetRuntimeState = () => {
 		agentRunning = false;
 		hasError = false;
-		clearNamedStatusWhenIdle = false;
 		activeToolCallIds = new Set<string>();
 		waitingForUserInputIds = new Set<string>();
+		waitingNotificationSent = false;
+		queuedUpdate = null;
+		stopWorkingAnimation();
 	};
 
 	const resetCmuxSidebarState = () => {
 		cmuxSidebarState = createCmuxSidebarState();
-	};
-
-	const forgetLastWrittenStatus = () => {
-		cmuxSidebarState.lastWrittenStatusKey = null;
-		cmuxSidebarState.lastWrittenStatusText = null;
 	};
 
 	const resolveStatus = (): CmuxStatusLabel => {
@@ -92,8 +109,12 @@ export default function (pi: ExtensionAPI) {
 		return "Ready";
 	};
 
-	const getCurrentStatusKey = () => formatCmuxStatusKey(pi.getSessionName());
-	const buildStatusText = (status: CmuxStatusLabel) => formatCmuxStatusText(pi.getSessionName(), status);
+	const getCurrentStatusKey = () => {
+		const ownerId = getCmuxStatusOwnerId();
+		return ownerId ? formatCmuxStatusKey(ownerId) : null;
+	};
+	const buildStatusPresentation = (status: CmuxStatusLabel, animationFrame = workingAnimationFrame) =>
+		getCmuxStatusPresentation(pi.getSessionName(), status, animationFrame);
 
 	const execCmux = async (cwd: string, args: string[]) => {
 		try {
@@ -103,86 +124,182 @@ export default function (pi: ExtensionAPI) {
 		}
 	};
 
-	const refreshCmuxStatus = async (
-		cwd: string,
-		statusKey: string,
-	): Promise<{ workspaceId: string; statusText: string | null } | null> => {
+	const getActiveWorkspaceId = () => {
 		const workspaceId = getCmuxWorkspaceId();
-		if (!workspaceId || !cmuxSidebarState.available) {
+		if (!workspaceId || !getCmuxStatusOwnerId() || !cmuxSidebarState.available) {
 			return null;
 		}
 		if (cmuxSidebarState.workspaceId !== workspaceId) {
-			resetCmuxSidebarState();
+			forgetLastWrittenStatus();
 			cmuxSidebarState.workspaceId = workspaceId;
 		}
-
-		const result = await execCmux(cwd, ["list-status", "--json", "--workspace", workspaceId]);
-		if (!result || result.code !== 0) {
-			cmuxSidebarState.available = false;
-			return null;
-		}
-
-		const statusText = parseCmuxStatusList(result.stdout).get(statusKey) ?? null;
-		return { workspaceId, statusText };
+		return workspaceId;
 	};
 
 	const releaseLastWrittenStatus = async (cwd: string) => {
-		const { lastWrittenStatusKey, lastWrittenStatusText } = cmuxSidebarState;
-		if (!lastWrittenStatusKey || !lastWrittenStatusText) {
+		const workspaceId = getActiveWorkspaceId();
+		const { lastWrittenStatusKey } = cmuxSidebarState;
+		if (!workspaceId || !lastWrittenStatusKey) {
 			forgetLastWrittenStatus();
 			return;
 		}
 
-		const refreshed = await refreshCmuxStatus(cwd, lastWrittenStatusKey);
-		if (refreshed && shouldOverwriteCmuxStatus(refreshed.statusText, lastWrittenStatusText, null)) {
-			const result = await execCmux(cwd, ["clear-status", lastWrittenStatusKey, "--workspace", refreshed.workspaceId]);
-			if (!result || result.code !== 0) {
-				cmuxSidebarState.available = false;
-			}
+		const result = await execCmux(cwd, ["clear-status", lastWrittenStatusKey, "--workspace", workspaceId]);
+		if (!result || result.code !== 0) {
+			cmuxSidebarState.available = false;
+			return;
 		}
 		forgetLastWrittenStatus();
 	};
 
-	const syncCmuxStatus = async (cwd: string, status: CmuxStatusLabel | null) => {
+	const writeCmuxStatus = async (
+		cwd: string,
+		workspaceId: string,
+		statusKey: string,
+		presentation: CmuxStatusPresentation,
+	) => {
+		const args = ["set-status", statusKey, presentation.text];
+		if (presentation.icon) {
+			args.push("--icon", presentation.icon);
+		}
+		if (presentation.color) {
+			args.push("--color", presentation.color);
+		}
+		args.push("--workspace", workspaceId);
+		return execCmux(cwd, args);
+	};
+
+	const syncCmuxStatus = async (cwd: string, status: CmuxStatusLabel | null, animationFrame = workingAnimationFrame) => {
+		const workspaceId = getActiveWorkspaceId();
 		const statusKey = getCurrentStatusKey();
+		if (!workspaceId || !statusKey) {
+			return;
+		}
+
 		if (cmuxSidebarState.lastWrittenStatusKey && cmuxSidebarState.lastWrittenStatusKey !== statusKey) {
 			await releaseLastWrittenStatus(cwd);
+			if (!cmuxSidebarState.available) {
+				return;
+			}
 		}
 
-		const refreshed = await refreshCmuxStatus(cwd, statusKey);
-		if (!refreshed || !cmuxSidebarState.available) {
+		const nextPresentation = status ? buildStatusPresentation(status, animationFrame) : null;
+		const lastWrittenPresentationForKey =
+			cmuxSidebarState.lastWrittenStatusKey === statusKey ? cmuxSidebarState.lastWrittenStatusPresentation : null;
+		if (areCmuxStatusPresentationsEqual(lastWrittenPresentationForKey, nextPresentation)) {
 			return;
 		}
 
-		const nextText = status ? buildStatusText(status) : null;
-		const lastWrittenTextForKey = cmuxSidebarState.lastWrittenStatusKey === statusKey ? cmuxSidebarState.lastWrittenStatusText : null;
-		if (!shouldOverwriteCmuxStatus(refreshed.statusText, lastWrittenTextForKey, nextText)) {
+		if (nextPresentation === null) {
+			if (cmuxSidebarState.lastWrittenStatusKey !== statusKey) {
+				return;
+			}
+			const result = await execCmux(cwd, ["clear-status", statusKey, "--workspace", workspaceId]);
+			if (!result || result.code !== 0) {
+				cmuxSidebarState.available = false;
+				return;
+			}
+			forgetLastWrittenStatus();
 			return;
 		}
 
-		const args = nextText
-			? ["set-status", statusKey, nextText, "--workspace", refreshed.workspaceId]
-			: ["clear-status", statusKey, "--workspace", refreshed.workspaceId];
-		const result = await execCmux(cwd, args);
+		const result = await writeCmuxStatus(cwd, workspaceId, statusKey, nextPresentation);
 		if (!result || result.code !== 0) {
 			cmuxSidebarState.available = false;
 			return;
 		}
 
-		if (nextText === null) {
-			forgetLastWrittenStatus();
+		cmuxSidebarState.lastWrittenStatusKey = statusKey;
+		cmuxSidebarState.lastWrittenStatusPresentation = nextPresentation;
+	};
+
+	const sendWaitingNotification = async (ctx: ExtensionContext) => {
+		const workspaceId = getActiveWorkspaceId();
+		if (!workspaceId) {
+			return false;
+		}
+
+		const result = await execCmux(ctx.cwd, [
+			"notify",
+			"--title",
+			formatCmuxStatusText(pi.getSessionName(), "Waiting"),
+			"--body",
+			"Waiting for user input.",
+			"--workspace",
+			workspaceId,
+		]);
+		return Boolean(result && result.code === 0);
+	};
+
+	const ensureWorkingAnimation = () => {
+		if (workingAnimationTimer !== null) {
+			return;
+		}
+		workingAnimationTimer = setInterval(() => {
+			if (!enabled || !currentCtx) {
+				return;
+			}
+			if (resolveStatus() !== "Working") {
+				stopWorkingAnimation();
+				return;
+			}
+			workingAnimationFrame += 1;
+			void updateCmuxStatus(currentCtx, workingAnimationFrame);
+		}, WORKING_ANIMATION_INTERVAL_MS);
+	};
+
+	const cancelQueuedCmuxUpdates = () => {
+		queuedUpdate = null;
+	};
+
+	const waitForInFlightCmuxUpdate = async () => {
+		if (updatePromise) {
+			await updatePromise;
+		}
+	};
+
+	const performCmuxStatusUpdate = async (ctx: ExtensionContext, animationFrame = workingAnimationFrame) => {
+		const resolvedStatus = enabled ? resolveStatus() : null;
+		if (resolvedStatus === "Working") {
+			ensureWorkingAnimation();
+		} else {
+			stopWorkingAnimation();
+		}
+
+		await syncCmuxStatus(ctx.cwd, resolvedStatus, animationFrame);
+
+		if (resolvedStatus !== "Waiting") {
+			waitingNotificationSent = false;
+			return;
+		}
+		if (waitingNotificationSent || !enabled) {
+			return;
+		}
+		if (await sendWaitingNotification(ctx)) {
+			waitingNotificationSent = true;
+		}
+	};
+
+	const updateCmuxStatus = async (ctx: ExtensionContext, animationFrame = workingAnimationFrame) => {
+		queuedUpdate = { ctx, animationFrame };
+		if (updatePromise) {
+			await updatePromise;
 			return;
 		}
 
-		cmuxSidebarState.lastWrittenStatusKey = statusKey;
-		cmuxSidebarState.lastWrittenStatusText = nextText;
-	};
+		updatePromise = (async () => {
+			while (queuedUpdate) {
+				const nextUpdate = queuedUpdate;
+				queuedUpdate = null;
+				await performCmuxStatusUpdate(nextUpdate.ctx, nextUpdate.animationFrame);
+			}
+		})();
 
-	const updateCmuxStatus = async (ctx: ExtensionContext) => {
-		const nextStatus = enabled ? resolveStatus() : null;
-		const sessionName = pi.getSessionName()?.trim();
-		const shouldClearNamedStatus = Boolean(sessionName) && clearNamedStatusWhenIdle && nextStatus === "Ready";
-		await syncCmuxStatus(ctx.cwd, shouldClearNamedStatus ? null : nextStatus);
+		try {
+			await updatePromise;
+		} finally {
+			updatePromise = null;
+		}
 	};
 
 	pi.events.on(USER_INPUT_WAIT_EVENT, (data) => {
@@ -225,7 +342,6 @@ export default function (pi: ExtensionAPI) {
 	pi.on("agent_start", async (_event, ctx) => {
 		rememberCtx(ctx);
 		hasError = false;
-		clearNamedStatusWhenIdle = false;
 		agentRunning = true;
 		await updateCmuxStatus(ctx);
 	});
@@ -233,7 +349,6 @@ export default function (pi: ExtensionAPI) {
 	pi.on("agent_end", async (_event, ctx) => {
 		rememberCtx(ctx);
 		agentRunning = false;
-		clearNamedStatusWhenIdle = true;
 		activeToolCallIds = new Set<string>();
 		await updateCmuxStatus(ctx);
 	});
@@ -257,6 +372,8 @@ export default function (pi: ExtensionAPI) {
 	pi.on("session_shutdown", async (_event, ctx) => {
 		rememberCtx(ctx);
 		resetRuntimeState();
+		cancelQueuedCmuxUpdates();
+		await waitForInFlightCmuxUpdate();
 		await releaseLastWrittenStatus(ctx.cwd);
 		resetCmuxSidebarState();
 		currentCtx = null;
@@ -275,6 +392,10 @@ export default function (pi: ExtensionAPI) {
 				return;
 			}
 
+			waitingNotificationSent = false;
+			stopWorkingAnimation();
+			cancelQueuedCmuxUpdates();
+			await waitForInFlightCmuxUpdate();
 			await releaseLastWrittenStatus(ctx.cwd);
 			if (ctx.hasUI) {
 				ctx.ui.notify("cmux status disabled", "info");

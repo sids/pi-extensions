@@ -1,12 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import {
+	areCmuxStatusPresentationsEqual,
 	formatCmuxStatusKey,
 	formatCmuxStatusText,
-	getCmuxStatusPriority,
+	getCmuxStatusOwnerId,
+	getCmuxStatusPresentation,
 	getCmuxWorkspaceId,
 	parseCmuxStatusList,
-	parseManagedCmuxStatusText,
-	shouldOverwriteCmuxStatus,
 } from "../utils";
 
 describe("getCmuxWorkspaceId", () => {
@@ -20,13 +20,27 @@ describe("getCmuxWorkspaceId", () => {
 	});
 });
 
-describe("formatCmuxStatusKey", () => {
-	test("uses a per-session key for named sessions", () => {
-		expect(formatCmuxStatusKey("build")).toBe("pi-cmux-status:build");
+describe("getCmuxStatusOwnerId", () => {
+	test("uses both surface and panel ids when present", () => {
+		expect(getCmuxStatusOwnerId({ CMUX_SURFACE_ID: "surface:1", CMUX_PANEL_ID: "panel:1" })).toBe(
+			"surface:surface:1:panel:panel:1",
+		);
 	});
 
-	test("uses the shared key for unnamed sessions", () => {
-		expect(formatCmuxStatusKey(undefined)).toBe("pi-cmux-status");
+	test("returns null when neither surface nor panel id is present", () => {
+		expect(getCmuxStatusOwnerId({})).toBeNull();
+	});
+});
+
+describe("formatCmuxStatusKey", () => {
+	test("uses an owner-specific key when an owner is available", () => {
+		expect(formatCmuxStatusKey("surface:surface:1:panel:panel:1")).toBe(
+			"pi-cmux-status:surface:surface:1:panel:panel:1",
+		);
+	});
+
+	test("uses the shared key only when no owner is provided", () => {
+		expect(formatCmuxStatusKey()).toBe("pi-cmux-status");
 	});
 });
 
@@ -40,44 +54,53 @@ describe("formatCmuxStatusText", () => {
 	});
 });
 
-describe("parseManagedCmuxStatusText", () => {
-	test("parses named and unnamed session texts", () => {
-		expect(parseManagedCmuxStatusText("π build: Waiting")).toEqual({ status: "Waiting" });
-		expect(parseManagedCmuxStatusText("π - Error")).toEqual({ status: "Error" });
+describe("getCmuxStatusPresentation", () => {
+	test("adds fixed icons for Ready, Waiting, and Error", () => {
+		expect(getCmuxStatusPresentation("build", "Ready")).toMatchObject({
+			text: "π build: Ready",
+			icon: "checkmark",
+		});
+		expect(getCmuxStatusPresentation("build", "Waiting")).toMatchObject({
+			text: "π build: Waiting",
+			icon: "hourglass",
+		});
+		expect(getCmuxStatusPresentation(undefined, "Error")).toMatchObject({
+			text: "π - Error",
+			icon: "exclamationmark.triangle.fill",
+		});
 	});
 
-	test("ignores unrelated texts", () => {
-		expect(parseManagedCmuxStatusText("Build running")).toBeNull();
+	test("cycles Working text prefixes by animation frame", () => {
+		const first = getCmuxStatusPresentation(undefined, "Working", 0);
+		const second = getCmuxStatusPresentation(undefined, "Working", 1);
+		const third = getCmuxStatusPresentation(undefined, "Working", 2);
+		const wrapped = getCmuxStatusPresentation(undefined, "Working", 10);
+
+		expect(first.text).toBe("⠋ π - Working");
+		expect(first.icon).toBeNull();
+		expect(first.text).not.toBe(second.text);
+		expect(second.text).not.toBe(third.text);
+		expect(wrapped.text).toBe(first.text);
 	});
 });
 
-describe("getCmuxStatusPriority", () => {
-	test("orders statuses by severity", () => {
-		expect(getCmuxStatusPriority("Error")).toBeGreaterThan(getCmuxStatusPriority("Waiting"));
-		expect(getCmuxStatusPriority("Waiting")).toBeGreaterThan(getCmuxStatusPriority("Working"));
-		expect(getCmuxStatusPriority("Working")).toBeGreaterThan(getCmuxStatusPriority("Ready"));
+describe("areCmuxStatusPresentationsEqual", () => {
+	test("compares text, icon, and color", () => {
+		expect(
+			areCmuxStatusPresentationsEqual(
+				getCmuxStatusPresentation(undefined, "Working", 0),
+				getCmuxStatusPresentation(undefined, "Working", 0),
+			),
+		).toBeTrue();
+		expect(
+			areCmuxStatusPresentationsEqual(
+				getCmuxStatusPresentation(undefined, "Working", 0),
+				getCmuxStatusPresentation(undefined, "Working", 1),
+			),
+		).toBeFalse();
 	});
 });
 
-describe("shouldOverwriteCmuxStatus", () => {
-	test("always overwrites when the current value matches the last written value", () => {
-		expect(shouldOverwriteCmuxStatus("π mine: Working", "π mine: Working", "π mine: Ready")).toBeTrue();
-	});
-
-	test("overwrites empty status", () => {
-		expect(shouldOverwriteCmuxStatus(null, null, "π - Ready")).toBeTrue();
-	});
-
-	test("requires higher priority to replace another surface", () => {
-		expect(shouldOverwriteCmuxStatus("π other: Waiting", "π mine: Working", "π mine: Working")).toBeFalse();
-		expect(shouldOverwriteCmuxStatus("π other: Waiting", "π mine: Working", "π mine: Error")).toBeTrue();
-	});
-
-	test("only clears when the current value still matches the last written value", () => {
-		expect(shouldOverwriteCmuxStatus("π mine: Ready", "π mine: Ready", null)).toBeTrue();
-		expect(shouldOverwriteCmuxStatus("π other: Waiting", "π mine: Ready", null)).toBeFalse();
-	});
-});
 
 describe("parseCmuxStatusList", () => {
 	test("parses top-level status arrays", () => {
@@ -110,7 +133,43 @@ describe("parseCmuxStatusList", () => {
 		).toEqual([["pi-cmux-status:build", "π build: Waiting"]]);
 	});
 
-	test("returns an empty map for invalid json", () => {
+	test("parses simple line-based status output", () => {
+		expect(
+			Array.from(parseCmuxStatusList("pi-cmux-status=π - Ready\npi-cmux-status:build=π build: Waiting").entries()),
+		).toEqual([
+			["pi-cmux-status", "π - Ready"],
+			["pi-cmux-status:build", "π build: Waiting"],
+		]);
+	});
+
+	test("parses structured line-based status output with icon metadata", () => {
+		expect(
+			Array.from(
+				parseCmuxStatusList(
+					"key=pi-cmux-status value=π - Working icon=ellipsis\nkey=pi-cmux-status:build value=π build: Waiting icon=hourglass",
+				).entries(),
+			),
+		).toEqual([
+			["pi-cmux-status", "π - Working"],
+			["pi-cmux-status:build", "π build: Waiting"],
+		]);
+	});
+
+	test("parses real cmux line output where icon metadata trails the value", () => {
+		expect(
+			Array.from(
+				parseCmuxStatusList(
+					"pi-cmux-status:cmux-status=π cmux-status: Working icon=ellipsis\npi-cmux-status=π - Ready\npi-cmux-status:build=π build: Waiting icon=hourglass",
+				).entries(),
+			),
+		).toEqual([
+			["pi-cmux-status:cmux-status", "π cmux-status: Working"],
+			["pi-cmux-status", "π - Ready"],
+			["pi-cmux-status:build", "π build: Waiting"],
+		]);
+	});
+
+	test("returns an empty map for invalid input", () => {
 		expect(Array.from(parseCmuxStatusList("not json").entries())).toEqual([]);
 	});
 });
