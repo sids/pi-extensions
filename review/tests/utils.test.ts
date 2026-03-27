@@ -131,6 +131,7 @@ describe("formatReviewSummaryMessage", () => {
 					priority: "P1",
 					comment: "Fix null check",
 					references: [{ filePath: "src/a.ts", startLine: 12 }],
+					note: "Double-check the edge case",
 					originalPriority: "P1",
 				},
 			],
@@ -142,6 +143,7 @@ describe("formatReviewSummaryMessage", () => {
 		expect(message).toContain("Target: Review uncommitted changes");
 		expect(message).toContain("Comments:");
 		expect(message).toContain("1. [P1] Fix null check");
+		expect(message).toContain("User Note: Double-check the edge case");
 		expect(message).not.toContain("Review mode ended.");
 		expect(message).not.toContain("Kept:");
 		expect(message).not.toContain("Kept findings:");

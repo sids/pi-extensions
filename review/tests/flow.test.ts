@@ -511,6 +511,7 @@ describe("/review active", () => {
 							priority: "P1",
 							comment: "kept finding",
 							references: [],
+							note: "focus on the migration path",
 							originalPriority: "P1",
 						},
 						{
@@ -561,10 +562,13 @@ describe("/review active", () => {
 		expect(sentMessages[0].content).toContain("Code Review Summary");
 		expect(sentMessages[0].content).toContain("Comments:");
 		expect(sentMessages[0].content).toContain("kept finding");
+		expect(sentMessages[0].content).toContain("User Note: focus on the migration path");
 		expect(sentMessages[0].content).not.toContain("discarded finding");
 		expect(sentMessages[0].content).not.toContain("Review mode ended.");
 		expect(sentMessages[0].content).not.toContain("Kept:");
-		expect(editorPrefills).toEqual(["Address the review comment"]);
+		expect(editorPrefills).toEqual([
+			"Address the review comment\n\nPay attention to the user notes in response to the review comments",
+		]);
 		expect(notifications.length).toBe(0);
 	});
 

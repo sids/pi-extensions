@@ -201,7 +201,7 @@ export function formatReviewSummaryMessage(options: {
 			lines.push(`   References: ${finding.references.map(formatReference).join(", ")}`);
 		}
 		if (finding.note?.trim()) {
-			lines.push(`   Note: ${finding.note.trim()}`);
+			lines.push(`   User Note: ${finding.note.trim()}`);
 		}
 		if (i < options.kept.length - 1) {
 			lines.push("");

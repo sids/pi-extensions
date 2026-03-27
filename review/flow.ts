@@ -367,8 +367,13 @@ export async function endReviewMode(
 		totalCount: summary.totalCount,
 	});
 
-	const prefillText = summary.kept.length === 1 ? "Address the review comment" : "Address the review comments";
-	ctx.ui.setEditorText(prefillText);
+	const prefillLines = [
+		summary.kept.length === 1 ? "Address the review comment" : "Address the review comments",
+	];
+	if (summary.kept.some((comment) => comment.note?.trim())) {
+		prefillLines.push("", "Pay attention to the user notes in response to the review comments");
+	}
+	ctx.ui.setEditorText(prefillLines.join("\n"));
 
 	pi.sendMessage({
 		customType: REVIEW_SUMMARY_ENTRY_TYPE,
