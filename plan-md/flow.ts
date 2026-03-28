@@ -52,19 +52,6 @@ type MutableSessionManager = ExtensionContext["sessionManager"] & {
 	branch?: (entryId: string) => void;
 	resetLeaf?: () => void;
 	appendCustomEntry?: (customType: string, data?: unknown) => string;
-	getEntry?: (entryId: string) =>
-		| {
-			id?: string;
-			type?: string;
-			customType?: string;
-			parentId?: string | null;
-			message?: {
-				role?: string;
-				content?: unknown;
-			};
-			content?: unknown;
-		}
-		| undefined;
 	appendLabelChange?: (targetId: string, label: string | undefined) => void;
 };
 
@@ -472,102 +459,6 @@ function canOfferEmptyBranchStart(ctx: ExtensionContext, originLeafId: string | 
 	return Boolean(originLeafId && firstUserMessageId && firstUserMessageId !== originLeafId);
 }
 
-async function waitForIdleInShortcutContext(ctx: ExtensionContext): Promise<void> {
-	while (!ctx.isIdle()) {
-		await new Promise<void>((resolve) => {
-			setTimeout(resolve, 25);
-		});
-	}
-}
-
-function extractTextFromMessageContent(content: unknown): string {
-	if (typeof content === "string") {
-		return content;
-	}
-	if (!Array.isArray(content)) {
-		return "";
-	}
-
-	let text = "";
-	for (const part of content) {
-		if (!part || typeof part !== "object") {
-			continue;
-		}
-		const typedPart = part as { type?: unknown; text?: unknown };
-		if (typedPart.type === "text" && typeof typedPart.text === "string") {
-			text += typedPart.text;
-		}
-	}
-	return text;
-}
-
-async function navigateTreeInShortcutContext(
-	ctx: ExtensionContext,
-	targetId: string,
-	options?: {
-		summarize?: boolean;
-		label?: string;
-	},
-): Promise<{ cancelled: boolean }> {
-	const sessionManager = ctx.sessionManager as MutableSessionManager;
-
-	if (typeof sessionManager.getEntry !== "function") {
-		return { cancelled: true };
-	}
-
-	const targetEntry = sessionManager.getEntry(targetId);
-	if (!targetEntry) {
-		return { cancelled: true };
-	}
-
-	let newLeafId: string | null = targetId;
-	let editorText: string | undefined;
-
-	if (targetEntry.type === "message" && targetEntry.message?.role === "user") {
-		newLeafId = targetEntry.parentId ?? null;
-		editorText = extractTextFromMessageContent(targetEntry.message.content);
-	} else if (targetEntry.type === "custom_message") {
-		newLeafId = targetEntry.parentId ?? null;
-		editorText = extractTextFromMessageContent(targetEntry.content);
-	}
-
-	if (newLeafId === null) {
-		if (typeof sessionManager.resetLeaf !== "function") {
-			return { cancelled: true };
-		}
-		sessionManager.resetLeaf();
-	} else {
-		if (typeof sessionManager.branch !== "function") {
-			return { cancelled: true };
-		}
-		sessionManager.branch(newLeafId);
-	}
-
-	if (options?.label && typeof sessionManager.appendLabelChange === "function") {
-		sessionManager.appendLabelChange(targetId, options.label);
-	}
-
-	if (editorText && ctx.hasUI && !ctx.ui.getEditorText().trim()) {
-		ctx.ui.setEditorText(editorText);
-	}
-
-	return { cancelled: false };
-}
-
-function createShortcutCommandContext(ctx: ExtensionContext): ExtensionCommandContext {
-	return {
-		...ctx,
-		waitForIdle: async () => {
-			await waitForIdleInShortcutContext(ctx);
-		},
-		newSession: async () => ({ cancelled: true }),
-		fork: async () => ({ cancelled: true }),
-		navigateTree: async (targetId, options) => navigateTreeInShortcutContext(ctx, targetId, options),
-		switchSession: async () => ({ cancelled: true }),
-		reload: async () => {},
-	};
-}
-
 export function registerPlanModeCommand(
 	pi: ExtensionAPI,
 	dependencies: {
@@ -783,13 +674,5 @@ export function registerPlanModeCommand(
 	pi.registerCommand("plan-md", {
 		description: "Start /plan-md, end it, or pass a plan file location.",
 		handler: handlePlanModeCommand,
-	});
-
-	pi.registerShortcut("alt+p", {
-		description: "Toggle /plan-md",
-		handler: async (ctx) => {
-			const shortcutCommandContext = createShortcutCommandContext(ctx);
-			await handlePlanModeCommand("", shortcutCommandContext);
-		},
 	});
 }

@@ -11,7 +11,6 @@ pi install npm:pi-plan-md
 ## What it does
 
 - `/plan-md` starts planning when inactive and opens plan mode actions when already active.
-- `Alt+P` runs the same plan-mode toggle flow as `/plan-md` (including the same start/end prompts and exit behavior) without sending `/plan-md` as chat text.
 - Start location picker (shown when the session has branchable history):
   - `Empty branch` (jumps to a clean branch point)
   - `Current branch` (stays where you are)
