@@ -17,7 +17,8 @@ const MENTION_GLOBAL_PATTERN = /(?:^|(?<=\s))\$([a-zA-Z][a-zA-Z0-9\-_]*)/g;
 export function collectDiscoveredSkills(commands: SlashCommandInfo[]): Map<string, string> {
 	const skills = new Map<string, string>();
 	for (const cmd of commands) {
-		if (cmd.source !== "skill" || !cmd.path) {
+		const skillPath = cmd.sourceInfo?.path;
+		if (cmd.source !== "skill" || !skillPath) {
 			continue;
 		}
 		if (!cmd.name.startsWith(SKILL_COMMAND_PREFIX)) {
@@ -29,7 +30,7 @@ export function collectDiscoveredSkills(commands: SlashCommandInfo[]): Map<strin
 		}
 		// First occurrence wins for deterministic deduplication.
 		if (!skills.has(name)) {
-			skills.set(name, cmd.path);
+			skills.set(name, skillPath);
 		}
 	}
 	return skills;

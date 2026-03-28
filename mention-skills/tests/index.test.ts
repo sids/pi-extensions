@@ -4,6 +4,19 @@ import { clearRememberedSessionEditorComponentFactory } from "@siddr/pi-shared-q
 import mentionSkillsExtension from "../index";
 import promptThinkingExtension from "../../prompt-thinking/index";
 
+function createCommand(name: string, source: "extension" | "prompt" | "skill", path?: string) {
+	return {
+		name,
+		source,
+		sourceInfo: {
+			path: path ?? `<${source}:${name}>`,
+			source,
+			scope: "temporary",
+			origin: "top-level",
+		},
+	};
+}
+
 type Handler = (event: any, ctx: any) => any;
 type ExtensionName = "mention" | "thinking";
 
@@ -122,7 +135,7 @@ function cleanupSession(sessionFile: string) {
 
 describe("mention-skills extension", () => {
 	test("installs a custom editor on session start", async () => {
-		const harness = createHarness([{ name: "skill:commit", source: "skill", path: "/skills/commit/SKILL.md" }]);
+		const harness = createHarness([createCommand("skill:commit", "skill", "/skills/commit/SKILL.md")]);
 		const { ctx, getInstalledFactory, sessionFile } = createUiSessionContext();
 
 		try {
@@ -135,8 +148,8 @@ describe("mention-skills extension", () => {
 
 	test("transforms skill mentions using discovered skills", async () => {
 		const harness = createHarness([
-			{ name: "skill:commit", source: "skill", path: "/skills/commit/SKILL.md" },
-			{ name: "skill:pdf", source: "skill", path: "/skills/pdf/SKILL.md" },
+			createCommand("skill:commit", "skill", "/skills/commit/SKILL.md"),
+			createCommand("skill:pdf", "skill", "/skills/pdf/SKILL.md"),
 		]);
 
 		await harness.emit("resources_discover");
@@ -156,7 +169,7 @@ describe("mention-skills extension", () => {
 
 	test("keeps $ and ^ autocomplete when prompt-thinking installs after mention-skills", async () => {
 		const harness = createHarness(
-			[{ name: "skill:commit", source: "skill", path: "/skills/commit/SKILL.md" }],
+			[createCommand("skill:commit", "skill", "/skills/commit/SKILL.md")],
 			["mention", "thinking"],
 		);
 		const { ctx, getInstalledFactory, sessionFile } = createUiSessionContext();
@@ -189,7 +202,7 @@ describe("mention-skills extension", () => {
 
 	test("keeps $ and ^ autocomplete when mention-skills installs after prompt-thinking", async () => {
 		const harness = createHarness(
-			[{ name: "skill:commit", source: "skill", path: "/skills/commit/SKILL.md" }],
+			[createCommand("skill:commit", "skill", "/skills/commit/SKILL.md")],
 			["thinking", "mention"],
 		);
 		const { ctx, getInstalledFactory, sessionFile } = createUiSessionContext();

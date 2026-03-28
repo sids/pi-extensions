@@ -52,7 +52,7 @@ export default function (pi: ExtensionAPI) {
 			if (allPromptLines.length > previewLineCount) {
 				lines.push(theme.fg("dim", "..."));
 			}
-			lines.push(keyHint("expandTools", "to expand"));
+			lines.push(keyHint("app.tools.expand", "to expand"));
 			return render(lines.join("\n"));
 		}
 
@@ -76,7 +76,7 @@ export default function (pi: ExtensionAPI) {
 
 		lines.push(theme.fg("muted", `Plan file: ${details.planFilePath}`));
 		if (!expanded) {
-			lines.push(theme.fg("dim", keyHint("expandTools", "to expand")));
+			lines.push(theme.fg("dim", keyHint("app.tools.expand", "to expand")));
 			return render(lines.join("\n"));
 		}
 
@@ -112,7 +112,7 @@ export default function (pi: ExtensionAPI) {
 
 			if (!expanded) {
 				return new Text(
-					`${theme.fg("success", "Plan written.")}\n${theme.fg("dim", keyHint("expandTools", "to view plan"))}`,
+					`${theme.fg("success", "Plan written.")}\n${theme.fg("dim", keyHint("app.tools.expand", "to view plan"))}`,
 					0,
 					0,
 				);

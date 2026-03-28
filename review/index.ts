@@ -39,7 +39,7 @@ export default function (pi: ExtensionAPI) {
 			if (allPromptLines.length > previewLineCount) {
 				lines.push(theme.fg("dim", "..."));
 			}
-			lines.push(keyHint("expandTools", "to expand"));
+			lines.push(keyHint("app.tools.expand", "to expand"));
 			return renderInMessageBox(lines.join("\n"));
 		}
 

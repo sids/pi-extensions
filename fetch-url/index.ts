@@ -107,7 +107,7 @@ export default function (pi: ExtensionAPI) {
 				}
 				if (remainingLines > 0) {
 					lines.push(
-						`${theme.fg("muted", `... (${remainingLines} more lines,`)} ${keyHint("expandTools", "to expand")})`,
+						`${theme.fg("muted", `... (${remainingLines} more lines,`)} ${keyHint("app.tools.expand", "to expand")})`,
 					);
 				}
 			}

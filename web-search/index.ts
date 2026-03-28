@@ -428,7 +428,7 @@ export default function (pi: ExtensionAPI) {
 
 			if (!expanded) {
 				lines.push("");
-				lines.push(theme.fg("dim", keyHint("expandTools", "to expand for snippets")));
+				lines.push(theme.fg("dim", keyHint("app.tools.expand", "to expand for snippets")));
 			}
 
 			return new Text(lines.join("\n"), 0, 0);

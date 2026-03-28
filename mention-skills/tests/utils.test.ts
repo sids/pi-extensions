@@ -9,13 +9,30 @@ import {
 	replaceSkillMentions,
 } from "../utils";
 
+function createCommand(
+	name: string,
+	source: SlashCommandInfo["source"],
+	path: string | null = `<${source}:${name}>`,
+): SlashCommandInfo {
+	return {
+		name,
+		source,
+		sourceInfo: {
+			path: path ?? "",
+			source,
+			scope: "temporary",
+			origin: "top-level",
+		},
+	};
+}
+
 // --- collectDiscoveredSkills ---
 
 describe("collectDiscoveredSkills", () => {
 	test("extracts skills from command metadata", () => {
 		const commands: SlashCommandInfo[] = [
-			{ name: "skill:commit", source: "skill", path: "/home/.agents/skills/commit/SKILL.md" },
-			{ name: "skill:pdf", source: "skill", path: "/home/.agents/skills/pdf/SKILL.md" },
+			createCommand("skill:commit", "skill", "/home/.agents/skills/commit/SKILL.md"),
+			createCommand("skill:pdf", "skill", "/home/.agents/skills/pdf/SKILL.md"),
 		];
 		const result = collectDiscoveredSkills(commands);
 		expect(result.size).toBe(2);
@@ -25,9 +42,9 @@ describe("collectDiscoveredSkills", () => {
 
 	test("ignores non-skill commands", () => {
 		const commands: SlashCommandInfo[] = [
-			{ name: "review", source: "extension" },
-			{ name: "plan-md", source: "extension" },
-			{ name: "skill:git", source: "skill", path: "/skills/git/SKILL.md" },
+			createCommand("review", "extension"),
+			createCommand("plan-md", "extension"),
+			createCommand("skill:git", "skill", "/skills/git/SKILL.md"),
 		];
 		const result = collectDiscoveredSkills(commands);
 		expect(result.size).toBe(1);
@@ -36,22 +53,22 @@ describe("collectDiscoveredSkills", () => {
 
 	test("ignores skill commands without path", () => {
 		const commands: SlashCommandInfo[] = [
-			{ name: "skill:orphan", source: "skill" },
+			createCommand("skill:orphan", "skill", null),
 		];
 		expect(collectDiscoveredSkills(commands).size).toBe(0);
 	});
 
 	test("ignores commands with non-skill: prefix", () => {
 		const commands: SlashCommandInfo[] = [
-			{ name: "prompt:foo", source: "prompt", path: "/prompts/foo.md" },
+			createCommand("prompt:foo", "prompt", "/prompts/foo.md"),
 		];
 		expect(collectDiscoveredSkills(commands).size).toBe(0);
 	});
 
 	test("first occurrence wins on duplicate names", () => {
 		const commands: SlashCommandInfo[] = [
-			{ name: "skill:dup", source: "skill", path: "/first/SKILL.md" },
-			{ name: "skill:dup", source: "skill", path: "/second/SKILL.md" },
+			createCommand("skill:dup", "skill", "/first/SKILL.md"),
+			createCommand("skill:dup", "skill", "/second/SKILL.md"),
 		];
 		const result = collectDiscoveredSkills(commands);
 		expect(result.size).toBe(1);
@@ -60,7 +77,7 @@ describe("collectDiscoveredSkills", () => {
 
 	test("ignores empty name after prefix", () => {
 		const commands: SlashCommandInfo[] = [
-			{ name: "skill:", source: "skill", path: "/broken/SKILL.md" },
+			createCommand("skill:", "skill", "/broken/SKILL.md"),
 		];
 		expect(collectDiscoveredSkills(commands).size).toBe(0);
 	});
