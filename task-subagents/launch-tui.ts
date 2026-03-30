@@ -365,7 +365,19 @@ type TuiComponent = {
 
 export type SubagentLaunchReviewHandle = {
 	appendTasks: (tasks: ReviewedSubagentTask[]) => void;
+	cancelReview: () => void;
 };
+
+export type SubagentLaunchReviewTimingOptions = {
+	confirmationTimeoutMs?: number;
+	countdownTickMs?: number;
+	now?: () => number;
+};
+
+const DEFAULT_CONFIRMATION_TIMEOUT_MS = 30_000;
+const DEFAULT_CONFIRMATION_COUNTDOWN_TICK_MS = 250;
+
+type ConfirmationCountdownStoppedReason = "interaction";
 
 class SubagentLaunchReviewComponent implements TuiComponent {
 	private tasks: ReviewedSubagentTask[];
@@ -385,9 +397,18 @@ class SubagentLaunchReviewComponent implements TuiComponent {
 	};
 	private readonly tui: { requestRender: () => void };
 	private readonly onDone: (result: ReviewedSubagentTask[] | null) => void;
+	private readonly confirmationTimeoutMs: number;
+	private readonly confirmationCountdownTickMs: number;
+	private readonly now: () => number;
 
 	private cachedWidth?: number;
 	private cachedLines?: string[];
+	private confirmationTimeout?: ReturnType<typeof setTimeout>;
+	private confirmationRefreshTimer?: ReturnType<typeof setInterval>;
+	private confirmationDeadlineMs?: number;
+	private confirmationCountdownStoppedReason?: ConfirmationCountdownStoppedReason;
+	private confirmationCountdownRunId = 0;
+	private finished = false;
 
 	private dim = (s: string) => s;
 	private bold = (s: string) => s;
@@ -411,6 +432,7 @@ class SubagentLaunchReviewComponent implements TuiComponent {
 			mutedColor?: (text: string) => string;
 			dimColor?: (text: string) => string;
 			boldText?: (text: string) => string;
+			timing?: SubagentLaunchReviewTimingOptions;
 		},
 	) {
 		this.tasks = [...tasks];
@@ -426,6 +448,15 @@ class SubagentLaunchReviewComponent implements TuiComponent {
 		this.muted = options?.mutedColor ?? this.muted;
 		this.dim = options?.dimColor ?? this.dim;
 		this.bold = options?.boldText ?? this.bold;
+		this.confirmationTimeoutMs =
+			typeof options?.timing?.confirmationTimeoutMs === "number" && Number.isFinite(options.timing.confirmationTimeoutMs)
+				? Math.max(1, Math.floor(options.timing.confirmationTimeoutMs))
+				: DEFAULT_CONFIRMATION_TIMEOUT_MS;
+		this.confirmationCountdownTickMs =
+			typeof options?.timing?.countdownTickMs === "number" && Number.isFinite(options.timing.countdownTickMs)
+				? Math.max(1, Math.floor(options.timing.countdownTickMs))
+				: DEFAULT_CONFIRMATION_COUNTDOWN_TICK_MS;
+		this.now = options?.timing?.now ?? Date.now;
 
 		const { Editor } = getPiTui();
 		this.editor = new Editor(tui, {
@@ -442,6 +473,7 @@ class SubagentLaunchReviewComponent implements TuiComponent {
 			this.tui.requestRender();
 		};
 		this.loadCurrentEditorText();
+		this.startConfirmationCountdown();
 	}
 
 	private getCurrent(): ReviewedSubagentTask | undefined {
@@ -469,6 +501,102 @@ class SubagentLaunchReviewComponent implements TuiComponent {
 		this.editor.setText(current.launchStatus === "cancelled" ? current.cancellationNote ?? "" : current.prompt);
 	}
 
+	private stopConfirmationCountdown(reason?: ConfirmationCountdownStoppedReason): boolean {
+		const wasActive = this.confirmationDeadlineMs !== undefined;
+		this.confirmationCountdownRunId += 1;
+		if (this.confirmationTimeout) {
+			clearTimeout(this.confirmationTimeout);
+			this.confirmationTimeout = undefined;
+		}
+		if (this.confirmationRefreshTimer) {
+			clearInterval(this.confirmationRefreshTimer);
+			this.confirmationRefreshTimer = undefined;
+		}
+		this.confirmationDeadlineMs = undefined;
+		if (reason) {
+			this.confirmationCountdownStoppedReason = reason;
+		}
+		return wasActive;
+	}
+
+	private resetConfirmationCountdown(): void {
+		this.stopConfirmationCountdown();
+		this.confirmationCountdownStoppedReason = undefined;
+	}
+
+	private startConfirmationCountdown(): void {
+		if (this.finished || this.tasks.length === 0 || this.showingConfirmation) {
+			this.resetConfirmationCountdown();
+			return;
+		}
+
+		this.stopConfirmationCountdown();
+		this.confirmationCountdownStoppedReason = undefined;
+		this.confirmationDeadlineMs = this.now() + this.confirmationTimeoutMs;
+		const runId = this.confirmationCountdownRunId;
+		this.confirmationTimeout = setTimeout(() => {
+			if (this.finished || this.confirmationDeadlineMs === undefined || this.confirmationCountdownRunId !== runId) {
+				return;
+			}
+			this.submit();
+		}, this.confirmationTimeoutMs);
+		this.confirmationRefreshTimer = setInterval(() => {
+			if (this.finished || this.confirmationDeadlineMs === undefined || this.confirmationCountdownRunId !== runId) {
+				return;
+			}
+			this.invalidate();
+			this.tui.requestRender();
+		}, this.confirmationCountdownTickMs);
+	}
+
+	private stopConfirmationCountdownForInteraction(): void {
+		this.stopConfirmationCountdown("interaction");
+	}
+
+	private enterConfirmation(): void {
+		this.showingConfirmation = true;
+		this.stopConfirmationCountdownForInteraction();
+	}
+
+	private leaveConfirmation(): void {
+		this.showingConfirmation = false;
+	}
+
+	cancelReview(): void {
+		this.finish(null);
+	}
+
+	private finish(result: ReviewedSubagentTask[] | null): void {
+		if (this.finished) {
+			return;
+		}
+		this.finished = true;
+		this.resetConfirmationCountdown();
+		this.onDone(result);
+	}
+
+	private getConfirmationCountdownRemainingMs(): number | undefined {
+		if (this.confirmationDeadlineMs === undefined) {
+			return undefined;
+		}
+		return Math.max(0, this.confirmationDeadlineMs - this.now());
+	}
+
+	private getConfirmationCountdownLabel(): string | undefined {
+		const remainingMs = this.getConfirmationCountdownRemainingMs();
+		if (remainingMs === undefined) {
+			return undefined;
+		}
+		if (remainingMs >= 10_000) {
+			return `${Math.ceil(remainingMs / 1000)}s`;
+		}
+		return `${(Math.ceil(remainingMs / 100) / 10).toFixed(1)}s`;
+	}
+
+	dispose(): void {
+		this.resetConfirmationCountdown();
+	}
+
 	private move(delta: number, wrap: boolean = false): void {
 		if (this.tasks.length === 0) {
 			return;
@@ -482,7 +610,8 @@ class SubagentLaunchReviewComponent implements TuiComponent {
 			this.currentIndex = Math.max(0, Math.min(this.tasks.length - 1, nextIndex));
 		}
 		this.loadCurrentEditorText();
-		this.showingConfirmation = false;
+		this.leaveConfirmation();
+		this.stopConfirmationCountdownForInteraction();
 		this.invalidate();
 		this.tui.requestRender();
 	}
@@ -496,7 +625,8 @@ class SubagentLaunchReviewComponent implements TuiComponent {
 		this.saveCurrentEditorText();
 		current.launchStatus = current.launchStatus === "cancelled" ? "ready" : "cancelled";
 		this.loadCurrentEditorText();
-		this.showingConfirmation = false;
+		this.leaveConfirmation();
+		this.stopConfirmationCountdownForInteraction();
 		this.invalidate();
 		this.tui.requestRender();
 	}
@@ -513,7 +643,8 @@ class SubagentLaunchReviewComponent implements TuiComponent {
 		}
 
 		current.modelOverride = typeof next.value === "string" ? next.value : undefined;
-		this.showingConfirmation = false;
+		this.leaveConfirmation();
+		this.stopConfirmationCountdownForInteraction();
 		this.invalidate();
 		this.tui.requestRender();
 	}
@@ -536,7 +667,8 @@ class SubagentLaunchReviewComponent implements TuiComponent {
 		}
 
 		current.thinkingOverride = next.value;
-		this.showingConfirmation = false;
+		this.leaveConfirmation();
+		this.stopConfirmationCountdownForInteraction();
 		this.invalidate();
 		this.tui.requestRender();
 	}
@@ -554,7 +686,8 @@ class SubagentLaunchReviewComponent implements TuiComponent {
 		}
 
 		current.launchContext = next.value;
-		this.showingConfirmation = false;
+		this.leaveConfirmation();
+		this.stopConfirmationCountdownForInteraction();
 		this.invalidate();
 		this.tui.requestRender();
 	}
@@ -586,13 +719,15 @@ class SubagentLaunchReviewComponent implements TuiComponent {
 			this.currentIndex = 0;
 			this.loadCurrentEditorText();
 		}
+		this.leaveConfirmation();
+		this.startConfirmationCountdown();
 		this.invalidate();
 		this.tui.requestRender();
 	}
 
 	private submit(): void {
 		this.saveCurrentEditorText();
-		this.onDone(buildSubagentLaunchReviewResult(this.tasks).tasks);
+		this.finish(buildSubagentLaunchReviewResult(this.tasks).tasks);
 	}
 
 	invalidate(): void {
@@ -604,7 +739,7 @@ class SubagentLaunchReviewComponent implements TuiComponent {
 		const { Key, matchesKey } = getPiTui();
 
 		if (matchesKey(data, Key.ctrl("c"))) {
-			this.onDone(null);
+			this.finish(null);
 			return;
 		}
 
@@ -621,7 +756,7 @@ class SubagentLaunchReviewComponent implements TuiComponent {
 				return;
 			}
 			if (matchesKey(data, Key.escape)) {
-				this.showingConfirmation = false;
+				this.leaveConfirmation();
 				this.invalidate();
 				this.tui.requestRender();
 			}
@@ -653,10 +788,16 @@ class SubagentLaunchReviewComponent implements TuiComponent {
 			return;
 		}
 
+		if (matchesKey(data, Key.escape)) {
+			this.stopConfirmationCountdownForInteraction();
+			this.invalidate();
+			this.tui.requestRender();
+			return;
+		}
+
 		if (matchesKey(data, Key.enter) && !matchesKey(data, Key.shift("enter"))) {
 			if (this.currentIndex >= this.tasks.length - 1) {
-				this.saveCurrentEditorText();
-				this.showingConfirmation = true;
+				this.enterConfirmation();
 				this.invalidate();
 				this.tui.requestRender();
 				return;
@@ -665,8 +806,8 @@ class SubagentLaunchReviewComponent implements TuiComponent {
 			return;
 		}
 
+		this.stopConfirmationCountdownForInteraction();
 		this.editor.handleInput(data);
-		this.showingConfirmation = false;
 		this.invalidate();
 		this.tui.requestRender();
 	}
@@ -717,15 +858,12 @@ class SubagentLaunchReviewComponent implements TuiComponent {
 
 		const separator = this.muted(" · ");
 		const hint = (shortcut: string, action: string) => `${this.bold(shortcut)} ${this.muted(action)}`;
-		const heading = this.bold(this.showingConfirmation ? "Confirm subagent launch" : "Subagent launch review");
-		lines.push(padLine(heading));
+		const review = buildSubagentLaunchReviewResult(this.tasks);
+		lines.push(padLine(this.bold(this.showingConfirmation ? "Confirm subagent launch" : "Subagent launch review")));
 		lines.push(padLine(this.dim("─".repeat(Math.max(0, lineWidth - 1)))));
-
+		lines.push(padLine(this.muted(`Ready: ${review.readyCount} • Cancelled: ${review.cancelledCount}`)));
 		if (this.showingConfirmation) {
-			const review = buildSubagentLaunchReviewResult(this.tasks);
-			lines.push(padLine(this.muted(`Ready: ${review.readyCount} • Cancelled: ${review.cancelledCount}`)));
 			lines.push(padLine(""));
-
 			for (let index = 0; index < review.tasks.length; index++) {
 				const task = review.tasks[index]!;
 				const icon = task.launchStatus === "cancelled" ? this.warning("⊘") : this.success("✓");
@@ -745,18 +883,28 @@ class SubagentLaunchReviewComponent implements TuiComponent {
 					lines.push(padLine(""));
 				}
 			}
-
 			lines.push(padLine(this.dim("─".repeat(Math.max(0, lineWidth - 1)))));
 			lines.push(padLine([
 				hint("Enter", "confirm"),
 				hint("Esc", "back"),
-				hint("Ctrl+C", "cancel"),
+				hint("Ctrl+C", "cancel launch review"),
 			].join(separator)));
 			lines.push(padLine(""));
 			this.cachedLines = lines;
 			this.cachedWidth = width;
 			return lines;
 		}
+		const confirmationCountdownLabel = this.getConfirmationCountdownLabel();
+		if (confirmationCountdownLabel) {
+			lines.push(
+				padLine(
+					`${this.warning("Auto-launching in ")}${this.accent(confirmationCountdownLabel)}${this.warning(". Any interaction stops the countdown.")}`,
+				),
+			);
+		} else if (this.confirmationCountdownStoppedReason === "interaction") {
+			lines.push(padLine("Auto-launch countdown stopped. Continue reviewing or press Enter on the last task to launch."));
+		}
+		lines.push(padLine(""));
 
 		const current = this.getCurrent();
 		if (!current) {
@@ -815,6 +963,7 @@ class SubagentLaunchReviewComponent implements TuiComponent {
 			hint("⇧Tab", "cycle thinking"),
 			hint("Alt+Enter", "cancel/restore"),
 			hint("Enter", "next/confirm on last"),
+			hint("Esc", "stop countdown"),
 			hint("Ctrl+C", "cancel"),
 		].join(separator)));
 		lines.push(padLine(""));
@@ -833,6 +982,7 @@ export async function runSubagentLaunchReview(
 		currentThinkingLevel?: SubagentThinkingLevel;
 		hasForkSource?: boolean;
 		onReady?: (handle: SubagentLaunchReviewHandle) => void;
+		timing?: SubagentLaunchReviewTimingOptions;
 	},
 ): Promise<ReviewedSubagentTask[] | null> {
 	if (!ctx.hasUI) {
@@ -858,10 +1008,12 @@ export async function runSubagentLaunchReview(
 				mutedColor: (text) => theme.fg("muted", text),
 				dimColor: (text) => theme.fg("dim", text),
 				boldText: (text) => theme.bold(text),
+				timing: defaults?.timing,
 			},
 		);
 		defaults?.onReady?.({
 			appendTasks: (tasks) => component.appendTasks(tasks),
+			cancelReview: () => component.cancelReview(),
 		});
 		return component;
 	});

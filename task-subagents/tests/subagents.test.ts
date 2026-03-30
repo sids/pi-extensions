@@ -361,6 +361,7 @@ function createExecuteContext(
 		sessionFile?: string;
 		sessionId?: string;
 		customHandler?: (factory: any) => Promise<any>;
+		launchReviewTiming?: { confirmationTimeoutMs?: number; countdownTickMs?: number; now?: () => number };
 		notify?: (message: string, type?: string) => void;
 		editorText?: string;
 		onSetEditorComponent?: (factory: any) => void;
@@ -383,6 +384,7 @@ function createExecuteContext(
 			find: (provider: string, modelId: string) =>
 				availableModels.find((model) => model.provider === provider && model.id === modelId),
 		},
+		subagentLaunchReviewTiming: options?.launchReviewTiming,
 		ui: {
 			custom: async (factory: any) => {
 				if (options?.customHandler) {
@@ -1609,6 +1611,214 @@ describe("subagents tool", () => {
 			await executionPromise;
 
 			expect(emittedEvents).toEqual([
+				{
+					channel: USER_INPUT_WAIT_EVENT,
+					data: {
+						source: "task-subagents:launch-review",
+						id: "call-1",
+						waiting: true,
+					},
+				},
+				{
+					channel: USER_INPUT_WAIT_EVENT,
+					data: {
+						source: "task-subagents:launch-review",
+						id: "call-1",
+						waiting: false,
+					},
+				},
+			]);
+		} finally {
+			if (previousAgentDir === undefined) {
+				delete process.env.PI_CODING_AGENT_DIR;
+			} else {
+				process.env.PI_CODING_AGENT_DIR = previousAgentDir;
+			}
+			if (previousPath === undefined) {
+				delete process.env.PATH;
+			} else {
+				process.env.PATH = previousPath;
+			}
+			if (previousSpawnLogPath === undefined) {
+				delete process.env.SUBAGENT_LOG_PATH;
+			} else {
+				process.env.SUBAGENT_LOG_PATH = previousSpawnLogPath;
+			}
+			await rm(tempDir, { recursive: true, force: true });
+		}
+	});
+
+	test("auto-confirms the UI review after the countdown timeout", async () => {
+		const tempDir = await mkdtemp(path.join(os.tmpdir(), "task-subagents-review-timeout-"));
+		const { binDir, sourceAgentDir, spawnLogPath } = await setupStubPi(tempDir);
+		const { tools, emittedEvents } = registerBindings();
+		const subagentsTool = tools.subagents;
+		let previousAgentDir: string | undefined;
+		let previousPath: string | undefined;
+		let previousSpawnLogPath: string | undefined;
+		let previousArgv: string[] | undefined;
+		let reviewText = "";
+
+		try {
+			previousArgv = process.argv;
+			process.argv = ["bun", "test", "--models", ""];
+			previousAgentDir = process.env.PI_CODING_AGENT_DIR;
+			previousPath = process.env.PATH;
+			previousSpawnLogPath = process.env.SUBAGENT_LOG_PATH;
+			process.env.PI_CODING_AGENT_DIR = sourceAgentDir;
+			process.env.PATH = [binDir, previousPath].filter(Boolean).join(path.delimiter);
+			process.env.SUBAGENT_LOG_PATH = spawnLogPath;
+
+			const result = await subagentsTool.execute(
+				"call-1",
+				{
+					tasks: [{ id: "task-a", prompt: "Inspect A", cwd: tempDir }],
+					concurrency: 1,
+				},
+				undefined,
+				undefined,
+				createExecuteContext(tempDir, {
+					hasUI: true,
+					launchReviewTiming: {
+						confirmationTimeoutMs: 40,
+						countdownTickMs: 10,
+						now: () => 1000,
+					},
+					customHandler: async (render) => {
+						return await new Promise((resolve, reject) => {
+							const component = render(
+								{ requestRender: () => {}, terminal: { rows: 24 } },
+								{
+									fg: (_token: string, text: string) => text,
+									bold: (text: string) => text,
+								},
+								undefined,
+								resolve,
+							);
+							void (async () => {
+								try {
+									reviewText = component.render(100).join("\n");
+								} catch (error) {
+									reject(error);
+								}
+							})();
+						});
+					},
+				}),
+			);
+
+			expect(reviewText).toContain("Auto-launching in 0.1s.");
+			expect(result.isError).toBeUndefined();
+			expect(result.details?.launchedCount).toBe(1);
+			expect(await readSpawnLog(spawnLogPath)).toHaveLength(1);
+			expect(emittedEvents.filter((event) => event.channel === USER_INPUT_WAIT_EVENT)).toEqual([
+				{
+					channel: USER_INPUT_WAIT_EVENT,
+					data: {
+						source: "task-subagents:launch-review",
+						id: "call-1",
+						waiting: true,
+					},
+				},
+				{
+					channel: USER_INPUT_WAIT_EVENT,
+					data: {
+						source: "task-subagents:launch-review",
+						id: "call-1",
+						waiting: false,
+					},
+				},
+			]);
+		} finally {
+			if (previousArgv) {
+				process.argv = previousArgv;
+			}
+			if (previousAgentDir === undefined) {
+				delete process.env.PI_CODING_AGENT_DIR;
+			} else {
+				process.env.PI_CODING_AGENT_DIR = previousAgentDir;
+			}
+			if (previousPath === undefined) {
+				delete process.env.PATH;
+			} else {
+				process.env.PATH = previousPath;
+			}
+			if (previousSpawnLogPath === undefined) {
+				delete process.env.SUBAGENT_LOG_PATH;
+			} else {
+				process.env.SUBAGENT_LOG_PATH = previousSpawnLogPath;
+			}
+			await rm(tempDir, { recursive: true, force: true });
+		}
+	});
+
+	test("stops the launch review cleanly when the tool call is aborted", async () => {
+		const tempDir = await mkdtemp(path.join(os.tmpdir(), "task-subagents-review-abort-"));
+		const { binDir, sourceAgentDir, spawnLogPath } = await setupStubPi(tempDir);
+		const { tools, emittedEvents } = registerBindings();
+		const subagentsTool = tools.subagents;
+		const controller = new AbortController();
+		let previousAgentDir: string | undefined;
+		let previousPath: string | undefined;
+		let previousSpawnLogPath: string | undefined;
+		let reviewStarted: (() => void) | undefined;
+		const reviewStartedPromise = new Promise<void>((resolve) => {
+			reviewStarted = resolve;
+		});
+
+		try {
+			previousAgentDir = process.env.PI_CODING_AGENT_DIR;
+			previousPath = process.env.PATH;
+			previousSpawnLogPath = process.env.SUBAGENT_LOG_PATH;
+			process.env.PI_CODING_AGENT_DIR = sourceAgentDir;
+			process.env.PATH = [binDir, previousPath].filter(Boolean).join(path.delimiter);
+			process.env.SUBAGENT_LOG_PATH = spawnLogPath;
+
+			const executionPromise = subagentsTool.execute(
+				"call-1",
+				{
+					tasks: [{ id: "task-a", prompt: "Inspect A", cwd: tempDir }],
+					concurrency: 1,
+				},
+				controller.signal,
+				undefined,
+				createExecuteContext(tempDir, {
+					hasUI: true,
+					launchReviewTiming: {
+						confirmationTimeoutMs: 1_000,
+						countdownTickMs: 10,
+					},
+					customHandler: async (render) => {
+						return await new Promise((resolve) => {
+							render(
+								{ requestRender: () => {}, terminal: { rows: 24 } },
+								{
+									fg: (_token: string, text: string) => text,
+									bold: (text: string) => text,
+								},
+								undefined,
+								resolve,
+							);
+							reviewStarted?.();
+						});
+					},
+				}),
+			);
+
+			await reviewStartedPromise;
+			controller.abort();
+
+			let error: unknown;
+			try {
+				await executionPromise;
+			} catch (caught) {
+				error = caught;
+			}
+
+			expect(error).toBeInstanceOf(Error);
+			expect((error as Error).message).toBe("Subagent launch cancelled before starting. No child processes were started.");
+			expect(await readSpawnLog(spawnLogPath)).toEqual([]);
+			expect(emittedEvents.filter((event) => event.channel === USER_INPUT_WAIT_EVENT)).toEqual([
 				{
 					channel: USER_INPUT_WAIT_EVENT,
 					data: {

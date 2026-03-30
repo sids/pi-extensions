@@ -8,7 +8,11 @@ import path from "node:path";
 import type { AgentMessage, AgentToolResult } from "@mariozechner/pi-agent-core";
 import { supportsXhigh, type TextContent } from "@mariozechner/pi-ai";
 import type { ExtensionAPI, SessionEntry } from "@mariozechner/pi-coding-agent";
-import { createInitialReviewedSubagentTasks, runSubagentLaunchReview } from "./launch-tui";
+import {
+	createInitialReviewedSubagentTasks,
+	runSubagentLaunchReview,
+	type SubagentLaunchReviewTimingOptions,
+} from "./launch-tui";
 import { createSubagentInspectorResultComponent, SubagentSteeringEditorComponent } from "./runtime-tui";
 import {
 	buildSessionEditorComponentKey,
@@ -62,6 +66,7 @@ function createText(text: string) {
 
 const SUBAGENT_PREVIEW_LIMIT = 4;
 const USER_INPUT_WAIT_EVENT = "pi:waiting-for-user-input";
+const SUBAGENT_LAUNCH_CANCELLED_MESSAGE = "Subagent launch cancelled before starting. No child processes were started.";
 // Each subagent gets its own agent dir copy for auth/settings/models so concurrent
 // child `pi` startup does not contend on global lock files.
 const SUBAGENT_DIR_ENV = "PI_CODING_AGENT_DIR";
@@ -184,6 +189,12 @@ async function runWithConcurrencyLimit<TIn, TOut>(
 
 	await Promise.all(workers);
 	return results;
+}
+
+function throwIfSubagentLaunchAborted(signal: AbortSignal | undefined): void {
+	if (signal?.aborted) {
+		throw new Error(SUBAGENT_LAUNCH_CANCELLED_MESSAGE);
+	}
 }
 
 function getMessageText(message: AgentMessage): string {
@@ -1571,6 +1582,8 @@ export function registerSubagentTools(
 		currentModelId?: string;
 		currentThinkingLevel?: SubagentThinkingLevel;
 		hasForkSource: boolean;
+		launchReviewTiming?: SubagentLaunchReviewTimingOptions;
+		signal?: AbortSignal;
 		resolve: (tasks: ReviewedSubagentTask[] | null) => void;
 		reject: (error: unknown) => void;
 	};
@@ -1584,9 +1597,12 @@ export function registerSubagentTools(
 		currentModelId?: string;
 		currentThinkingLevel?: SubagentThinkingLevel;
 		hasForkSource: boolean;
+		launchReviewTiming?: SubagentLaunchReviewTimingOptions;
 		status: "collecting" | "reviewing";
 		timer?: ReturnType<typeof setTimeout>;
 		appendTasks?: (tasks: ReviewedSubagentTask[]) => void;
+		cancelReview?: () => void;
+		cancelReviewRequested?: boolean;
 	};
 
 	let pendingLaunchReviewBatch: PendingLaunchReviewBatch | undefined;
@@ -1631,6 +1647,12 @@ export function registerSubagentTools(
 			clearTimeout(batch.timer);
 			batch.timer = undefined;
 		}
+		if (batch.requests.every((request) => request.signal?.aborted === true)) {
+			if (pendingLaunchReviewBatch === batch) {
+				pendingLaunchReviewBatch = undefined;
+			}
+			return;
+		}
 
 		try {
 			const reviewedTasks = await runSubagentLaunchReview(batch.ctx, batch.mergedTasks, {
@@ -1639,7 +1661,12 @@ export function registerSubagentTools(
 				hasForkSource: batch.hasForkSource,
 				onReady: (handle) => {
 					batch.appendTasks = handle.appendTasks;
+					batch.cancelReview = handle.cancelReview;
+					if (batch.cancelReviewRequested) {
+						handle.cancelReview();
+					}
 				},
+				timing: batch.launchReviewTiming,
 			});
 			if (reviewedTasks === null) {
 				for (const request of batch.requests) {
@@ -1674,7 +1701,33 @@ export function registerSubagentTools(
 
 	const enqueueMergedLaunchReview = (request: Omit<PendingLaunchReviewRequest, "resolve" | "reject">) => {
 		return new Promise<ReviewedSubagentTask[] | null>((resolve, reject) => {
-			const requestWithCallbacks = { ...request, resolve, reject };
+			let settled = false;
+			let removeAbortListener = () => {};
+			const resolveOnce = (tasks: ReviewedSubagentTask[] | null) => {
+				if (settled) {
+					return;
+				}
+				settled = true;
+				removeAbortListener();
+				resolve(tasks);
+			};
+			const rejectOnce = (error: unknown) => {
+				if (settled) {
+					return;
+				}
+				settled = true;
+				removeAbortListener();
+				reject(error);
+			};
+			const requestWithCallbacks = {
+				...request,
+				resolve: resolveOnce,
+				reject: rejectOnce,
+			};
+			if (request.signal?.aborted) {
+				rejectOnce(new Error(SUBAGENT_LAUNCH_CANCELLED_MESSAGE));
+				return;
+			}
 			if (!pendingLaunchReviewBatch) {
 				pendingLaunchReviewBatch = {
 					requests: [],
@@ -1685,6 +1738,7 @@ export function registerSubagentTools(
 					currentModelId: request.currentModelId,
 					currentThinkingLevel: request.currentThinkingLevel,
 					hasForkSource: request.hasForkSource,
+					launchReviewTiming: request.launchReviewTiming,
 					status: "collecting",
 				};
 				pendingLaunchReviewBatch.timer = setTimeout(() => {
@@ -1697,10 +1751,38 @@ export function registerSubagentTools(
 			}
 			const batch = pendingLaunchReviewBatch;
 			if (!batch) {
-				reject(new Error("expected pending launch review batch"));
+				rejectOnce(new Error("expected pending launch review batch"));
 				return;
 			}
 			addRequestToLaunchReviewBatch(batch, requestWithCallbacks);
+			if (request.signal) {
+				const abortListener = () => {
+					rejectOnce(new Error(SUBAGENT_LAUNCH_CANCELLED_MESSAGE));
+					if (batch.status === "collecting") {
+						if (batch.requests.every((candidate) => candidate.signal?.aborted === true)) {
+							if (batch.timer) {
+								clearTimeout(batch.timer);
+								batch.timer = undefined;
+							}
+							if (pendingLaunchReviewBatch === batch) {
+								pendingLaunchReviewBatch = undefined;
+							}
+						}
+						return;
+					}
+					if (batch.requests.every((candidate) => candidate.signal?.aborted === true)) {
+						if (batch.cancelReview) {
+							batch.cancelReview();
+						} else {
+							batch.cancelReviewRequested = true;
+						}
+					}
+				};
+				removeAbortListener = () => {
+					request.signal?.removeEventListener("abort", abortListener);
+				};
+				request.signal.addEventListener("abort", abortListener, { once: true });
+			}
 		});
 	};
 
@@ -2019,6 +2101,7 @@ export function registerSubagentTools(
 			if (requestedContext === "fork" && !currentSessionFile) {
 				throw new Error('context "fork" requires a saved current session.');
 			}
+			throwIfSubagentLaunchAborted(signal);
 			let reviewedTasks = createInitialReviewedSubagentTasks(tasks, ctx.cwd, {
 				defaultThinking: params.thinking_level === undefined ? undefined : defaultThinkingLevel ?? undefined,
 				launchContext: requestedContext,
@@ -2032,16 +2115,20 @@ export function registerSubagentTools(
 						currentModelId: buildCurrentSubagentModelId(ctx.model),
 						currentThinkingLevel,
 						hasForkSource: !!currentSessionFile,
+						launchReviewTiming: (ctx as { subagentLaunchReviewTiming?: SubagentLaunchReviewTimingOptions }).subagentLaunchReviewTiming,
+						signal,
 					});
 					if (reviewResult === null) {
-						throw new Error("Subagent launch cancelled before starting. No child processes were started.");
+						throw new Error(SUBAGENT_LAUNCH_CANCELLED_MESSAGE);
 					}
+					throwIfSubagentLaunchAborted(signal);
 					reviewedTasks = reviewResult;
 				} finally {
 					emitWaitingForUserInput(toolCallId, false);
 				}
 			}
 
+			throwIfSubagentLaunchAborted(signal);
 			if (
 				reviewedTasks.some((task) => task.launchStatus === "ready" && task.launchContext === "fork") &&
 				!currentSessionFile
@@ -2058,6 +2145,7 @@ export function registerSubagentTools(
 				},
 				ctx.modelRegistry,
 			);
+			throwIfSubagentLaunchAborted(signal);
 			const runId = createSubagentRunId();
 			const createdAt = Date.now();
 			const sessionScope = { sessionKey: buildSubagentSessionKey(ctx) };
@@ -2089,6 +2177,20 @@ export function registerSubagentTools(
 				.filter((entry) => entry.task.launchStatus === "ready");
 
 			await runWithConcurrencyLimit(launchQueue, concurrency, async ({ task, index }) => {
+				if (signal?.aborted) {
+					const result = createCancelledSubagentTaskResult(task);
+					results[index] = result;
+					updateLiveSubagentRun(runId, (currentRun) => {
+						currentRun.tasks[index] = buildDashboardTaskStateFromResult(result);
+					});
+					progress[index] = {
+						...progress[index],
+						status: result.status,
+						latestActivity: "cancelled before launch",
+					};
+					emitProgress();
+					return result;
+				}
 				updateLiveSubagentRun(runId, (currentRun) => {
 					const currentTask = currentRun.tasks[index];
 					if (!currentTask) {

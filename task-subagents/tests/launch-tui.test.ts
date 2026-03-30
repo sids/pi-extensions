@@ -12,6 +12,95 @@ import {
 } from "../launch-tui";
 import type { ReviewedSubagentTask } from "../types";
 
+const ENTER = "\r";
+const SHIFT_TAB = "\u001b[Z";
+const ESCAPE = "\u001b";
+const CTRL_C = "\u0003";
+
+type LaunchReviewDefaults = NonNullable<Parameters<typeof runSubagentLaunchReview>[2]>;
+
+function createReviewedTask(overrides: Partial<ReviewedSubagentTask> = {}): ReviewedSubagentTask {
+	return {
+		taskId: "task-a",
+		prompt: "Inspect A",
+		cwd: "/tmp/project",
+		defaultThinking: undefined,
+		launchContext: "fresh",
+		launchStatus: "ready",
+		cancellationNote: undefined,
+		...overrides,
+	};
+}
+
+function createLaunchReviewContext(customHandler: (render: any) => Promise<any>) {
+	return {
+		hasUI: true,
+		cwd: "/tmp/project",
+		modelRegistry: {
+			getAvailable: () => [],
+			find: () => undefined,
+		},
+		ui: {
+			custom: async (render: any) => {
+				return await customHandler(render);
+			},
+		},
+	} as any;
+}
+
+async function withEmptyModelScope<T>(run: () => Promise<T>): Promise<T> {
+	const previousArgv = process.argv;
+	process.argv = ["bun", "test", "--models", ""];
+
+	try {
+		return await run();
+	} finally {
+		process.argv = previousArgv;
+	}
+}
+
+async function runInteractiveLaunchReview(options: {
+	drive: (component: any) => Promise<void> | void;
+	tasks?: ReviewedSubagentTask[];
+	defaults?: LaunchReviewDefaults;
+	requestRender?: () => void;
+	theme?: {
+		fg?: (token: string, text: string) => string;
+		bold?: (text: string) => string;
+	};
+}): Promise<ReviewedSubagentTask[] | null> {
+	return await withEmptyModelScope(async () => {
+		return await runSubagentLaunchReview(
+			createLaunchReviewContext(async (render) => {
+				return await new Promise<ReviewedSubagentTask[] | null>((resolve, reject) => {
+					const component = render(
+						{ requestRender: options.requestRender ?? (() => {}), terminal: { rows: 24 } },
+						{
+							fg: options.theme?.fg ?? ((_token: string, text: string) => text),
+							bold: options.theme?.bold ?? ((text: string) => text),
+						},
+						undefined,
+						resolve,
+					);
+					void (async () => {
+						try {
+							await options.drive(component);
+						} catch (error) {
+							reject(error);
+						}
+					})();
+				});
+			}),
+			options.tasks ?? [createReviewedTask()],
+			options.defaults,
+		);
+	});
+}
+
+function delay(ms: number): Promise<void> {
+	return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 describe("createInitialReviewedSubagentTasks", () => {
 	test("resolves cwd and defaults tasks to ready", () => {
 		const reviewed = createInitialReviewedSubagentTasks(
@@ -187,147 +276,244 @@ describe("buildSubagentLaunchReviewResult", () => {
 
 describe("runSubagentLaunchReview", () => {
 	test("cycles thinking from the currently selected effective value", async () => {
-		const previousArgv = process.argv;
-		process.argv = ["bun", "test", "--models", ""];
+		const result = await runInteractiveLaunchReview({
+			drive: (component) => {
+				component.handleInput(SHIFT_TAB);
+				component.handleInput(ENTER);
+				component.handleInput(ENTER);
+			},
+			defaults: {
+				currentThinkingLevel: "medium",
+			},
+		});
 
-		try {
-			const result = await runSubagentLaunchReview(
-				{
-					hasUI: true,
-					cwd: "/tmp/project",
-					modelRegistry: {
-						getAvailable: () => [],
-						find: () => undefined,
-					},
-					ui: {
-						custom: async (render: any) => {
-							return await new Promise<ReviewedSubagentTask[] | null>((resolve) => {
-								const component = render(
-									{ requestRender: () => {} },
-									{
-										fg: (_token: string, text: string) => text,
-										bold: (text: string) => text,
-									},
-									undefined,
-									resolve,
-								);
-								component.handleInput("\u001b[Z");
-								component.handleInput("\r");
-								component.handleInput("\r");
-							});
-						},
-					},
-				} as any,
-				[
-					{
-						taskId: "task-a",
-						prompt: "Inspect A",
-						cwd: "/tmp/project",
-						defaultThinking: undefined,
-						launchContext: "fresh",
-						launchStatus: "ready",
-						cancellationNote: undefined,
-					},
-				],
-				{
-					currentThinkingLevel: "medium",
-				},
-			);
-
-			expect(result?.[0]?.thinkingOverride).toBe("high");
-		} finally {
-			process.argv = previousArgv;
-		}
+		expect(result?.[0]?.thinkingOverride).toBe("high");
 	});
 
 	test("appends late tasks into the live review state", async () => {
-		const previousArgv = process.argv;
-		process.argv = ["bun", "test", "--models", ""];
-		const initialTasks: ReviewedSubagentTask[] = [
-			{
-				taskId: "task-a",
-				prompt: "Inspect A",
-				cwd: "/tmp/project",
-				defaultThinking: undefined,
-				launchContext: "fresh",
-				launchStatus: "ready",
-				cancellationNote: undefined,
-			},
-		];
-		const lateTask: ReviewedSubagentTask = {
-			taskId: "task-b",
-			prompt: "Inspect B",
-			cwd: "/tmp/project",
-			defaultThinking: undefined,
-			launchContext: "fresh",
-			launchStatus: "ready",
-			cancellationNote: undefined,
-		};
+		const initialTasks = [createReviewedTask()];
+		const lateTask = createReviewedTask({ taskId: "task-b", prompt: "Inspect B" });
 		let reviewHandle:
 			| {
 					appendTasks: (tasks: ReviewedSubagentTask[]) => void;
 			  }
 			| undefined;
 
-		try {
-			const result = await runSubagentLaunchReview(
-				{
-					hasUI: true,
-					cwd: "/tmp/project",
-					modelRegistry: {
-						getAvailable: () => [],
-						find: () => undefined,
-					},
-					ui: {
-						custom: async (render: any) => {
-							return await new Promise<ReviewedSubagentTask[] | null>((resolve) => {
-								const component = render(
-									{ requestRender: () => {} },
-									{
-										fg: (_token: string, text: string) => text,
-										bold: (text: string) => text,
-									},
-									undefined,
-									resolve,
-								);
-								expect(reviewHandle).toBeDefined();
-								reviewHandle?.appendTasks([lateTask]);
-								resolve(buildSubagentLaunchReviewResult((component as any).tasks).tasks);
-							});
-						},
-					},
-				} as any,
-				initialTasks,
-				{
-					onReady: (handle) => {
-						reviewHandle = handle;
-					},
+		const result = await runInteractiveLaunchReview({
+			tasks: initialTasks,
+			defaults: {
+				onReady: (handle) => {
+					reviewHandle = handle;
 				},
-			);
+			},
+			drive: (component) => {
+				expect(reviewHandle).toBeDefined();
+				reviewHandle?.appendTasks([lateTask]);
+				component.handleInput(ENTER);
+				component.handleInput(ENTER);
+				component.handleInput(ENTER);
+			},
+		});
 
-			expect(initialTasks).toHaveLength(1);
-			expect(result).toEqual([
-				{
-					taskId: "task-a",
-					prompt: "Inspect A",
-					cwd: "/tmp/project",
-					defaultThinking: undefined,
-					launchContext: "fresh",
-					launchStatus: "ready",
-					cancellationNote: undefined,
+		expect(initialTasks).toHaveLength(1);
+		expect(result).toEqual([
+			createReviewedTask(),
+			createReviewedTask({ taskId: "task-b", prompt: "Inspect B" }),
+		]);
+	});
+
+	test("renders countdown text on the review screen", async () => {
+		let reviewText = "";
+
+		const result = await runInteractiveLaunchReview({
+			defaults: {
+				timing: {
+					confirmationTimeoutMs: 50,
+					countdownTickMs: 10,
+					now: () => 1000,
 				},
-				{
-					taskId: "task-b",
-					prompt: "Inspect B",
-					cwd: "/tmp/project",
-					defaultThinking: undefined,
-					launchContext: "fresh",
-					launchStatus: "ready",
-					cancellationNote: undefined,
+			},
+			theme: {
+				fg: (token, text) => {
+					if (token === "accent") {
+						return `<accent>${text}</accent>`;
+					}
+					if (token === "warning") {
+						return `<warning>${text}</warning>`;
+					}
+					return text;
 				},
-			]);
-		} finally {
-			process.argv = previousArgv;
-		}
+			},
+			drive: (component) => {
+				reviewText = component.render(180).join("\n");
+				component.handleInput(ESCAPE);
+				component.handleInput(ENTER);
+				component.handleInput(ENTER);
+			},
+		});
+
+		expect(reviewText).toContain("<warning>Auto-launching in </warning><accent>0.1s</accent><warning>. Any interaction stops the countdown.</warning>");
+		expect(reviewText).toContain("Esc stop countdown");
+		expect(result).toEqual([createReviewedTask()]);
+	});
+
+	test("auto-confirms after the timeout expires", async () => {
+		const result = await runInteractiveLaunchReview({
+			defaults: {
+				timing: {
+					confirmationTimeoutMs: 40,
+					countdownTickMs: 10,
+				},
+			},
+			drive: async () => {
+				await delay(80);
+			},
+		});
+
+		expect(result).toEqual([createReviewedTask()]);
+	});
+
+	test("cancels the countdown after review interactions", async () => {
+		let pausedText = "";
+		let settled = false;
+
+		const reviewPromise = runInteractiveLaunchReview({
+			defaults: {
+				timing: {
+					confirmationTimeoutMs: 40,
+					countdownTickMs: 10,
+				},
+			},
+			drive: async (component) => {
+				component.handleInput("x");
+				pausedText = component.render(180).join("\n");
+				await delay(80);
+				expect(settled).toBe(false);
+				component.handleInput(ENTER);
+				component.handleInput(ENTER);
+			},
+		}).finally(() => {
+			settled = true;
+		});
+
+		const result = await reviewPromise;
+		expect(pausedText).toContain("Auto-launch countdown stopped. Continue reviewing or press Enter on the last task to launch.");
+		expect(result).toEqual([createReviewedTask({ prompt: "Inspect Ax" })]);
+	});
+
+	test("uses Esc to stop only the countdown", async () => {
+		let pausedText = "";
+		let settled = false;
+
+		const reviewPromise = runInteractiveLaunchReview({
+			defaults: {
+				timing: {
+					confirmationTimeoutMs: 40,
+					countdownTickMs: 10,
+				},
+			},
+			theme: {
+				fg: (token, text) => (token === "warning" ? `<warning>${text}</warning>` : text),
+			},
+			drive: async (component) => {
+				component.handleInput(ESCAPE);
+				pausedText = component.render(180).join("\n");
+				await delay(80);
+				expect(settled).toBe(false);
+				component.handleInput(ENTER);
+				component.handleInput(ENTER);
+			},
+		}).finally(() => {
+			settled = true;
+		});
+
+		const result = await reviewPromise;
+		expect(pausedText).toContain("Auto-launch countdown stopped. Continue reviewing or press Enter on the last task to launch.");
+		expect(pausedText).not.toContain("<warning>Auto-launch countdown stopped.");
+		expect(result).toEqual([createReviewedTask()]);
+	});
+
+	test("uses Esc to leave the confirmation screen and return to editing", async () => {
+		let confirmationText = "";
+		let reviewText = "";
+
+		const result = await runInteractiveLaunchReview({
+			defaults: {
+				timing: {
+					confirmationTimeoutMs: 40,
+					countdownTickMs: 10,
+				},
+			},
+			drive: (component) => {
+				component.handleInput(ESCAPE);
+				component.handleInput(ENTER);
+				confirmationText = component.render(180).join("\n");
+				component.handleInput(ESCAPE);
+				reviewText = component.render(180).join("\n");
+				component.handleInput(ENTER);
+				component.handleInput(ENTER);
+			},
+		});
+
+		expect(confirmationText).toContain("Confirm subagent launch");
+		expect(confirmationText).not.toContain("Auto-launching in");
+		expect(reviewText).toContain("Subagent launch review");
+		expect(reviewText).not.toContain("Auto-launching in");
+		expect(result).toEqual([createReviewedTask()]);
+	});
+
+	test("uses Ctrl+C to cancel the review", async () => {
+		const result = await runInteractiveLaunchReview({
+			defaults: {
+				timing: {
+					confirmationTimeoutMs: 40,
+					countdownTickMs: 10,
+				},
+			},
+			drive: (component) => {
+				component.handleInput(CTRL_C);
+			},
+		});
+
+		expect(result).toBeNull();
+	});
+
+	test("resets the countdown when late tasks are appended", async () => {
+		const lateTask = createReviewedTask({ taskId: "task-b", prompt: "Inspect B" });
+		let reviewHandle:
+			| {
+					appendTasks: (tasks: ReviewedSubagentTask[]) => void;
+			  }
+			| undefined;
+		let updatedReviewText = "";
+		let settled = false;
+
+		const reviewPromise = runInteractiveLaunchReview({
+			tasks: [createReviewedTask()],
+			defaults: {
+				onReady: (handle) => {
+					reviewHandle = handle;
+				},
+				timing: {
+					confirmationTimeoutMs: 50,
+					countdownTickMs: 10,
+				},
+			},
+			drive: async (component) => {
+				await delay(25);
+				reviewHandle?.appendTasks([lateTask]);
+				updatedReviewText = component.render(180).join("\n");
+				await delay(35);
+				expect(settled).toBe(false);
+				await delay(40);
+			},
+		}).finally(() => {
+			settled = true;
+		});
+
+		const result = await reviewPromise;
+		expect(updatedReviewText).toContain("Task 1/2");
+		expect(updatedReviewText).toContain("Auto-launching in");
+		expect(result).toEqual([createReviewedTask(), lateTask]);
 	});
 });
