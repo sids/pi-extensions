@@ -1,6 +1,6 @@
 {
   "name": "@siddr/pi-web-search",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "type": "module",
   "description": "Brave web search tool extension for pi",
   "license": "MIT",
