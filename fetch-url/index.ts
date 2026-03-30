@@ -76,6 +76,7 @@ export default function (pi: ExtensionAPI) {
 		label: "fetch_url",
 		description:
 			"Fetch a URL and return the main content. Defaults to extracted markdown with metadata, with options to return HTML or raw content.",
+		promptSnippet: "Fetch a URL and return extracted markdown, HTML, or raw content.",
 		parameters: fetchUrlSchema,
 		renderCall: (args, theme) => {
 			const format = args.raw ? "raw" : args.format ?? "markdown";

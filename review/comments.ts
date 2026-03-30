@@ -148,6 +148,7 @@ export function registerAddReviewCommentTool(
 		label: "add_review_comment",
 		description:
 			"Record one review finding with priority and optional file/line references. This tool is only available while review mode is active.",
+		promptSnippet: "Record one review finding with priority and optional file/line references.",
 		parameters: dependencies.addReviewCommentSchema,
 		renderCall(args, theme) {
 			const priority = normalizeReviewPriority(args.priority) ?? "P?";
@@ -184,23 +185,14 @@ export function registerAddReviewCommentTool(
 		): Promise<AgentToolResult<PersistedReviewComment>> {
 			const state = dependencies.getState();
 			if (!state.active || !state.runId) {
-				return {
-					isError: true,
-					content: [
-						{
-							type: "text",
-							text: "add_review_comment is unavailable while review mode is inactive. Start review mode with /review first.",
-						},
-					],
-				};
+				throw new Error(
+					"add_review_comment is unavailable while review mode is inactive. Start review mode with /review first.",
+				);
 			}
 
 			const normalized = normalizeAddReviewCommentInput(params);
 			if ("error" in normalized) {
-				return {
-					isError: true,
-					content: [{ type: "text", text: normalized.error }],
-				};
+				throw new Error(normalized.error);
 			}
 
 			const comment: PersistedReviewComment = {

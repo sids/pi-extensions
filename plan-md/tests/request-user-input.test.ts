@@ -108,14 +108,17 @@ describe("summary helpers", () => {
 describe("registerRequestUserInputTool", () => {
 	test("emits waiting-for-user-input events while collecting answers", async () => {
 		const emittedEvents: Array<{ channel: string; data: unknown }> = [];
-		let execute:
-			| ((toolCallId: string, params: any, signal?: AbortSignal, onUpdate?: unknown, ctx?: any) => Promise<any>)
+		let registeredTool:
+			| {
+					execute: (toolCallId: string, params: any, signal?: AbortSignal, onUpdate?: unknown, ctx?: any) => Promise<any>;
+					promptSnippet?: string;
+			  }
 			| undefined;
 
 		registerRequestUserInputTool(
 			{
-				registerTool: (tool: { execute: typeof execute }) => {
-					execute = tool.execute;
+				registerTool: (tool: NonNullable<typeof registeredTool>) => {
+					registeredTool = tool;
 				},
 				events: {
 					emit: (channel: string, data: unknown) => {
@@ -129,11 +132,15 @@ describe("registerRequestUserInputTool", () => {
 			},
 		);
 
-		if (!execute) {
+		if (!registeredTool) {
 			throw new Error("request_user_input tool was not registered");
 		}
 
-		const result = await execute(
+		expect(registeredTool.promptSnippet).toBe(
+			"Ask the user one to three short questions and wait for answers.",
+		);
+
+		const result = await registeredTool.execute(
 			"call-1",
 			{
 				questions: [{ id: "runtime", question: "Which runtime?" }],
@@ -176,5 +183,46 @@ describe("registerRequestUserInputTool", () => {
 				},
 			},
 		]);
+	});
+
+	test("throws when plan mode is inactive", async () => {
+		let execute:
+			| ((toolCallId: string, params: any, signal?: AbortSignal, onUpdate?: unknown, ctx?: any) => Promise<any>)
+			| undefined;
+
+		registerRequestUserInputTool(
+			{
+				registerTool: (tool: { execute: NonNullable<typeof execute> }) => {
+					execute = tool.execute;
+				},
+				events: {
+					emit() {},
+				},
+			} as any,
+			{
+				getState: () => ({ active: false }),
+				requestUserInputSchema: {},
+			},
+		);
+
+		if (!execute) {
+			throw new Error("request_user_input tool was not registered");
+		}
+
+		let error: unknown;
+		try {
+			await execute(
+				"call-1",
+				{ questions: [{ id: "runtime", question: "Which runtime?" }] },
+				undefined,
+				undefined,
+				{ hasUI: true, ui: { custom: async () => undefined } },
+			);
+		} catch (caught) {
+			error = caught;
+		}
+
+		expect(error).toBeInstanceOf(Error);
+		expect((error as Error).message).toContain("inactive");
 	});
 });

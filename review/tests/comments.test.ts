@@ -68,15 +68,18 @@ describe("normalizeAddReviewCommentInput", () => {
 
 describe("registerAddReviewCommentTool", () => {
 	test("persists comments tied to active runId", async () => {
-		let execute:
-			| ((toolCallId: string, params: any, signal: AbortSignal | undefined, onUpdate: any, ctx: any) => Promise<any>)
+		let registeredTool:
+			| {
+					execute: (toolCallId: string, params: any, signal: AbortSignal | undefined, onUpdate: any, ctx: any) => Promise<any>;
+					promptSnippet?: string;
+			  }
 			| undefined;
 		const appended: Array<{ type: string; data: any }> = [];
 
 		registerAddReviewCommentTool(
 			{
-				registerTool: (tool: any) => {
-					execute = tool.execute;
+				registerTool: (tool: NonNullable<typeof registeredTool>) => {
+					registeredTool = tool;
 				},
 				appendEntry: (type: string, data: any) => appended.push({ type, data }),
 			} as any,
@@ -86,11 +89,15 @@ describe("registerAddReviewCommentTool", () => {
 			},
 		);
 
-		if (!execute) {
+		if (!registeredTool) {
 			throw new Error("Tool execute handler missing");
 		}
 
-		const result = await execute(
+		expect(registeredTool.promptSnippet).toBe(
+			"Record one review finding with priority and optional file/line references.",
+		);
+
+		const result = await registeredTool.execute(
 			"call-1",
 			{
 				priority: "P1",
@@ -109,14 +116,14 @@ describe("registerAddReviewCommentTool", () => {
 		expect(appended[0].data.priority).toBe("P1");
 	});
 
-	test("returns inactive-mode error when review mode is off", async () => {
+	test("throws when review mode is off", async () => {
 		let execute:
 			| ((toolCallId: string, params: any, signal: AbortSignal | undefined, onUpdate: any, ctx: any) => Promise<any>)
 			| undefined;
 
 		registerAddReviewCommentTool(
 			{
-				registerTool: (tool: any) => {
+				registerTool: (tool: { execute: NonNullable<typeof execute> }) => {
 					execute = tool.execute;
 				},
 				appendEntry: () => {},
@@ -131,10 +138,15 @@ describe("registerAddReviewCommentTool", () => {
 			throw new Error("Tool execute handler missing");
 		}
 
-		const result = await execute("call-1", { priority: "P1", comment: "x" }, undefined, undefined, {});
-		expect(result.isError).toBe(true);
-		expect(result.content[0].type).toBe("text");
-		expect(result.content[0].text).toContain("inactive");
+		let error: unknown;
+		try {
+			await execute("call-1", { priority: "P1", comment: "x" }, undefined, undefined, {});
+		} catch (caught) {
+			error = caught;
+		}
+
+		expect(error).toBeInstanceOf(Error);
+		expect((error as Error).message).toContain("inactive");
 	});
 });
 

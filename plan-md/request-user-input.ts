@@ -157,6 +157,7 @@ export function registerRequestUserInputTool(
 		label: "request_user_input",
 		description:
 			"Request user input for one to three short questions and wait for the response. This tool is only available in Plan mode.",
+		promptSnippet: "Ask the user one to three short questions and wait for answers.",
 		parameters: dependencies.requestUserInputSchema,
 		renderCall(args, theme) {
 			const questions = ((args.questions as RequestUserInputQuestion[] | undefined) ?? []).length;
@@ -192,25 +193,16 @@ export function registerRequestUserInputTool(
 		},
 		async execute(toolCallId, params, _signal, _onUpdate, ctx): Promise<AgentToolResult<RequestUserInputDetails>> {
 			if (!dependencies.getState().active) {
-				return {
-					isError: true,
-					content: [{ type: "text", text: "request_user_input is unavailable when plan mode is inactive" }],
-				};
+				throw new Error("request_user_input is unavailable when plan mode is inactive");
 			}
 
 			if (!ctx.hasUI) {
-				return {
-					isError: true,
-					content: [{ type: "text", text: "request_user_input requires interactive mode" }],
-				};
+				throw new Error("request_user_input requires interactive mode");
 			}
 
 			const normalized = normalizeRequestUserInputQuestions(params.questions as RequestUserInputQuestion[]);
 			if ("error" in normalized) {
-				return {
-					isError: true,
-					content: [{ type: "text", text: normalized.error }],
-				};
+				throw new Error(normalized.error);
 			}
 
 			pi.events.emit(USER_INPUT_WAIT_EVENT, {
@@ -221,10 +213,7 @@ export function registerRequestUserInputTool(
 			try {
 				const response = await collectRequestUserInputAnswers(ctx, normalized.questions);
 				if (!response) {
-					return {
-						isError: true,
-						content: [{ type: "text", text: "request_user_input was cancelled before receiving a response" }],
-					};
+					throw new Error("request_user_input was cancelled before receiving a response");
 				}
 
 				const details: RequestUserInputDetails = { questions: normalized.questions, response };

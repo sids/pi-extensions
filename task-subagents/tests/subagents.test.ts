@@ -144,6 +144,7 @@ describe("createSubagentDir", () => {
 type RegisteredTool = {
 	name: string;
 	description?: string;
+	promptSnippet?: string;
 	execute: (
 		toolCallId: string,
 		params: any,
@@ -422,7 +423,33 @@ describe("subagents tool", () => {
 		const { tools, shortcuts } = registerBindings();
 		expect(Object.keys(tools).sort()).toEqual(["steer_subagent", "subagents"]);
 		expect(tools.subagents.description).toContain("Use this only when asked to use subagents.");
+		expect(tools.subagents.promptSnippet).toBe(
+			"Launch one or more isolated research subagents when explicitly asked.",
+		);
+		expect(tools.steer_subagent.promptSnippet).toBe(
+			"Rerun a previous subagent task with additional steering.",
+		);
 		expect([...shortcuts.keys()]).toEqual(["ctrl+shift+o"]);
+	});
+
+	test("steer_subagent throws when required arguments are missing", async () => {
+		const tools = registerTools();
+		let error: unknown;
+
+		try {
+			await tools.steer_subagent.execute(
+				"call-1",
+				{ runId: "", taskId: "", instruction: "" },
+				undefined,
+				undefined,
+				createExecuteContext("/tmp"),
+			);
+		} catch (caught) {
+			error = caught;
+		}
+
+		expect(error).toBeInstanceOf(Error);
+		expect((error as Error).message).toBe("runId, taskId, and instruction are required.");
 	});
 
 	test("captures structured transcripts in run details", async () => {
@@ -757,7 +784,7 @@ describe("subagents tool", () => {
 				}),
 			);
 
-			expect(result.isError).toBe(false);
+			expect(result.isError).toBeUndefined();
 			expect(result.content[0]?.text).toContain("Use steer_subagent with runId");
 			expect(result.details?.launchedCount).toBe(2);
 			expect(result.details?.cancelledCount).toBe(0);
@@ -829,7 +856,7 @@ describe("subagents tool", () => {
 				}),
 			);
 
-			expect(result.isError).toBe(false);
+			expect(result.isError).toBeUndefined();
 			expect(result.details?.tasks[0]).toMatchObject({
 				thinkingOverride: undefined,
 				launchThinking: "minimal",
@@ -891,7 +918,7 @@ describe("subagents tool", () => {
 				}),
 			);
 
-			expect(result.isError).toBe(false);
+			expect(result.isError).toBeUndefined();
 			expect(result.details?.tasks[0]).toMatchObject({
 				launchContext: "fork",
 				forkSessionFile: sessionFile,
@@ -954,7 +981,7 @@ describe("subagents tool", () => {
 				}),
 			);
 
-			expect(result.isError).toBe(false);
+			expect(result.isError).toBeUndefined();
 			expect(result.details?.tasks[0]).toMatchObject({
 				launchContext: "fork",
 				forkSessionFile: sessionFile,
@@ -1028,7 +1055,7 @@ describe("subagents tool", () => {
 				createExecuteContext(tempDir),
 			);
 
-			expect(rerunResult.isError).toBe(false);
+			expect(rerunResult.isError).toBeUndefined();
 			expect(rerunResult.details?.tasks[0]).toMatchObject({
 				launchContext: "fork",
 				forkSessionFile: sessionFile,
@@ -1103,7 +1130,7 @@ describe("subagents tool", () => {
 				}),
 			);
 
-			expect(result.isError).toBe(false);
+			expect(result.isError).toBeUndefined();
 			expect(result.details?.launchedCount).toBe(1);
 			expect(result.details?.cancelledCount).toBe(1);
 			expect(result.details?.tasks[1]).toMatchObject({
@@ -1149,20 +1176,25 @@ describe("subagents tool", () => {
 			process.env.PATH = [binDir, previousPath].filter(Boolean).join(path.delimiter);
 			process.env.SUBAGENT_LOG_PATH = spawnLogPath;
 
-			const result = await subagentsTool.execute(
-				"call-1",
-				{
-					tasks: [{ id: "task-a", prompt: "Inspect A", cwd: tempDir }],
-					concurrency: 1,
-					context: "fork",
-				},
-				undefined,
-				undefined,
-				createExecuteContext(tempDir),
-			);
+			let error: unknown;
+			try {
+				await subagentsTool.execute(
+					"call-1",
+					{
+						tasks: [{ id: "task-a", prompt: "Inspect A", cwd: tempDir }],
+						concurrency: 1,
+						context: "fork",
+					},
+					undefined,
+					undefined,
+					createExecuteContext(tempDir),
+				);
+			} catch (caught) {
+				error = caught;
+			}
 
-			expect(result.isError).toBe(true);
-			expect(result.content[0]?.text).toBe('context "fork" requires a saved current session.');
+			expect(error).toBeInstanceOf(Error);
+			expect((error as Error).message).toBe('context "fork" requires a saved current session.');
 			expect(await readSpawnLog(spawnLogPath)).toEqual([]);
 		} finally {
 			if (previousAgentDir === undefined) {
@@ -1246,8 +1278,8 @@ describe("subagents tool", () => {
 			]);
 
 			expect(reviewCalls).toBe(1);
-			expect(resultA.isError).toBe(false);
-			expect(resultB.isError).toBe(false);
+			expect(resultA.isError).toBeUndefined();
+			expect(resultB.isError).toBeUndefined();
 			expect(resultA.details?.tasks).toHaveLength(1);
 			expect(resultB.details?.tasks).toHaveLength(1);
 			expect(resultA.details?.tasks[0]?.taskId).toBe("task-a");
@@ -1348,8 +1380,8 @@ describe("subagents tool", () => {
 
 			const [resultA, resultB] = await Promise.all([resultAPromise, resultBPromise]);
 			expect(reviewCalls).toBe(1);
-			expect(resultA.isError).toBe(false);
-			expect(resultB.isError).toBe(false);
+			expect(resultA.isError).toBeUndefined();
+			expect(resultB.isError).toBeUndefined();
 			expect(resultA.details?.tasks[0]?.taskId).toBe("task-a");
 			expect(resultB.details?.tasks[0]?.taskId).toBe("task-b");
 			expect(await readSpawnLog(spawnLogPath)).toHaveLength(2);
@@ -1408,7 +1440,7 @@ describe("subagents tool", () => {
 			process.env.PATH = [binDir, previousPath].filter(Boolean).join(path.delimiter);
 			process.env.SUBAGENT_LOG_PATH = spawnLogPath;
 
-			const [resultA, resultB] = await Promise.all([
+			const [resultA, resultB] = await Promise.allSettled([
 				subagentsTool.execute(
 					"call-1",
 					{
@@ -1432,10 +1464,19 @@ describe("subagents tool", () => {
 			]);
 
 			expect(reviewCalls).toBe(1);
-			expect(resultA.isError).toBe(true);
-			expect(resultB.isError).toBe(true);
-			expect(resultA.content[0]?.text).toBe("Subagent launch cancelled before starting. No child processes were started.");
-			expect(resultB.content[0]?.text).toBe("Subagent launch cancelled before starting. No child processes were started.");
+			expect(resultA.status).toBe("rejected");
+			expect(resultB.status).toBe("rejected");
+			if (resultA.status !== "rejected" || resultB.status !== "rejected") {
+				throw new Error("expected both subagent launches to reject");
+			}
+			expect(resultA.reason).toBeInstanceOf(Error);
+			expect(resultB.reason).toBeInstanceOf(Error);
+			expect((resultA.reason as Error).message).toBe(
+				"Subagent launch cancelled before starting. No child processes were started.",
+			);
+			expect((resultB.reason as Error).message).toBe(
+				"Subagent launch cancelled before starting. No child processes were started.",
+			);
 			expect(await readSpawnLog(spawnLogPath)).toEqual([]);
 		} finally {
 			if (previousAgentDir === undefined) {
@@ -1457,7 +1498,7 @@ describe("subagents tool", () => {
 		}
 	});
 
-	test("returns early when the pre-launch review is cancelled", async () => {
+	test("throws when the pre-launch review is cancelled", async () => {
 		const tempDir = await mkdtemp(path.join(os.tmpdir(), "task-subagents-prelaunch-cancel-"));
 		const { binDir, sourceAgentDir, spawnLogPath } = await setupStubPi(tempDir);
 		const tools = registerTools();
@@ -1474,19 +1515,26 @@ describe("subagents tool", () => {
 			process.env.PATH = [binDir, previousPath].filter(Boolean).join(path.delimiter);
 			process.env.SUBAGENT_LOG_PATH = spawnLogPath;
 
-			const result = await subagentsTool.execute(
-				"call-1",
-				{
-					tasks: [{ id: "task-a", prompt: "Inspect A", cwd: tempDir }],
-					concurrency: 1,
-				},
-				undefined,
-				undefined,
-				createExecuteContext(tempDir, { hasUI: true, reviewResult: null }),
-			);
+			let error: unknown;
+			try {
+				await subagentsTool.execute(
+					"call-1",
+					{
+						tasks: [{ id: "task-a", prompt: "Inspect A", cwd: tempDir }],
+						concurrency: 1,
+					},
+					undefined,
+					undefined,
+					createExecuteContext(tempDir, { hasUI: true, reviewResult: null }),
+				);
+			} catch (caught) {
+				error = caught;
+			}
 
-			expect(result.isError).toBe(true);
-			expect(result.content[0]?.text).toBe("Subagent launch cancelled before starting. No child processes were started.");
+			expect(error).toBeInstanceOf(Error);
+			expect((error as Error).message).toBe(
+				"Subagent launch cancelled before starting. No child processes were started.",
+			);
 			expect(await readSpawnLog(spawnLogPath)).toEqual([]);
 		} finally {
 			if (previousAgentDir === undefined) {
@@ -1642,7 +1690,7 @@ describe("subagents tool", () => {
 				}),
 			);
 
-			expect(result.isError).toBe(false);
+			expect(result.isError).toBeUndefined();
 			expect(result.content[0]?.text).toContain("1 cancelled");
 			expect(result.content[0]?.text).toContain("Cancellation note: Already covered by task-a");
 			expect(result.details?.launchedCount).toBe(1);
@@ -1739,7 +1787,7 @@ describe("subagents tool", () => {
 				createExecuteContext(tempDir),
 			);
 
-			expect(rerunResult.isError).toBe(false);
+			expect(rerunResult.isError).toBeUndefined();
 			expect(rerunResult.details?.tasks[0]).toMatchObject({
 				modelOverride: undefined,
 				thinkingOverride: undefined,
@@ -1844,7 +1892,7 @@ describe("subagents tool", () => {
 				}),
 			);
 
-			expect(rerunResult.isError).toBe(false);
+			expect(rerunResult.isError).toBeUndefined();
 			expect(rerunResult.details?.tasks[0]).toMatchObject({
 				launchModel: "openai/gpt-5",
 				launchThinking: "high",
@@ -1919,7 +1967,7 @@ describe("subagents tool", () => {
 				}),
 			);
 
-			expect(result.isError).toBe(false);
+			expect(result.isError).toBeUndefined();
 			expect(result.content[0]?.text).toContain("Model override: openai/gpt-5");
 			expect(result.content[0]?.text).toContain("Thinking override: high");
 			expect(result.details?.tasks[0]).toMatchObject({
@@ -2010,7 +2058,7 @@ describe("subagents tool", () => {
 				createExecuteContext(tempDir),
 			);
 
-			expect(rerunResult.isError).toBe(false);
+			expect(rerunResult.isError).toBeUndefined();
 			expect(rerunResult.content[0]?.text).toContain(`Steered task-a in run ${runId}.`);
 			expect(rerunResult.content[0]?.text).toContain("steered output");
 			expect(rerunResult.details?.tasks[0]).toMatchObject({

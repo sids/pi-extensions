@@ -1,6 +1,6 @@
 {
   "name": "pi-plan-md",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "type": "module",
   "description": "Branch-based planning workflow extension for pi",
   "license": "MIT",

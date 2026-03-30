@@ -90,6 +90,7 @@ export default function (pi: ExtensionAPI) {
 		label: "set_plan",
 		description:
 			"Overwrite the plan file with the full latest plan text. Call this whenever the plan changes so the plan file stays canonical.",
+		promptSnippet: "Overwrite the current plan file with the latest full plan text.",
 		parameters: SetPlanSchema,
 		renderCall(args, theme) {
 			const preview = summarizeSnippet(String(args.plan ?? ""), 90);
@@ -122,26 +123,17 @@ export default function (pi: ExtensionAPI) {
 		},
 		async execute(_toolCallId, params: { plan: string }, _signal, _onUpdate, ctx): Promise<AgentToolResult<SetPlanDetails>> {
 			if (!stateManager.getState().active) {
-				return {
-					isError: true,
-					content: [{ type: "text", text: "set_plan is only available while plan mode is active." }],
-				};
+				throw new Error("set_plan is only available while plan mode is active.");
 			}
 
 			const planFilePath = resolveActivePlanFilePath(ctx, stateManager.getState().planFilePath);
 			if (!planFilePath) {
-				return {
-					isError: true,
-					content: [{ type: "text", text: "No active plan file. Restart plan mode and try again." }],
-				};
+				throw new Error("No active plan file. Restart plan mode and try again.");
 			}
 
 			const plan = String(params.plan ?? "").trim();
 			if (!plan) {
-				return {
-					isError: true,
-					content: [{ type: "text", text: "set_plan requires non-empty plan text." }],
-				};
+				throw new Error("set_plan requires non-empty plan text.");
 			}
 
 			await mkdir(path.dirname(planFilePath), { recursive: true });

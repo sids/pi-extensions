@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.7 - 2026-03-28
+
+- Added `promptSnippet` metadata for `set_plan` and `request_user_input` so they stay visible in pi's default tool prompt.
+- Switched plan-mode tool validation and cancellation failures to thrown errors so pi marks those tool calls correctly.
+
 ## 0.1.6 - 2026-03-28
 
 - Restored branch state when plan mode exits.

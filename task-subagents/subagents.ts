@@ -1845,6 +1845,7 @@ export function registerSubagentTools(
 		label: "subagents",
 		description:
 			"Launch one or more isolated subagents with activity traces, interactive pre-launch review in UI mode, and run IDs for follow-up steering. Use this only when asked to use subagents.",
+		promptSnippet: "Launch one or more isolated research subagents when explicitly asked.",
 		parameters: dependencies.subagentsSchema,
 		renderCall(args, theme) {
 			const tasks = (args.tasks as SubagentTask[] | undefined) ?? [];
@@ -2000,35 +2001,23 @@ export function registerSubagentTools(
 			const tasks = normalizeSubagentTasks(params.tasks as SubagentTask[]);
 			const concurrency = resolveSubagentConcurrency(params.concurrency);
 			if (concurrency === null) {
-				return {
-					isError: true,
-					content: [{ type: "text", text: "concurrency must be an integer between 1 and 4." }],
-				};
+				throw new Error("concurrency must be an integer between 1 and 4.");
 			}
 
 			const currentThinkingLevel = resolveSubagentThinkingLevel(pi.getThinkingLevel());
 			const defaultThinkingLevel = resolveSubagentToolThinkingLevel(params.thinking_level, currentThinkingLevel);
 			if (defaultThinkingLevel === null) {
-				return {
-					isError: true,
-					content: [{ type: "text", text: 'thinking_level must be one of: off, minimal, low, medium, high, xhigh.' }],
-				};
+				throw new Error('thinking_level must be one of: off, minimal, low, medium, high, xhigh.');
 			}
 
 			const requestedContext = resolveSubagentContextMode(params.context);
 			if (requestedContext === null) {
-				return {
-					isError: true,
-					content: [{ type: "text", text: 'context must be either "fresh" or "fork".' }],
-				};
+				throw new Error('context must be either "fresh" or "fork".');
 			}
 
 			const currentSessionFile = buildCurrentSubagentSessionFile(ctx);
 			if (requestedContext === "fork" && !currentSessionFile) {
-				return {
-					isError: true,
-					content: [{ type: "text", text: 'context "fork" requires a saved current session.' }],
-				};
+				throw new Error('context "fork" requires a saved current session.');
 			}
 			let reviewedTasks = createInitialReviewedSubagentTasks(tasks, ctx.cwd, {
 				defaultThinking: params.thinking_level === undefined ? undefined : defaultThinkingLevel ?? undefined,
@@ -2045,10 +2034,7 @@ export function registerSubagentTools(
 						hasForkSource: !!currentSessionFile,
 					});
 					if (reviewResult === null) {
-						return {
-							isError: true,
-							content: [{ type: "text", text: "Subagent launch cancelled before starting. No child processes were started." }],
-						};
+						throw new Error("Subagent launch cancelled before starting. No child processes were started.");
 					}
 					reviewedTasks = reviewResult;
 				} finally {
@@ -2060,10 +2046,7 @@ export function registerSubagentTools(
 				reviewedTasks.some((task) => task.launchStatus === "ready" && task.launchContext === "fork") &&
 				!currentSessionFile
 			) {
-				return {
-					isError: true,
-					content: [{ type: "text", text: 'context "fork" requires a saved current session.' }],
-				};
+				throw new Error('context "fork" requires a saved current session.');
 			}
 
 			const preparedTasks = prepareSubagentTasks(
@@ -2189,7 +2172,6 @@ export function registerSubagentTools(
 			return {
 				content: [{ type: "text", text: `${summaryHeader}\n${steeringHint}\n\n${formatted}` }],
 				details,
-				isError: details.failedCount > 0,
 			};
 		},
 	});
@@ -2199,6 +2181,7 @@ export function registerSubagentTools(
 		label: "steer subagent",
 		description:
 			"Rerun one task from a previous subagents run using runId/taskId and an extra steering instruction.",
+		promptSnippet: "Rerun a previous subagent task with additional steering.",
 		parameters: dependencies.steerSubagentSchema,
 		renderCall(args, theme) {
 			const instruction = summarizeSnippet(args.instruction ?? "", 90);
@@ -2210,35 +2193,23 @@ export function registerSubagentTools(
 			const taskId = String(params.taskId ?? "").trim();
 			const instruction = String(params.instruction ?? "").trim();
 			if (!runId || !taskId || !instruction) {
-				return {
-					isError: true,
-					content: [{ type: "text", text: "runId, taskId, and instruction are required." }],
-				};
+				throw new Error("runId, taskId, and instruction are required.");
 			}
 
 			const run = getSubagentRunRecord(runId, ctx);
 			if (!run) {
 				const knownRunIds = Array.from(new Set([...subagentRuns.keys(), ...hydrateSubagentRunsFromBranch(ctx).map((item) => item.runId)]));
-				return {
-					isError: true,
-					content: [
-						{
-							type: "text",
-							text: knownRunIds.length > 0
-								? `Unknown runId "${runId}". Known runIds: ${knownRunIds.join(", ")}`
-								: `Unknown runId "${runId}". No prior subagent runs are available.`,
-						},
-					],
-				};
+				throw new Error(
+					knownRunIds.length > 0
+						? `Unknown runId "${runId}". Known runIds: ${knownRunIds.join(", ")}`
+						: `Unknown runId "${runId}". No prior subagent runs are available.`,
+				);
 			}
 
 			const taskIndex = run.tasks.findIndex((task) => task.taskId === taskId);
 			if (taskIndex === -1) {
 				const knownTaskIds = run.tasks.map((task) => task.taskId).join(", ");
-				return {
-					isError: true,
-					content: [{ type: "text", text: `Unknown taskId "${taskId}" for run ${runId}. Known taskIds: ${knownTaskIds}` }],
-				};
+				throw new Error(`Unknown taskId "${taskId}" for run ${runId}. Known taskIds: ${knownTaskIds}`);
 			}
 
 			const { rerunResult, details } = await rerunSubagentTaskInRun(run, taskId, instruction, {
@@ -2256,7 +2227,6 @@ export function registerSubagentTools(
 					},
 				],
 				details,
-				isError: rerunResult.status === "failed",
 			};
 		},
 	});

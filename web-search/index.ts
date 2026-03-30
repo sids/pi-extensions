@@ -364,6 +364,7 @@ export default function (pi: ExtensionAPI) {
 		label: "web_search",
 		description:
 			"Search the web via Brave Search API. Provide query or queries; optional count (max 20) per query. Returns titles, URLs, and snippets. Output is truncated to 2000 lines or 50KB.",
+		promptSnippet: "Search the web for titles, URLs, and result snippets.",
 		parameters: webSearchSchema,
 		renderCall: (args, theme) => {
 			const queries = resolveQueries(args);

@@ -7,6 +7,7 @@ function createHarness(entries: any[]) {
 	const handlers = new Map<string, Handler[]>();
 	const appendedEntries: Array<{ customType: string; data: any }> = [];
 	const sentMessages: any[] = [];
+	const tools: any[] = [];
 	let activeTools: string[] = [];
 
 	const pi = {
@@ -26,7 +27,9 @@ function createHarness(entries: any[]) {
 			activeTools = nextTools;
 		},
 		registerMessageRenderer() {},
-		registerTool() {},
+		registerTool(tool: any) {
+			tools.push(tool);
+		},
 		registerCommand() {},
 		registerShortcut() {},
 		sendMessage(message: any) {
@@ -64,10 +67,50 @@ function createHarness(entries: any[]) {
 		emit,
 		appendedEntries,
 		sentMessages,
+		tools,
 	};
 }
 
 describe("plan-md prompt injection", () => {
+	test("registers plan mode tools with prompt snippets", async () => {
+		const harness = createHarness([]);
+		const toolByName = new Map(harness.tools.map((tool) => [tool.name, tool]));
+
+		expect(toolByName.get("set_plan")?.promptSnippet).toBe(
+			"Overwrite the current plan file with the latest full plan text.",
+		);
+		expect(toolByName.get("request_user_input")?.promptSnippet).toBe(
+			"Ask the user one to three short questions and wait for answers.",
+		);
+	});
+
+	test("set_plan throws when plan mode is inactive", async () => {
+		const harness = createHarness([]);
+		const setPlanTool = harness.tools.find((tool) => tool.name === "set_plan");
+		if (!setPlanTool) {
+			throw new Error("set_plan tool was not registered");
+		}
+
+		let error: unknown;
+		try {
+			await setPlanTool.execute("call-1", { plan: "Goal\n- Step 1" }, undefined, undefined, {
+				cwd: "/tmp",
+				hasUI: false,
+				sessionManager: {
+					getEntries: () => [],
+					getSessionFile: () => undefined,
+					getSessionDir: () => "/tmp",
+					getSessionId: () => "session-1",
+				},
+			});
+		} catch (caught) {
+			error = caught;
+		}
+
+		expect(error).toBeInstanceOf(Error);
+		expect((error as Error).message).toContain("plan mode is active");
+	});
+
 	test("posts the prompt only once until the session is compacted", async () => {
 		const entries = [
 			{
