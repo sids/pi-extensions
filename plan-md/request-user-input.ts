@@ -156,8 +156,8 @@ export function registerRequestUserInputTool(
 		name: "request_user_input",
 		label: "request_user_input",
 		description:
-			"Request user input for one to three short questions and wait for the response. This tool is only available in Plan mode.",
-		promptSnippet: "Ask the user one to three short questions and wait for answers.",
+			"Request user input for one or more short questions and wait for the response. This tool is only available in Plan mode.",
+		promptSnippet: "Ask the user one or more short questions and wait for answers.",
 		parameters: dependencies.requestUserInputSchema,
 		renderCall(args, theme) {
 			const questions = ((args.questions as RequestUserInputQuestion[] | undefined) ?? []).length;

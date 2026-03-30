@@ -80,7 +80,7 @@ describe("plan-md prompt injection", () => {
 			"Overwrite the current plan file with the latest full plan text.",
 		);
 		expect(toolByName.get("request_user_input")?.promptSnippet).toBe(
-			"Ask the user one to three short questions and wait for answers.",
+			"Ask the user one or more short questions and wait for answers.",
 		);
 	});
 

@@ -37,8 +37,7 @@ export const RequestUserInputSchema = Type.Object(
 	{
 		questions: Type.Array(RequestUserInputQuestionSchema, {
 			minItems: 1,
-			maxItems: 3,
-			description: "Questions to show the user. Prefer 1 and do not exceed 3.",
+			description: "Questions to show the user.",
 		}),
 	},
 	{ additionalProperties: false },

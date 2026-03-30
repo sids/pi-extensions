@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.8 - 2026-03-28
+
+- Removed the `request_user_input` question cap so plan mode can ask any number of questions.
+
 ## 0.1.7 - 2026-03-28
 
 - Added `promptSnippet` metadata for `set_plan` and `request_user_input` so they stay visible in pi's default tool prompt.

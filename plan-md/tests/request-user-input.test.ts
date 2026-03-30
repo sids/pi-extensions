@@ -7,8 +7,13 @@ import {
 	registerRequestUserInputTool,
 	summarizeRequestUserInputAnswer,
 } from "../request-user-input";
+import { RequestUserInputSchema } from "../schemas";
 
 describe("normalizeRequestUserInputQuestions", () => {
+	test("does not cap question count in the schema", () => {
+		expect((RequestUserInputSchema as any).properties.questions.maxItems).toBeUndefined();
+	});
+
 	test("trims ids and defaults options", () => {
 		const result = normalizeRequestUserInputQuestions([
 			{ id: " runtime ", header: "Runtime", question: "Which runtime?" },
@@ -137,7 +142,7 @@ describe("registerRequestUserInputTool", () => {
 		}
 
 		expect(registeredTool.promptSnippet).toBe(
-			"Ask the user one to three short questions and wait for answers.",
+			"Ask the user one or more short questions and wait for answers.",
 		);
 
 		const result = await registeredTool.execute(
