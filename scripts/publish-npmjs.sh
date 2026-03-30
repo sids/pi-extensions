@@ -6,17 +6,6 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 REGISTRY="https://registry.npmjs.org/"
 DRY_RUN=false
 
-ALL_PACKAGES=(
-  "shared"
-  "answer"
-  "plan-md"
-  "fetch-url"
-  "web-search"
-  "status"
-  "review"
-  "mention-skills"
-)
-
 usage() {
   cat <<'EOF'
 Publish extension packages to npmjs.org.
@@ -33,13 +22,72 @@ Examples:
 EOF
 }
 
+list_all_packages() {
+  node - "$REPO_ROOT" <<'NODE'
+const fs = require("node:fs");
+const path = require("node:path");
+
+const rootDir = process.argv[2];
+const ignoredDirs = new Set([".git", ".pi", "node_modules"]);
+const packageDirs = fs
+  .readdirSync(rootDir, { withFileTypes: true })
+  .filter((entry) => entry.isDirectory() && !ignoredDirs.has(entry.name))
+  .map((entry) => entry.name)
+  .filter((dir) => fs.existsSync(path.join(rootDir, dir, "package.json")));
+
+const packages = new Map();
+for (const dir of packageDirs) {
+  const packageJson = JSON.parse(fs.readFileSync(path.join(rootDir, dir, "package.json"), "utf8"));
+  const dependencyNames = [
+    ...Object.keys(packageJson.dependencies ?? {}),
+    ...Object.keys(packageJson.optionalDependencies ?? {}),
+  ];
+  packages.set(dir, {
+    name: packageJson.name,
+    dependencyNames,
+  });
+}
+
+const dirByPackageName = new Map(
+  [...packages.entries()].map(([dir, pkg]) => [pkg.name, dir]),
+);
+const ordered = [];
+const visiting = new Set();
+const visited = new Set();
+
+function visit(dir) {
+  if (visited.has(dir)) return;
+  if (visiting.has(dir)) {
+    throw new Error(`Circular local package dependency detected for ${dir}`);
+  }
+
+  visiting.add(dir);
+  for (const dependencyName of packages.get(dir).dependencyNames) {
+    const dependencyDir = dirByPackageName.get(dependencyName);
+    if (dependencyDir) {
+      visit(dependencyDir);
+    }
+  }
+  visiting.delete(dir);
+  visited.add(dir);
+  ordered.push(dir);
+}
+
+for (const dir of [...packages.keys()].sort()) {
+  visit(dir);
+}
+
+process.stdout.write(`${ordered.join("\n")}\n`);
+NODE
+}
+
 publish_package() {
   local package_dir="$1"
   local package_json="$REPO_ROOT/$package_dir/package.json"
 
   if [[ ! -f "$package_json" ]]; then
     echo "Missing package.json in $package_dir" >&2
-    exit 1
+    return 1
   fi
 
   local package_name
@@ -57,10 +105,17 @@ publish_package() {
     echo "==> Publishing $package_name from $package_dir"
   fi
 
+  local status=0
   (
     cd "$REPO_ROOT/$package_dir"
     npm "${npm_args[@]}"
-  )
+  ) || status=$?
+
+  if [[ "$status" -ne 0 ]]; then
+    echo "==> Failed publishing $package_name from $package_dir (exit $status)" >&2
+  fi
+
+  return "$status"
 }
 
 TARGET=""
@@ -114,9 +169,24 @@ else
 fi
 
 if [[ "$TARGET" == "--all" ]]; then
-  for package_dir in "${ALL_PACKAGES[@]}"; do
-    publish_package "$package_dir"
-  done
+  failed_packages=()
+
+  while IFS= read -r package_dir; do
+    if [[ -z "$package_dir" ]]; then
+      continue
+    fi
+
+    if ! publish_package "$package_dir"; then
+      failed_packages+=("$package_dir")
+    fi
+  done < <(list_all_packages)
+
+  if [[ "${#failed_packages[@]}" -gt 0 ]]; then
+    echo >&2
+    echo "Publish completed with failures in: ${failed_packages[*]}" >&2
+    exit 1
+  fi
+
   exit 0
 fi
 
