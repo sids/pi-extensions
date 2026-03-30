@@ -158,6 +158,21 @@ export function buildThinkingAutocompleteItems(
 	}));
 }
 
+type AutocompleteRequestOptions = {
+	signal?: AbortSignal;
+	force?: boolean;
+};
+
+type CompatibleAutocompleteProvider = AutocompleteProvider &
+	Record<string, unknown> & {
+		getSuggestions(
+			lines: string[],
+			cursorLine: number,
+			cursorCol: number,
+			options?: AutocompleteRequestOptions,
+		): any;
+	};
+
 /**
  * Wrap an autocomplete provider to add ^thinking suggestions.
  * Delegates all non-thinking-token behavior to the base provider.
@@ -166,8 +181,9 @@ export function createThinkingAutocompleteProvider(
 	baseProvider: AutocompleteProvider,
 	getThinkingItems: () => AutocompleteItem[],
 ): AutocompleteProvider {
-	const provider: AutocompleteProvider & Record<string, unknown> = {
-		getSuggestions(lines: string[], cursorLine: number, cursorCol: number) {
+	const base = baseProvider as CompatibleAutocompleteProvider;
+	const provider = {
+		getSuggestions(lines: string[], cursorLine: number, cursorCol: number, options?: AutocompleteRequestOptions) {
 			const line = lines[cursorLine] || "";
 			const thinkingToken = findThinkingTokenAtCursor(line, cursorCol);
 			if (thinkingToken) {
@@ -182,7 +198,7 @@ export function createThinkingAutocompleteProvider(
 					return { items, prefix: thinkingToken.token };
 				}
 			}
-			return baseProvider.getSuggestions(lines, cursorLine, cursorCol);
+			return base.getSuggestions(lines, cursorLine, cursorCol, options);
 		},
 
 		applyCompletion(
@@ -207,9 +223,8 @@ export function createThinkingAutocompleteProvider(
 			}
 			return baseProvider.applyCompletion(lines, cursorLine, cursorCol, item, prefix);
 		},
-	};
+	} as AutocompleteProvider & Record<string, unknown>;
 
-	const base = baseProvider as Record<string, unknown>;
 	if (typeof base.getForceFileSuggestions === "function") {
 		provider.getForceFileSuggestions = base.getForceFileSuggestions.bind(baseProvider);
 	}

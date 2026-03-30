@@ -9,6 +9,15 @@ import {
 	stripThinkingLevelControlTokens,
 } from "../utils";
 
+type CompatibleAutocompleteProvider = AutocompleteProvider & {
+	getSuggestions(
+		lines: string[],
+		cursorLine: number,
+		cursorCol: number,
+		options?: { signal?: AbortSignal; force?: boolean },
+	): any;
+};
+
 describe("normalizeThinkingLevel", () => {
 	test("normalizes case-insensitively", () => {
 		expect(normalizeThinkingLevel("HIGH")).toBe("high");
@@ -217,6 +226,39 @@ describe("createThinkingAutocompleteProvider", () => {
 			const result = provider.getSuggestions(["/he"], 0, 3);
 			expect(result).not.toBeNull();
 			expect(result!.items[0]!.value).toBe("/help");
+		});
+
+		test("forwards autocomplete options to async base providers", async () => {
+			let seenOptions: { signal?: AbortSignal; force?: boolean } | undefined;
+			const asyncBaseProvider: CompatibleAutocompleteProvider = {
+				async getSuggestions(lines, cursorLine, cursorCol, options) {
+					seenOptions = options;
+					const line = lines[cursorLine] || "";
+					const before = line.slice(0, cursorCol);
+					if (before.startsWith("/")) {
+						return { items: [{ value: "/help", label: "/help" }], prefix: before };
+					}
+					return null;
+				},
+				applyCompletion(lines, cursorLine, cursorCol, item, prefix) {
+					const line = lines[cursorLine] || "";
+					const startCol = cursorCol - prefix.length;
+					const newLine = line.slice(0, startCol) + item.value + line.slice(cursorCol);
+					const newLines = [...lines];
+					newLines[cursorLine] = newLine;
+					return { lines: newLines, cursorLine, cursorCol: startCol + item.value.length };
+				},
+			};
+			const provider = createThinkingAutocompleteProvider(asyncBaseProvider, () => thinkingItems) as CompatibleAutocompleteProvider;
+			const controller = new AbortController();
+			const result = await provider.getSuggestions(["/he"], 0, 3, {
+				signal: controller.signal,
+				force: true,
+			});
+			expect(result).not.toBeNull();
+			expect(result!.items[0]!.value).toBe("/help");
+			expect(seenOptions?.signal).toBe(controller.signal);
+			expect(seenOptions?.force).toBe(true);
 		});
 
 		test("filters case-insensitively", () => {

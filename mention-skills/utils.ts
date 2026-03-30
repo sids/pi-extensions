@@ -77,6 +77,21 @@ export function buildSkillAutocompleteItems(skillMap: Map<string, string>): Auto
 	return items;
 }
 
+type AutocompleteRequestOptions = {
+	signal?: AbortSignal;
+	force?: boolean;
+};
+
+type CompatibleAutocompleteProvider = AutocompleteProvider &
+	Record<string, unknown> & {
+		getSuggestions(
+			lines: string[],
+			cursorLine: number,
+			cursorCol: number,
+			options?: AutocompleteRequestOptions,
+		): any;
+	};
+
 /**
  * Wrap an autocomplete provider to add $mention suggestions for skills.
  * Delegates all non-mention behavior to the base provider.
@@ -85,8 +100,9 @@ export function createMentionAutocompleteProvider(
 	baseProvider: AutocompleteProvider,
 	getSkillItems: () => AutocompleteItem[],
 ): AutocompleteProvider {
-	const provider: AutocompleteProvider & Record<string, unknown> = {
-		getSuggestions(lines: string[], cursorLine: number, cursorCol: number) {
+	const base = baseProvider as CompatibleAutocompleteProvider;
+	const provider = {
+		getSuggestions(lines: string[], cursorLine: number, cursorCol: number, options?: AutocompleteRequestOptions) {
 			const line = lines[cursorLine] || "";
 			const mention = findMentionTokenAtCursor(line, cursorCol);
 			if (mention) {
@@ -101,7 +117,7 @@ export function createMentionAutocompleteProvider(
 					return { items, prefix: mention.token };
 				}
 			}
-			return baseProvider.getSuggestions(lines, cursorLine, cursorCol);
+			return base.getSuggestions(lines, cursorLine, cursorCol, options);
 		},
 
 		applyCompletion(
@@ -125,10 +141,9 @@ export function createMentionAutocompleteProvider(
 			}
 			return baseProvider.applyCompletion(lines, cursorLine, cursorCol, item, prefix);
 		},
-	};
+	} as AutocompleteProvider & Record<string, unknown>;
 
 	// Delegate optional methods from CombinedAutocompleteProvider.
-	const base = baseProvider as Record<string, unknown>;
 	if (typeof base.getForceFileSuggestions === "function") {
 		provider.getForceFileSuggestions = base.getForceFileSuggestions.bind(baseProvider);
 	}
