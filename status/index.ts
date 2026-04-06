@@ -2,7 +2,6 @@ import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-age
 import { truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
 import {
 	activeAgentDurationMs,
-	carryForwardTimingDurations,
 	elapsedDurationMs,
 	filterPullRequestsByHeadOwner,
 	formatContextLabel,
@@ -36,8 +35,8 @@ type StatusPayload = {
 	contextLabel: string;
 	contextUsage: number | null;
 	repoLabel: string;
-	loopMinutesLabel: string;
 	agentMinutesLabel: string;
+	turnTotalMinutesLabel: string;
 	sessionMinutesLabel: string;
 	pullRequestLabel: string | null;
 };
@@ -57,7 +56,7 @@ const createStatusWidget = (payload: StatusPayload) => (_tui: unknown, theme: { 
 		const contextLabel = theme.fg(resolveContextColor(payload.contextUsage), payload.contextLabel);
 		const timingLabel = theme.fg(
 			"muted",
-			`· ${payload.loopMinutesLabel} loop · ${payload.agentMinutesLabel} agent · ${payload.sessionMinutesLabel} session`,
+			`· ${payload.agentMinutesLabel} agent · ${payload.turnTotalMinutesLabel} turn total · ${payload.sessionMinutesLabel} session`,
 		);
 		const repoLabel = theme.fg("muted", payload.repoLabel);
 		const right = [modelLabel, thinkingLabel, contextLabel, timingLabel].join(" ");
@@ -306,12 +305,10 @@ export default function (pi: ExtensionAPI) {
 	let lastThinkingLevel = "";
 	let enabled = true;
 	let sessionStartedAt: number | null = Date.now();
-	let activeLoopStartedAt: number | null = null;
-	let lastLoopDurationMs: number | null = null;
+	let activeAgentStartedAt: number | null = null;
+	let lastAgentDurationMs: number | null = null;
 	let activeTurnStartedAt: number | null = null;
 	let completedTurnDurationMs = 0;
-	let carriedSessionDurationMs = 0;
-	let carriedAgentDurationMs = 0;
 	let lastTimingSignature = "";
 	const allowedGitHubHosts = parseAllowedGitHubHosts(process.env.PI_STATUS_ALLOWED_GITHUB_HOSTS);
 	let remoteRepoCache = new Map<string, RemoteRepoCacheEntry>();
@@ -329,43 +326,34 @@ export default function (pi: ExtensionAPI) {
 		currentCtx = ctx;
 	};
 
-	const resetTimingState = (now = Date.now(), preserveTotals = false) => {
-		if (preserveTotals) {
-			const carried = carryForwardTimingDurations(
-				carriedSessionDurationMs,
-				carriedAgentDurationMs,
-				sessionStartedAt,
-				completedTurnDurationMs,
-				activeTurnStartedAt,
-				now,
-			);
-			carriedSessionDurationMs = carried.sessionDurationCarryMs;
-			carriedAgentDurationMs = carried.agentDurationCarryMs;
-		}
+	const resetTimingState = (now = Date.now()) => {
 		sessionStartedAt = now;
-		activeLoopStartedAt = null;
-		lastLoopDurationMs = null;
+		activeAgentStartedAt = null;
+		lastAgentDurationMs = null;
 		activeTurnStartedAt = null;
 		completedTurnDurationMs = 0;
 		lastTimingSignature = "";
 	};
 
-	const finalizeActiveLoop = (now = Date.now()): boolean => {
-		if (activeLoopStartedAt === null) {
+	const finalizeActiveAgent = (now = Date.now()): boolean => {
+		if (activeAgentStartedAt === null) {
 			return false;
 		}
-		lastLoopDurationMs = Math.max(0, now - activeLoopStartedAt);
-		activeLoopStartedAt = null;
+		lastAgentDurationMs = Math.max(0, now - activeAgentStartedAt);
+		activeAgentStartedAt = null;
 		lastTimingSignature = "";
 		return true;
 	};
 
-	const beginLoop = (now = Date.now()) => {
-		if (activeLoopStartedAt !== null) {
-			finalizeActiveLoop(now);
+	const beginAgent = (now = Date.now()) => {
+		if (activeTurnStartedAt !== null) {
+			finalizeActiveTurn(now);
 		}
-		activeLoopStartedAt = now;
-		lastLoopDurationMs = 0;
+		if (activeAgentStartedAt !== null) {
+			finalizeActiveAgent(now);
+		}
+		activeAgentStartedAt = now;
+		lastAgentDurationMs = 0;
 		lastTimingSignature = "";
 	};
 
@@ -388,28 +376,27 @@ export default function (pi: ExtensionAPI) {
 		lastTimingSignature = "";
 	};
 
-	const getLoopMinutes = (now = Date.now()): number | null => {
-		if (activeLoopStartedAt === null) {
-			return lastLoopDurationMs === null ? null : lastLoopDurationMs / 60_000;
+	const getAgentMinutes = (now = Date.now()): number | null => {
+		if (activeAgentStartedAt === null) {
+			return lastAgentDurationMs === null ? null : lastAgentDurationMs / 60_000;
 		}
-		return Math.max(0, (now - activeLoopStartedAt) / 60_000);
+		return Math.max(0, (now - activeAgentStartedAt) / 60_000);
 	};
 
-	const getTimingMinutes = (now = Date.now()): { loop: number | null; agent: number | null; session: number | null } => {
-		const loop = getLoopMinutes(now);
-		const agentDurationMs =
-			carriedAgentDurationMs + activeAgentDurationMs(completedTurnDurationMs, activeTurnStartedAt, now);
-		const sessionDurationMs = carriedSessionDurationMs + elapsedDurationMs(sessionStartedAt, now);
+	const getTimingMinutes = (now = Date.now()): { agent: number | null; turnTotal: number | null; session: number | null } => {
+		const agent = getAgentMinutes(now);
+		const turnTotalDurationMs = activeAgentDurationMs(completedTurnDurationMs, activeTurnStartedAt, now);
+		const sessionDurationMs = elapsedDurationMs(sessionStartedAt, now);
 		return {
-			loop,
-			agent: agentDurationMs / 60_000,
+			agent,
+			turnTotal: turnTotalDurationMs / 60_000,
 			session: sessionDurationMs / 60_000,
 		};
 	};
 
 	const getTimingSignature = (now = Date.now()): string => {
 		const timings = getTimingMinutes(now);
-		return `${formatElapsedMinutes(timings.loop)}|${formatElapsedMinutes(timings.agent)}|${formatElapsedMinutes(timings.session)}`;
+		return `${formatElapsedMinutes(timings.agent)}|${formatElapsedMinutes(timings.turnTotal)}|${formatElapsedMinutes(timings.session)}`;
 	};
 
 	const updateTimingMetrics = (ctx: ExtensionContext) => {
@@ -521,8 +508,8 @@ export default function (pi: ExtensionAPI) {
 			contextLabel: formatContextLabel(usage),
 			contextUsage: usage?.percent ?? null,
 			repoLabel: formatRepoLabel(ctx.cwd, branch),
-			loopMinutesLabel: formatElapsedMinutes(timings.loop),
 			agentMinutesLabel: formatElapsedMinutes(timings.agent),
+			turnTotalMinutesLabel: formatElapsedMinutes(timings.turnTotal),
 			sessionMinutesLabel: formatElapsedMinutes(timings.session),
 			pullRequestLabel: formatPullRequestLabel(pullRequest),
 		};
@@ -622,7 +609,7 @@ export default function (pi: ExtensionAPI) {
 	};
 
 	pi.on("session_start", async (_event, ctx) => {
-		resetTimingState(Date.now(), true);
+		resetTimingState();
 		await applyEnabledState(ctx);
 	});
 
@@ -646,7 +633,7 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	pi.on("agent_start", async (_event, ctx) => {
-		beginLoop();
+		beginAgent();
 		await requestWidgetUpdate(ctx);
 	});
 
@@ -662,13 +649,13 @@ export default function (pi: ExtensionAPI) {
 
 	pi.on("agent_end", async (_event, ctx) => {
 		finalizeActiveTurn();
-		finalizeActiveLoop();
+		finalizeActiveAgent();
 		await requestWidgetUpdate(ctx, { skipPullRequestLookup: true });
 	});
 
 	pi.on("session_shutdown", async () => {
 		finalizeActiveTurn();
-		finalizeActiveLoop();
+		finalizeActiveAgent();
 		stopTypingWatcher();
 		currentCtx = null;
 	});

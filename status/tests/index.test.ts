@@ -122,6 +122,55 @@ function createHarness() {
 }
 
 describe("status extension", () => {
+	test("shows agent and turn total timing in the widget", async () => {
+		const harness = createHarness();
+		const ctx = harness.createCtx("/tmp/status-project");
+
+		try {
+			await harness.emit("session_start", {}, ctx);
+			const line = normalizeLine(harness.renderLatestWidget()[0] ?? "");
+			expect(line).toContain("agent");
+			expect(line).toContain("turn total");
+			expect(line).not.toContain(" loop ");
+		} finally {
+			await harness.emit("session_shutdown", {}, ctx);
+		}
+	});
+
+	test("resets agent, turn total, and session timers on session_start", async () => {
+		const originalDateNow = Date.now;
+		let now = 0;
+		Date.now = () => now;
+
+		const harness = createHarness();
+		const ctx = harness.createCtx("/tmp/status-project");
+
+		try {
+			await harness.emit("session_start", { reason: "startup" }, ctx);
+			await harness.emit("agent_start", {}, ctx);
+			now = 60_000;
+			await harness.emit("turn_start", { turnIndex: 0, timestamp: now }, ctx);
+			now = 4 * 60_000;
+			await harness.emit("turn_end", { turnIndex: 0 }, ctx);
+
+			const beforeReset = normalizeLine(harness.renderLatestWidget()[0] ?? "");
+			expect(beforeReset).toContain("4m agent");
+			expect(beforeReset).toContain("3m turn total");
+			expect(beforeReset).toContain("4m session");
+
+			now = 5 * 60_000;
+			await harness.emit("session_start", { reason: "new" }, ctx);
+
+			const afterReset = normalizeLine(harness.renderLatestWidget()[0] ?? "");
+			expect(afterReset).toContain("-- agent");
+			expect(afterReset).toContain("0m turn total");
+			expect(afterReset).toContain("0m session");
+		} finally {
+			await harness.emit("session_shutdown", {}, ctx);
+			Date.now = originalDateNow;
+		}
+	});
+
 	test("re-renders with openai-params indicators inside the thinking parens", async () => {
 		const harness = createHarness();
 		const ctx = harness.createCtx("/tmp/status-project");

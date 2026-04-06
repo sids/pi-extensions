@@ -8,10 +8,10 @@ Shows a status widget below the input editor with session context (plus an optio
 - Current working directory
 - Current Git branch
 - Context usage percent plus used token count
-- Last loop time plus cumulative agent and session times (`<loop> loop · <agent> agent · <session> session`)
+- Current/last agent time plus cumulative turn total and session time (`<agent> agent · <turn total> turn total · <session> session`)
 - Current GitHub PR URL for the active branch (includes `(merged)` / `(closed)` when not open)
 
-Time values use a compact `d/h/m` format (`XdYhZm`, `YhZm`, or `Zm`) and are separated with a center dot (`·`). Session and agent timers are monotonic and carry forward across session/branch switches. The default footer widget is hidden while this extension is active.
+Time values use a compact `d/h/m` format (`XdYhZm`, `YhZm`, or `Zm`) and are separated with a center dot (`·`). Agent time reflects the current or last completed prompt run. Turn total accumulates time spent across turns in the current session. All timers reset when a new session starts. The default footer widget is hidden while this extension is active.
 
 ## Install
 
