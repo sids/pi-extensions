@@ -285,12 +285,6 @@ export function createCmuxStatusExtension(createTransport: (options: CreateCmuxT
 			await updateCmuxStatus(ctx);
 		});
 
-		pi.on("session_switch", async (_event, ctx) => {
-			rememberCtx(ctx);
-			resetRuntimeState();
-			await updateCmuxStatus(ctx);
-		});
-
 		pi.on("input", async (_event, ctx) => {
 			rememberCtx(ctx);
 			if (!hasError) {

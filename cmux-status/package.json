@@ -1,6 +1,6 @@
 {
   "name": "@siddr/pi-cmux-status",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "type": "module",
   "description": "cmux sidebar status extension for pi",
   "license": "MIT",

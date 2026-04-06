@@ -47,11 +47,6 @@ export default function openAIParams(pi: ExtensionAPI): void {
 		emitOpenAIParamsState(ctx);
 	});
 
-	pi.on("session_switch", async (_event, ctx) => {
-		refreshConfig(ctx);
-		emitOpenAIParamsState(ctx);
-	});
-
 	pi.registerCommand(OPENAI_PARAMS_COMMAND, {
 		description: "Open OpenAI fast mode and verbosity settings",
 		handler: async (_args, ctx) => {

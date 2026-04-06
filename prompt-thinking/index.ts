@@ -238,14 +238,6 @@ export default function (pi: ExtensionAPI) {
 		}
 	});
 
-	pi.on("session_switch", (_event, ctx) => {
-		clearPromptState();
-		refreshAvailableThinkingLevels((ctx.model as ThinkingModel | undefined) ?? null);
-		if (ctx.hasUI) {
-			installEditor(ctx);
-		}
-	});
-
 	pi.on("session_shutdown", () => {
 		if (activeOverride) {
 			pi.setThinkingLevel(activeOverride.previousLevel);

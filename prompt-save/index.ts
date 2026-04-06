@@ -146,15 +146,6 @@ export default function promptSave(pi: ExtensionAPI) {
 		installRawShortcutCompatibility(ctx);
 	});
 
-	pi.on("session_switch", async (_event, ctx) => {
-		refreshState(ctx);
-		installRawShortcutCompatibility(ctx);
-	});
-
-	pi.on("session_fork", async (_event, ctx) => {
-		refreshState(ctx);
-	});
-
 	pi.on("session_tree", async (_event, ctx) => {
 		refreshState(ctx);
 	});

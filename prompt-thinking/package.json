@@ -1,6 +1,6 @@
 {
   "name": "@siddr/pi-prompt-thinking",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "type": "module",
   "description": "Per-prompt thinking level override extension for pi",
   "license": "MIT",

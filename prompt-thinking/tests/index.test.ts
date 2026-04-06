@@ -142,12 +142,12 @@ describe("prompt-thinking extension", () => {
 		}
 	});
 
-	test("installs a custom editor on session switch", async () => {
+	test("installs a custom editor when session_start fires for resume", async () => {
 		const harness = createHarness("high");
 		const { ctx, getInstalledFactory, sessionFile } = createUiSessionContext();
 
 		try {
-			await harness.emit("session_switch", {}, ctx);
+			await harness.emit("session_start", { reason: "resume" }, ctx);
 			expect(typeof getInstalledFactory()).toBe("function");
 		} finally {
 			cleanupSession(sessionFile);
@@ -272,13 +272,13 @@ describe("prompt-thinking extension", () => {
 		expect(harness.setThinkingCalls).toEqual([]);
 	});
 
-	test("clears queued state on session switch", async () => {
+	test("clears queued state when session_start fires for resume", async () => {
 		const harness = createHarness("high");
 		await harness.emit("input", { text: "^low summarize", images: [], source: "interactive" }, {});
 
 		await harness.emit(
-			"session_switch",
-			{},
+			"session_start",
+			{ reason: "resume" },
 			{
 				hasUI: false,
 				model: { id: "claude-sonnet-4-5", reasoning: true },

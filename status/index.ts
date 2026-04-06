@@ -626,11 +626,6 @@ export default function (pi: ExtensionAPI) {
 		await applyEnabledState(ctx);
 	});
 
-	pi.on("session_switch", async (_event, ctx) => {
-		resetTimingState(Date.now(), true);
-		await applyEnabledState(ctx);
-	});
-
 	pi.on("model_select", async (_event, ctx) => {
 		if (!enabled) {
 			return;

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.5 - 2026-04-04
+
+- Updated session lifecycle handling for pi 0.65.0 by rebuilding editor state from `session_start`.
+
 ## 0.1.4 - 2026-03-28
 
 - Forwarded autocomplete request options to the base provider so `/` autocomplete no longer crashes on current pi builds.

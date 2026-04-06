@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.9 - 2026-04-04
+
+- Updated session lifecycle handling for pi 0.65.0 by restoring plan mode state from `session_start`.
+
 ## 0.1.8 - 2026-03-28
 
 - Removed the `request_user_input` question cap so plan mode can ask any number of questions.

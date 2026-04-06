@@ -151,13 +151,6 @@ export default function (pi: ExtensionAPI) {
 		}
 	});
 
-	pi.on("session_switch", (_event, ctx) => {
-		refreshSkillMap();
-		if (ctx.hasUI) {
-			installEditor(ctx);
-		}
-	});
-
 	pi.on("resources_discover", () => {
 		refreshSkillMap();
 	});

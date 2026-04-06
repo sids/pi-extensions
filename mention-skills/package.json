@@ -1,6 +1,6 @@
 {
   "name": "pi-mention-skills",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "type": "module",
   "description": "Skill mention autocomplete and expansion extension for pi",
   "license": "MIT",

@@ -80,15 +80,7 @@ export default function (pi: ExtensionAPI) {
 		stateManager.refresh(ctx);
 	});
 
-	pi.on("session_switch", async (_event, ctx) => {
-		stateManager.refresh(ctx);
-	});
-
 	pi.on("session_tree", async (_event, ctx) => {
-		stateManager.refresh(ctx);
-	});
-
-	pi.on("session_fork", async (_event, ctx) => {
 		stateManager.refresh(ctx);
 	});
 }

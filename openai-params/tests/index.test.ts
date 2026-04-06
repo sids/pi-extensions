@@ -112,13 +112,13 @@ afterEach(() => {
 });
 
 describe("openai-params extension", () => {
-	test("emits resolved config on session start and session switch", async () => {
+	test("emits resolved config when session_start fires for startup and resume", async () => {
 		const firstProject = createProjectConfig({ fast: true, verbosity: "medium" });
 		const secondProject = createProjectConfig({ fast: false, verbosity: "high" });
 		const harness = createHarness();
 
-		await harness.emit("session_start", {}, harness.createCtx(firstProject.cwd));
-		await harness.emit("session_switch", {}, harness.createCtx(secondProject.cwd));
+		await harness.emit("session_start", { reason: "startup" }, harness.createCtx(firstProject.cwd));
+		await harness.emit("session_start", { reason: "resume" }, harness.createCtx(secondProject.cwd));
 
 		expect(harness.emittedEvents).toEqual([
 			{
