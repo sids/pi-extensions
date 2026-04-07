@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import path from "node:path";
 import type { PlanModeState } from "./types";
 
@@ -13,6 +14,10 @@ export function createInactivePlanModeState(): PlanModeState {
 		version: PLAN_MODE_STATE_VERSION,
 		active: false,
 	};
+}
+
+export function createPlanModeActivationId(): string {
+	return `plan-${randomBytes(4).toString("hex")}`;
 }
 
 export function isPlanModeState(value: unknown): value is PlanModeState {

@@ -4,7 +4,7 @@ import path from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { resolveActivePlanFilePath } from "./plan-files";
 import type { PlanModeState } from "./types";
-import { createInactivePlanModeState, isPlanModeState } from "./utils";
+import { createInactivePlanModeState, createPlanModeActivationId, isPlanModeState } from "./utils";
 
 const require = createRequire(import.meta.url);
 
@@ -155,6 +155,7 @@ export function createPlanModeStateManager(pi: ExtensionAPI) {
 			originLeafId: options.originLeafId,
 			planFilePath: options.planFilePath,
 			lastPlanLeafId: state.lastPlanLeafId,
+			activationId: createPlanModeActivationId(),
 			promptPending: true,
 		});
 	};

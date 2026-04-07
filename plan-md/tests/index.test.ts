@@ -8,6 +8,7 @@ function createHarness(entries: any[]) {
 	const appendedEntries: Array<{ customType: string; data: any }> = [];
 	const sentMessages: any[] = [];
 	const tools: any[] = [];
+	const messageRenderers = new Map<string, any>();
 	let activeTools: string[] = [];
 
 	const pi = {
@@ -26,7 +27,9 @@ function createHarness(entries: any[]) {
 		setActiveTools(nextTools: string[]) {
 			activeTools = nextTools;
 		},
-		registerMessageRenderer() {},
+		registerMessageRenderer(customType: string, renderer: any) {
+			messageRenderers.set(customType, renderer);
+		},
 		registerTool(tool: any) {
 			tools.push(tool);
 		},
@@ -66,6 +69,7 @@ function createHarness(entries: any[]) {
 	return {
 		emit,
 		appendedEntries,
+		messageRenderers,
 		sentMessages,
 		tools,
 	};
@@ -148,6 +152,7 @@ describe("plan-md prompt injection", () => {
 				content: "Plan mode instructions",
 				display: true,
 				details: {
+					activationId: undefined,
 					instructionsPrompt: expect.any(String),
 				},
 			},
@@ -166,5 +171,70 @@ describe("plan-md prompt injection", () => {
 				.filter((entry) => entry.customType === "plan-md:state")
 				.map((entry) => entry.data.promptPending),
 		).toEqual([false, true, false]);
+	});
+
+	test("hides stale plan mode prompt messages when inactive or from another activation", async () => {
+		const entries = [
+			{
+				type: "custom",
+				customType: "plan-md:state",
+				data: {
+					version: 1,
+					active: true,
+					activationId: "plan-current",
+					planFilePath: "/tmp/session-1.plan.md",
+				},
+			},
+		];
+		const harness = createHarness(entries);
+		await harness.emit("session_start");
+
+		const renderer = harness.messageRenderers.get("plan-md:prompt");
+		expect(renderer).toBeDefined();
+
+		const theme = {
+			bg: (_name: string, text: string) => text,
+			fg: (_name: string, text: string) => text,
+			bold: (text: string) => text,
+		} as any;
+
+		expect(
+			renderer(
+				{
+					content: "Plan mode instructions",
+					details: {
+						activationId: "plan-old",
+						instructionsPrompt: "Plan prompt",
+					},
+				},
+				{ expanded: false },
+				theme,
+			),
+		).toBeUndefined();
+
+		entries.push({
+			type: "custom",
+			customType: "plan-md:state",
+			data: {
+				version: 1,
+				active: false,
+				planFilePath: "/tmp/session-1.plan.md",
+			},
+		});
+		await harness.emit("session_tree");
+
+		expect(
+			renderer(
+				{
+					content: "Plan mode instructions",
+					details: {
+						activationId: "plan-current",
+						instructionsPrompt: "Plan prompt",
+					},
+				},
+				{ expanded: false },
+				theme,
+			),
+		).toBeUndefined();
 	});
 });

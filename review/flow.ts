@@ -29,6 +29,7 @@ export const REVIEW_SUMMARY_ENTRY_TYPE = "review-mode:summary";
 export const REVIEW_PROMPT_ENTRY_TYPE = "review-mode:prompt";
 
 export type ReviewPromptDetails = {
+	runId?: string;
 	targetHint: string;
 	instructionsPrompt: string;
 };
@@ -285,6 +286,7 @@ export async function startReviewMode(
 		content: "Review instructions",
 		display: true,
 		details: {
+			runId,
 			targetHint,
 			instructionsPrompt: reviewInstructionsPrompt,
 		} satisfies ReviewPromptDetails,

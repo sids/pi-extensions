@@ -125,6 +125,7 @@ describe("/review inactive", () => {
 				content: "Review instructions",
 				display: true,
 				details: {
+					runId: expect.any(String),
 					targetHint: "current changes",
 					instructionsPrompt: "review instructions",
 				},

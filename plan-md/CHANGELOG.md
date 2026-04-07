@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.10 - 2026-04-07
+
+- Hide stale plan-mode instruction messages after exit and only show the current activation's prompt.
+
 ## 0.1.9 - 2026-04-04
 
 - Updated session lifecycle handling for pi 0.65.0 by restoring plan mode state from `session_start`.

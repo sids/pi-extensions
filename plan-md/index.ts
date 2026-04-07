@@ -31,6 +31,7 @@ interface PlanModeExitDetails {
 }
 
 interface PlanModePromptDetails {
+	activationId?: string;
 	instructionsPrompt: string;
 }
 
@@ -40,8 +41,20 @@ export default function (pi: ExtensionAPI) {
 	const stateManager = createPlanModeStateManager(pi);
 
 	pi.registerMessageRenderer(PLAN_MODE_PROMPT_ENTRY_TYPE, (message, { expanded }, theme) => {
-		const render = (text: string) => new Text(text, 1, 0, (segment) => theme.bg("customMessageBg", segment));
+		const state = stateManager.getState();
 		const details = message.details as PlanModePromptDetails | undefined;
+		if (!state.active) {
+			return undefined;
+		}
+		if (state.activationId) {
+			if (details?.activationId !== state.activationId) {
+				return undefined;
+			}
+		} else if (details?.activationId !== undefined) {
+			return undefined;
+		}
+
+		const render = (text: string) => new Text(text, 1, 0, (segment) => theme.bg("customMessageBg", segment));
 		const prompt = details?.instructionsPrompt ?? String(message.content ?? "");
 
 		if (!expanded) {
@@ -213,6 +226,7 @@ export default function (pi: ExtensionAPI) {
 			content: "Plan mode instructions",
 			display: true,
 			details: {
+				activationId: state.activationId,
 				instructionsPrompt: prompt,
 			},
 		});

@@ -4,6 +4,7 @@ export type PlanModeState = {
 	originLeafId?: string | null;
 	planFilePath?: string;
 	lastPlanLeafId?: string;
+	activationId?: string;
 	promptPending?: boolean;
 };
 

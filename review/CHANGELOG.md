@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.5 - 2026-04-07
+
+- Hide stale review instruction messages after exit and only show the current review run's prompt.
+
 ## 0.1.4 - 2026-04-04
 
 - Updated session lifecycle handling for pi 0.65.0 by restoring review mode state from `session_start`.

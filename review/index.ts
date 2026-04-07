@@ -20,13 +20,25 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	pi.registerMessageRenderer(REVIEW_PROMPT_ENTRY_TYPE, (message, { expanded }, theme) => {
+		const state = stateManager.getState();
+		const details = message.details as ReviewPromptDetails | undefined;
+		if (!state.active) {
+			return undefined;
+		}
+		if (state.runId) {
+			if (details?.runId !== state.runId) {
+				return undefined;
+			}
+		} else if (details?.runId !== undefined) {
+			return undefined;
+		}
+
 		const renderInMessageBox = (text: string) => {
 			const box = new Box(1, 0, (segment) => theme.bg("customMessageBg", segment));
 			box.addChild(new Text(text, 0, 0));
 			return box;
 		};
 
-		const details = message.details as ReviewPromptDetails | undefined;
 		if (!details) {
 			return renderInMessageBox(String(message.content ?? ""));
 		}
