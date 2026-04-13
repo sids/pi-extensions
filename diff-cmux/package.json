@@ -1,0 +1,37 @@
+{
+  "name": "@siddr/pi-diff-cmux",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "cmux browser diff review extension for pi",
+  "license": "MIT",
+  "keywords": ["pi-package"],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sids/pi-extensions.git",
+    "directory": "diff-cmux"
+  },
+  "bugs": {
+    "url": "https://github.com/sids/pi-extensions/issues"
+  },
+  "homepage": "https://github.com/sids/pi-extensions/tree/main/diff-cmux#readme",
+  "pi": {
+    "extensions": ["./index.ts"]
+  },
+  "peerDependencies": {
+    "@mariozechner/pi-coding-agent": "*"
+  },
+  "dependencies": {
+    "esbuild": "^0.28.0",
+    "react": "^19.2.4",
+    "react-diff-view": "^3.3.3",
+    "react-dom": "^19.2.4"
+  },
+  "scripts": {
+    "build": "node ./scripts/build-web.mjs",
+    "test": "bun test tests/*.test.ts"
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/",
+    "access": "public"
+  }
+}
