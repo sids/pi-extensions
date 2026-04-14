@@ -80,9 +80,12 @@ describe("plan-md prompt injection", () => {
 		const harness = createHarness([]);
 		const toolByName = new Map(harness.tools.map((tool) => [tool.name, tool]));
 
-		expect(toolByName.get("set_plan")?.promptSnippet).toBe(
-			"Overwrite the current plan file with the latest full plan text.",
-		);
+		const setPlanTool = toolByName.get("set_plan");
+		expect(setPlanTool?.description).toBe("Overwrite the plan file with the full latest plan text.");
+		expect(setPlanTool?.promptSnippet).toBe("Overwrite the current plan file with the latest full plan text.");
+		expect(setPlanTool?.promptGuidelines).toEqual([
+			"Use set_plan only to persist a concrete plan or revision, not for discussion-only replies.",
+		]);
 		expect(toolByName.get("request_user_input")?.promptSnippet).toBe(
 			"Ask the user one or more short questions and wait for answers.",
 		);

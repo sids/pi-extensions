@@ -60,14 +60,37 @@ describe("loadPlanModePrompt", () => {
 		expect(prompt).toBe("bundled prompt");
 	});
 
-	test("bundled prompt tells the model to put the goal at the top of the plan", async () => {
+	test("bundled prompt tells the model to use set_plan and put the goal at the top of the plan", async () => {
 		const paths = await createPromptPaths();
 		const prompt = await loadPlanModePrompt({
 			agentDirPath: paths.agentDirPath,
 			bundledPromptPath: fileURLToPath(new URL("../prompts/PLAN.prompt.md", import.meta.url)),
 		});
 
+		expect(prompt).toContain("Use set_plan to keep a single up-to-date plan in the plan file.");
 		expect(prompt).toContain("Include the goal at the top of the plan.");
+	});
+
+	test("bundled prompt tells the model to discuss before persisting a plan when asked", async () => {
+		const paths = await createPromptPaths();
+		const prompt = await loadPlanModePrompt({
+			agentDirPath: paths.agentDirPath,
+			bundledPromptPath: fileURLToPath(new URL("../prompts/PLAN.prompt.md", import.meta.url)),
+		});
+
+		expect(prompt).toContain("If the user asks a follow-up question or wants to discuss options, answer conversationally first.");
+		expect(prompt).toContain("If the user wants to discuss the approach before finalizing the plan, do that discussion first");
+	});
+
+	test("bundled prompt tells the model to summarize after saving the plan and not talk about exiting", async () => {
+		const paths = await createPromptPaths();
+		const prompt = await loadPlanModePrompt({
+			agentDirPath: paths.agentDirPath,
+			bundledPromptPath: fileURLToPath(new URL("../prompts/PLAN.prompt.md", import.meta.url)),
+		});
+
+		expect(prompt).toContain("After calling set_plan, briefly summarize the saved plan.");
+		expect(prompt).toContain("The user controls when plan mode ends via /plan-md.");
 	});
 
 	test("bundled prompt only mentions optional subagents", async () => {

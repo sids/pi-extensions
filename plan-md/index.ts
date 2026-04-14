@@ -101,9 +101,9 @@ export default function (pi: ExtensionAPI) {
 	pi.registerTool({
 		name: "set_plan",
 		label: "set_plan",
-		description:
-			"Overwrite the plan file with the full latest plan text. Call this whenever the plan changes so the plan file stays canonical.",
+		description: "Overwrite the plan file with the full latest plan text.",
 		promptSnippet: "Overwrite the current plan file with the latest full plan text.",
+		promptGuidelines: ["Use set_plan only to persist a concrete plan or revision, not for discussion-only replies."],
 		parameters: SetPlanSchema,
 		renderCall(args, theme) {
 			const preview = summarizeSnippet(String(args.plan ?? ""), 90);

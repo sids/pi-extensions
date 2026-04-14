@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.11 - 2026-04-13
+
+- Clarified when plan mode should discuss first, persist via `set_plan`, and summarize the saved plan.
+
 ## 0.1.10 - 2026-04-07
 
 - Hide stale plan-mode instruction messages after exit and only show the current activation's prompt.
