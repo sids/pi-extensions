@@ -183,25 +183,41 @@ export function buildDiffBar(additions: number, removals: number, width = 10): D
 export function getDiffStats(diff: string): DiffStats {
 	let additions = 0;
 	let removals = 0;
-	let hunks = 0;
+	let explicitHunks = 0;
+	let inferredHunks = 0;
+	let inChangeGroup = false;
 
 	for (const line of splitLines(diff)) {
 		if (line.startsWith("@@")) {
-			hunks += 1;
+			explicitHunks += 1;
+			inChangeGroup = false;
 			continue;
 		}
 		if (line.startsWith("+++") || line.startsWith("---")) {
+			inChangeGroup = false;
 			continue;
 		}
 		if (line.startsWith("+")) {
 			additions += 1;
+			if (!inChangeGroup) {
+				inferredHunks += 1;
+				inChangeGroup = true;
+			}
 			continue;
 		}
 		if (line.startsWith("-")) {
 			removals += 1;
+			if (!inChangeGroup) {
+				inferredHunks += 1;
+				inChangeGroup = true;
+			}
+			continue;
 		}
+
+		inChangeGroup = false;
 	}
 
+	const hunks = explicitHunks > 0 ? explicitHunks : inferredHunks;
 	const files = 1;
 	const format = "unified" as const;
 	const hunkLabel = hunks === 1 ? "1 hunk" : `${hunks} hunks`;

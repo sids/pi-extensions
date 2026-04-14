@@ -13,6 +13,12 @@ const theme = {
 	bold: (text: string) => text,
 } as any;
 
+const dimTheme = {
+	fg: (name: string, text: string) => (name === "dim" ? `<dim>${text}</dim>` : text),
+	bg: (_name: string, text: string) => text,
+	bold: (text: string) => text,
+} as any;
+
 function renderComponent(component: { render: (width: number) => string[] } | undefined): string {
 	if (!component) {
 		throw new Error("expected component to be defined");
@@ -101,8 +107,10 @@ describe("tool-display extension", () => {
 
 		const readTool = tools.find((tool) => tool.name === "read");
 		const writeTool = tools.find((tool) => tool.name === "write");
-		if (!readTool?.renderCall || !readTool.renderResult || !writeTool?.renderResult) {
-			throw new Error("expected read/write tool renderers to be registered");
+		const bashTool = tools.find((tool) => tool.name === "bash");
+		const editTool = tools.find((tool) => tool.name === "edit");
+		if (!readTool?.renderCall || !readTool.renderResult || !writeTool?.renderResult || !bashTool?.renderResult || !editTool?.renderCall || !editTool.renderResult) {
+			throw new Error("expected read/write/bash/edit tool renderers to be registered");
 		}
 
 		const tempRoot = await mkdtemp(join(tmpdir(), "pi-tool-display-render-"));
@@ -136,14 +144,76 @@ describe("tool-display extension", () => {
 				{ cwd: tempRoot },
 			);
 			const writeCollapsed = renderComponent(
-				writeTool.renderResult(writeResult, { expanded: false, isPartial: false }, theme),
+				writeTool.renderResult(writeResult, { expanded: false, isPartial: false }, dimTheme),
 			);
 
-			expect(writeCollapsed).toContain("line 1");
+			expect(writeCollapsed).toContain("<dim>line 1");
 			expect(writeCollapsed).toContain("line 10");
 			expect(writeCollapsed).not.toContain("line 11");
 			expect(writeCollapsed).toContain("ctrl+o");
 			expect(writeResult.details.toolDisplay.content).toBe(content);
+
+			const bashRunning = renderComponent(
+				bashTool.renderResult(
+					{ content: [{ type: "text", text: Array.from({ length: 12 }, (_, index) => `out ${index + 1}`).join("\n") }] },
+					{ expanded: false, isPartial: true },
+					dimTheme,
+				),
+			);
+			expect(bashRunning).toContain("running...");
+			expect(bashRunning).toContain("<dim>out 1");
+			expect(bashRunning).not.toContain("out 11");
+			expect(bashRunning).toContain("ctrl+o");
+
+			const bashFailed = renderComponent(
+				bashTool.renderResult(
+					{
+						isError: true,
+						content: [{ type: "text", text: Array.from({ length: 12 }, (_, index) => `err ${index + 1}`).join("\n") }],
+					},
+					{ expanded: false, isPartial: false },
+					theme,
+				),
+			);
+			expect(bashFailed).toContain("command failed");
+			expect(bashFailed).toContain("err 1");
+			expect(bashFailed).not.toContain("err 11");
+			expect(bashFailed).toContain("ctrl+o");
+
+			const editArgs = {
+				path: "edit-target.txt",
+				edits: [
+					{ oldText: "alpha", newText: "alpha updated" },
+					{ oldText: "beta", newText: "beta updated" },
+				],
+			};
+			const editResult = {
+				content: [{ type: "text", text: "Successfully replaced 2 block(s) in edit-target.txt." }],
+				details: {
+					diff: [
+						"@@ -1,2 +1,2 @@",
+						"-1 alpha",
+						"+1 alpha updated",
+						"-2 beta",
+						"+2 beta updated",
+					].join("\n"),
+					toolDisplay: { path: "edit-target.txt" },
+				},
+			};
+			const editCall = renderComponent(editTool.renderCall(editArgs, theme));
+			const editRendered = renderComponent(
+				editTool.renderResult(editResult, { expanded: false, isPartial: false }, theme),
+			);
+
+			expect(editCall).toContain("edit-target.txt");
+			expect(editCall).toContain("2 blocks");
+			expect(editRendered).toContain("diff");
+			expect(editRendered).not.toContain("unified");
+			expect(editRendered).toContain("▌");
+			expect(editRendered).toContain("│");
+			expect(editRendered).toContain("alpha updated");
+			expect(editRendered).toContain("beta updated");
+			expect(editResult.details.toolDisplay.path).toBe("edit-target.txt");
 		} finally {
 			await rm(tempRoot, { recursive: true, force: true });
 		}

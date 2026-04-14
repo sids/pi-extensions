@@ -9,10 +9,9 @@ import {
 	createWriteTool,
 	getLanguageFromPath,
 	highlightCode,
-	keyHint,
-	renderDiff,
 } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
+import { renderStyledDiff } from "./diff-renderer";
 import {
 	buildPreview,
 	countFindResults,
@@ -22,14 +21,18 @@ import {
 	countReadLines,
 	extractTextContent,
 	formatDisplayPath,
-	getDiffStats,
 	hasImageContent,
 	splitTrailingNoticeBlock,
 } from "./utils";
 
 type BuiltInTools = ReturnType<typeof createBuiltInTools>;
+type ToolDisplayDetails = {
+	path?: string;
+	content?: string;
+};
 
 const toolCache = new Map<string, BuiltInTools>();
+const toolDisplayDetailsKey = "toolDisplay";
 
 function createBuiltInTools(cwd: string) {
 	return {
@@ -52,8 +55,6 @@ function getBuiltInTools(cwd: string): BuiltInTools {
 	return tools;
 }
 
-const toolDisplayDetailsKey = "toolDisplay";
-
 function getTextComponent(text: string) {
 	return new Text(text, 0, 0);
 }
@@ -66,12 +67,16 @@ function formatLineCount(count: number): string {
 	return `${count} ${pluralize(count, "line")}`;
 }
 
-function formatRemainingLinesHint(remainingLines: number, theme: any): string {
-	return `${theme.fg("muted", `... (${remainingLines} more ${pluralize(remainingLines, "line")}, `)}${keyHint("expandTools", "to expand")}${theme.fg("muted", ")")}`;
+function formatEditorHint(description: string, theme: any): string {
+	return `${theme.fg("dim", "ctrl+o")}${theme.fg("muted", ` ${description}`)}`;
 }
 
-function formatExpandHint(): string {
-	return `(${keyHint("expandTools", "to expand")})`;
+function formatRemainingLinesHint(remainingLines: number, theme: any): string {
+	return `${theme.fg("muted", `... (${remainingLines} more ${pluralize(remainingLines, "line")}, `)}${formatEditorHint("to expand", theme)}${theme.fg("muted", ")")}`;
+}
+
+function formatExpandHint(theme: any): string {
+	return `(${formatEditorHint("to expand", theme)})`;
 }
 
 function formatWarning(notice: string | undefined, theme: any): string | undefined {
@@ -82,29 +87,16 @@ function joinSections(...parts: Array<string | undefined>): string {
 	return parts.filter((part) => part && part.length > 0).join("\n");
 }
 
-function renderBalanceBar(bar: ReturnType<typeof getDiffStats>["bar"], theme: any): string {
-	const segments: string[] = [];
-	if (bar.added > 0) {
-		segments.push(theme.fg("success", "█".repeat(bar.added)));
-	}
-	if (bar.removed > 0) {
-		segments.push(theme.fg("error", "█".repeat(bar.removed)));
-	}
-	if (bar.neutral > 0) {
-		segments.push(theme.fg("muted", "·".repeat(bar.neutral)));
-	}
-	return segments.join("");
-}
-
 function renderRawText(text: string, theme: any, isError: boolean) {
 	const output = text.length > 0 ? text : isError ? "Error" : "(no output)";
 	return getTextComponent(isError ? theme.fg("error", output) : output);
 }
 
-function withToolDisplayDetails<T extends { details?: unknown }>(
-	result: T,
-	toolDisplay: { path?: string; content?: string },
-): T {
+function renderDimmedText(text: string, theme: any): string {
+	return theme.fg("dim", text);
+}
+
+function withToolDisplayDetails<T extends { details?: unknown }>(result: T, toolDisplay: ToolDisplayDetails): T {
 	const existingDetails =
 		result.details && typeof result.details === "object" && !Array.isArray(result.details) ? result.details : {};
 
@@ -117,7 +109,7 @@ function withToolDisplayDetails<T extends { details?: unknown }>(
 	};
 }
 
-function getToolDisplayDetails(result: { details?: unknown }): { path?: string; content?: string } | undefined {
+function getToolDisplayDetails(result: { details?: unknown }): ToolDisplayDetails | undefined {
 	const details = result.details;
 	if (!details || typeof details !== "object" || Array.isArray(details)) {
 		return undefined;
@@ -128,7 +120,7 @@ function getToolDisplayDetails(result: { details?: unknown }): { path?: string; 
 		return undefined;
 	}
 
-	return toolDisplay as { path?: string; content?: string };
+	return toolDisplay as ToolDisplayDetails;
 }
 
 function isLikelyErrorText(text: string): boolean {
@@ -154,8 +146,55 @@ function isLikelyErrorText(text: string): boolean {
 	);
 }
 
+function isErrorResult(result: { isError?: boolean } | undefined, text: string): boolean {
+	return result?.isError === true || isLikelyErrorText(text);
+}
+
+function countEditBlocks(args: Record<string, unknown> | undefined): number {
+	const edits = args?.edits;
+	if (Array.isArray(edits)) {
+		return edits.length;
+	}
+
+	return typeof args?.oldText === "string" && typeof args?.newText === "string" ? 1 : 0;
+}
+
+function renderBashResult(
+	result: { isError?: boolean; details?: unknown; content?: Array<{ type: string; text?: string }> },
+	{ expanded, isPartial }: { expanded: boolean; isPartial: boolean },
+	theme: any,
+) {
+	const text = extractTextContent(result);
+	const isError = isErrorResult(result, text);
+
+	if (isError) {
+		const preview = buildPreview(text);
+		const body = expanded ? text : preview.previewText;
+		const output = body.length > 0 ? theme.fg("error", body) : undefined;
+		const hint = !expanded && preview.hasMore ? formatRemainingLinesHint(preview.remainingLines, theme) : undefined;
+		return getTextComponent(joinSections(theme.fg("error", "↳ command failed"), output, hint));
+	}
+
+	const { body, notice } = splitTrailingNoticeBlock(text);
+	const previewSource = body.length > 0 ? body : text;
+	const preview = buildPreview(previewSource);
+	const status = isPartial ? theme.fg("warning", "running...") : undefined;
+	const output = expanded ? previewSource : preview.previewText;
+	const display = output.length > 0
+		? renderDimmedText(output, theme)
+		: !isPartial ? theme.fg("muted", "↳ (no output)") : undefined;
+	const hint = !expanded && preview.hasMore ? formatRemainingLinesHint(preview.remainingLines, theme) : undefined;
+	return getTextComponent(joinSections(status, display, hint, formatWarning(notice, theme)));
+}
+
+function getEditPrepareArguments(tool: unknown): ((args: unknown) => unknown) | undefined {
+	const prepareArguments = (tool as { prepareArguments?: unknown })?.prepareArguments;
+	return typeof prepareArguments === "function" ? prepareArguments : undefined;
+}
+
 export default function (pi: ExtensionAPI) {
 	const referenceTools = getBuiltInTools(process.cwd());
+	const editPrepareArguments = getEditPrepareArguments(referenceTools.edit);
 
 	pi.registerTool({
 		name: "read",
@@ -180,7 +219,7 @@ export default function (pi: ExtensionAPI) {
 			}
 
 			const text = extractTextContent(result);
-			if (isLikelyErrorText(text)) {
+			if (isErrorResult(result, text)) {
 				return renderRawText(text, theme, true);
 			}
 
@@ -191,7 +230,7 @@ export default function (pi: ExtensionAPI) {
 			const { body, notice } = splitTrailingNoticeBlock(text);
 			if (!expanded) {
 				const lineCount = countReadLines(text);
-				const summary = `${theme.fg("muted", `↳ loaded ${formatLineCount(lineCount)}`)} ${formatExpandHint()}`;
+				const summary = `${theme.fg("muted", `↳ loaded ${formatLineCount(lineCount)}`)} ${formatExpandHint(theme)}`;
 				return getTextComponent(joinSections(summary, formatWarning(notice, theme)));
 			}
 
@@ -223,14 +262,14 @@ export default function (pi: ExtensionAPI) {
 			}
 
 			const text = extractTextContent(result);
-			if (isLikelyErrorText(text)) {
+			if (isErrorResult(result, text)) {
 				return renderRawText(text, theme, true);
 			}
 
 			const content = getToolDisplayDetails(result)?.content ?? "";
 			const preview = buildPreview(content);
 			const body = expanded ? content : preview.previewText;
-			const display = body.length > 0 ? body : theme.fg("muted", "(empty file)");
+			const display = body.length > 0 ? renderDimmedText(body, theme) : theme.fg("muted", "(empty file)");
 			const hint = !expanded && preview.hasMore ? formatRemainingLinesHint(preview.remainingLines, theme) : undefined;
 			return getTextComponent(joinSections(display, hint));
 		},
@@ -251,19 +290,8 @@ export default function (pi: ExtensionAPI) {
 			}
 			return getTextComponent(text);
 		},
-		renderResult(result, { expanded, isPartial }, theme) {
-			const text = extractTextContent(result);
-			if (isLikelyErrorText(text)) {
-				return renderRawText(text, theme, true);
-			}
-
-			const { body, notice } = splitTrailingNoticeBlock(text);
-			const preview = buildPreview(body.length > 0 ? body : text);
-			const display = expanded
-				? body.length > 0 || notice ? body || theme.fg("muted", "(no output)") : text || theme.fg("muted", "(no output)")
-				: preview.previewText || theme.fg("muted", isPartial ? "Running..." : "(no output)");
-			const hint = !expanded && preview.hasMore ? formatRemainingLinesHint(preview.remainingLines, theme) : undefined;
-			return getTextComponent(joinSections(display, hint, formatWarning(notice, theme)));
+		renderResult(result, options, theme) {
+			return renderBashResult(result, options, theme);
 		},
 	});
 
@@ -272,12 +300,16 @@ export default function (pi: ExtensionAPI) {
 		label: "edit",
 		description: referenceTools.edit.description,
 		parameters: referenceTools.edit.parameters,
+		...(editPrepareArguments ? { prepareArguments: editPrepareArguments } : {}),
 		async execute(toolCallId, params, signal, onUpdate, ctx) {
-			return getBuiltInTools(ctx.cwd).edit.execute(toolCallId, params, signal, onUpdate);
+			const result = await getBuiltInTools(ctx.cwd).edit.execute(toolCallId, params, signal, onUpdate);
+			return withToolDisplayDetails(result, { path: params.path });
 		},
 		renderCall(args, theme) {
 			const displayPath = formatDisplayPath(args.path ?? "");
-			const text = `${theme.fg("toolTitle", theme.bold("edit"))} ${theme.fg("accent", displayPath)}`;
+			const editCount = countEditBlocks(args as Record<string, unknown> | undefined);
+			const suffix = editCount > 0 ? ` ${theme.fg("muted", `(${editCount} ${pluralize(editCount, "block")})`)}` : "";
+			const text = `${theme.fg("toolTitle", theme.bold("edit"))} ${theme.fg("accent", displayPath)}${suffix}`;
 			return getTextComponent(text);
 		},
 		renderResult(result, { isPartial }, theme) {
@@ -286,7 +318,7 @@ export default function (pi: ExtensionAPI) {
 			}
 
 			const text = extractTextContent(result);
-			if (isLikelyErrorText(text)) {
+			if (isErrorResult(result, text)) {
 				return renderRawText(text, theme, true);
 			}
 
@@ -295,16 +327,8 @@ export default function (pi: ExtensionAPI) {
 				return getTextComponent(theme.fg("success", "Applied"));
 			}
 
-			const stats = getDiffStats(diff);
-			let summary = theme.fg("toolTitle", theme.bold("diff"));
-			summary += theme.fg("muted", " • ");
-			summary += theme.fg("success", `+${stats.additions}`);
-			summary += theme.fg("muted", " • ");
-			summary += theme.fg("error", `-${stats.removals}`);
-			summary += theme.fg("muted", ` • ${stats.hunks} ${pluralize(stats.hunks, "hunk")} • ${stats.files} file • ${stats.format}`);
-			summary += ` ${renderBalanceBar(stats.bar, theme)}`;
-
-			return getTextComponent(`${summary}\n${renderDiff(diff)}`);
+			const path = getToolDisplayDetails(result)?.path;
+			return renderStyledDiff(diff, path, theme);
 		},
 	});
 
@@ -330,7 +354,7 @@ export default function (pi: ExtensionAPI) {
 			}
 
 			const text = extractTextContent(result);
-			if (isLikelyErrorText(text)) {
+			if (isErrorResult(result, text)) {
 				return renderRawText(text, theme, true);
 			}
 
@@ -340,7 +364,7 @@ export default function (pi: ExtensionAPI) {
 			}
 
 			const count = countGrepMatches(text);
-			const summary = `${theme.fg("muted", `↳ ${count} ${pluralize(count, "match")}`)} ${formatExpandHint()}`;
+			const summary = `${theme.fg("muted", `↳ ${count} ${pluralize(count, "match")}`)} ${formatExpandHint(theme)}`;
 			return getTextComponent(joinSections(summary, formatWarning(notice, theme)));
 		},
 	});
@@ -367,7 +391,7 @@ export default function (pi: ExtensionAPI) {
 			}
 
 			const text = extractTextContent(result);
-			if (isLikelyErrorText(text)) {
+			if (isErrorResult(result, text)) {
 				return renderRawText(text, theme, true);
 			}
 
@@ -377,7 +401,7 @@ export default function (pi: ExtensionAPI) {
 			}
 
 			const count = countFindResults(text);
-			const summary = `${theme.fg("muted", `↳ ${count} ${pluralize(count, "file")}`)} ${formatExpandHint()}`;
+			const summary = `${theme.fg("muted", `↳ ${count} ${pluralize(count, "file")}`)} ${formatExpandHint(theme)}`;
 			return getTextComponent(joinSections(summary, formatWarning(notice, theme)));
 		},
 	});
@@ -403,7 +427,7 @@ export default function (pi: ExtensionAPI) {
 			}
 
 			const text = extractTextContent(result);
-			if (isLikelyErrorText(text)) {
+			if (isErrorResult(result, text)) {
 				return renderRawText(text, theme, true);
 			}
 
@@ -413,7 +437,7 @@ export default function (pi: ExtensionAPI) {
 			}
 
 			const count = countLsEntries(text);
-			const summary = `${theme.fg("muted", `↳ ${count} ${pluralize(count, "entry")}`)} ${formatExpandHint()}`;
+			const summary = `${theme.fg("muted", `↳ ${count} ${pluralize(count, "entry")}`)} ${formatExpandHint(theme)}`;
 			return getTextComponent(joinSections(summary, formatWarning(notice, theme)));
 		},
 	});

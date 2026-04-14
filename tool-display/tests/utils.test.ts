@@ -99,6 +99,26 @@ describe("tool-display utils", () => {
 		expect(stats.bar.added + stats.bar.removed + stats.bar.neutral).toBe(10);
 	});
 
+	test("infers hunks for numbered edit diffs without @@ headers", () => {
+		const diff = [
+			" 10 before",
+			"-11 old one",
+			"+11 new one",
+			" 12 between",
+			" 20 around",
+			"-21 old two",
+			"+21 new two",
+			" 22 after",
+		].join("\n");
+
+		const stats = getDiffStats(diff);
+
+		expect(stats.additions).toBe(2);
+		expect(stats.removals).toBe(2);
+		expect(stats.hunks).toBe(2);
+		expect(stats.summary).toBe("diff • +2 • -2 • 2 hunks • 1 file • unified");
+	});
+
 	test("formats relative, home, and ranged paths", () => {
 		const home = homedir();
 
