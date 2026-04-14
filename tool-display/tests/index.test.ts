@@ -26,31 +26,50 @@ function renderComponent(component: { render: (width: number) => string[] } | un
 	return component.render(200).join("\n");
 }
 
-describe("tool-display extension", () => {
-	test("registers overrides for the requested built-in tools", () => {
-		const tools: Array<{ name: string }> = [];
+async function loadTools(activeTools = ["read", "bash", "edit", "write"]) {
+	const tools: Array<any> = [];
+	const setActiveToolsCalls: string[][] = [];
+	let sessionStartHandler: ((event: any, ctx: any) => unknown) | undefined;
 
-		toolDisplayExtension(
-			{
-				registerTool(tool: { name: string }) {
-					tools.push(tool);
-				},
-			} as any,
-		);
+	toolDisplayExtension(
+		{
+			on(event: string, handler: (event: any, ctx: any) => unknown) {
+				if (event === "session_start") {
+					sessionStartHandler = handler;
+				}
+			},
+			registerTool(tool: any) {
+				tools.push(tool);
+			},
+			getActiveTools() {
+				return [...activeTools];
+			},
+			setActiveTools(nextTools: string[]) {
+				setActiveToolsCalls.push([...nextTools]);
+			},
+		} as any,
+	);
+
+	if (!sessionStartHandler) {
+		throw new Error("expected session_start handler to be registered");
+	}
+
+	await sessionStartHandler({ reason: "startup" }, {});
+
+	return { tools, setActiveToolsCalls };
+}
+
+describe("tool-display extension", () => {
+	test("registers overrides on session start and restores the original active tools", async () => {
+		const activeTools = ["read", "bash", "edit", "write"];
+		const { tools, setActiveToolsCalls } = await loadTools(activeTools);
 
 		expect(tools.map((tool) => tool.name)).toEqual(["read", "write", "bash", "edit", "grep", "find", "ls"]);
+		expect(setActiveToolsCalls).toEqual([activeTools]);
 	});
 
 	test("delegates execution using the active ctx.cwd", async () => {
-		const tools: Array<{ name: string; execute: (...args: any[]) => Promise<any> }> = [];
-
-		toolDisplayExtension(
-			{
-				registerTool(tool: { name: string; execute: (...args: any[]) => Promise<any> }) {
-					tools.push(tool);
-				},
-			} as any,
-		);
+		const { tools } = await loadTools();
 
 		const readTool = tools.find((tool) => tool.name === "read");
 		if (!readTool) {
@@ -90,20 +109,7 @@ describe("tool-display extension", () => {
 	});
 
 	test("renders collapsed previews without the unsupported render context", async () => {
-		const tools: Array<{
-			name: string;
-			execute: (...args: any[]) => Promise<any>;
-			renderCall?: (...args: any[]) => { render: (width: number) => string[] };
-			renderResult?: (...args: any[]) => { render: (width: number) => string[] };
-		}> = [];
-
-		toolDisplayExtension(
-			{
-				registerTool(tool: any) {
-					tools.push(tool);
-				},
-			} as any,
-		);
+		const { tools } = await loadTools();
 
 		const readTool = tools.find((tool) => tool.name === "read");
 		const writeTool = tools.find((tool) => tool.name === "write");

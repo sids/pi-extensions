@@ -31,3 +31,4 @@ Then run `/reload` in pi.
 
 - This extension only changes tool display. It does not change tool behavior.
 - The overridden tools still delegate execution to pi's built-in implementations.
+- It restores the existing active tool list after registering overrides, so it does not turn on extra built-in tools like `grep`, `find`, or `ls` by itself.

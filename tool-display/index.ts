@@ -192,7 +192,7 @@ function getEditPrepareArguments(tool: unknown): ((args: unknown) => unknown) | 
 	return typeof prepareArguments === "function" ? prepareArguments : undefined;
 }
 
-export default function (pi: ExtensionAPI) {
+function registerOverrides(pi: ExtensionAPI) {
 	const referenceTools = getBuiltInTools(process.cwd());
 	const editPrepareArguments = getEditPrepareArguments(referenceTools.edit);
 
@@ -440,5 +440,20 @@ export default function (pi: ExtensionAPI) {
 			const summary = `${theme.fg("muted", `↳ ${count} ${pluralize(count, "entry")}`)} ${formatExpandHint(theme)}`;
 			return getTextComponent(joinSections(summary, formatWarning(notice, theme)));
 		},
+	});
+}
+
+export default function (pi: ExtensionAPI) {
+	let hasRegisteredOverrides = false;
+
+	pi.on("session_start", () => {
+		if (hasRegisteredOverrides) {
+			return;
+		}
+
+		const activeTools = pi.getActiveTools();
+		registerOverrides(pi);
+		pi.setActiveTools(activeTools);
+		hasRegisteredOverrides = true;
 	});
 }
