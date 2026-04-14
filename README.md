@@ -18,6 +18,7 @@ A collection of pi extensions. Each extension lives in its own directory with it
 - [`fetch-url/`](fetch-url/) – URL fetch tool with main-content extraction and markdown/html/raw output
 - [`web-search/`](web-search/) – Brave Search `web_search` tool for single or multi-query result sets
 - [`status/`](status/) – Live status widget for model, repo, timing, and PR context
+- [`tool-display/`](tool-display/) – Compact built-in tool rendering overrides for `read`, `write`, `edit`, `bash`, `grep`, `find`, and `ls`
 
 ## Documentation
 

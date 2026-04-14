@@ -1,0 +1,28 @@
+{
+  "name": "@siddr/pi-tool-display",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Compact built-in tool rendering overrides for pi",
+  "license": "MIT",
+  "keywords": ["pi-package"],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sids/pi-extensions.git",
+    "directory": "tool-display"
+  },
+  "bugs": {
+    "url": "https://github.com/sids/pi-extensions/issues"
+  },
+  "homepage": "https://github.com/sids/pi-extensions/tree/main/tool-display#readme",
+  "pi": {
+    "extensions": ["./index.ts"]
+  },
+  "peerDependencies": {
+    "@mariozechner/pi-coding-agent": "*",
+    "@mariozechner/pi-tui": "*"
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/",
+    "access": "public"
+  }
+}
