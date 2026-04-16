@@ -53,7 +53,7 @@ async function selectExtractionModel(
 		}
 
 		const auth = await modelRegistry.getApiKeyAndHeaders(model);
-		if (auth.ok) {
+		if (auth.ok && auth.apiKey) {
 			return model;
 		}
 	}
@@ -151,14 +151,19 @@ export default function (pi: ExtensionAPI) {
 
 		const extractionModel = await selectExtractionModel(ctx.model, ctx.modelRegistry, modelPreferences);
 
-		const extractionResult = await ctx.ui.custom<ExtractionResult | null>((tui, theme, _kb, done) => {
+		// Sentinel value to distinguish user cancellation from other results
+		const CANCELLED = Symbol("cancelled");
+
+		type ExtractionOutcome = typeof CANCELLED | ExtractionResult | Error;
+
+		const extractionResult = await ctx.ui.custom<ExtractionOutcome>((tui, theme, _kb, done) => {
 			const loader = new BorderedLoader(tui, theme, `Extracting questions using ${extractionModel.id}...`);
-			loader.onAbort = () => done(null);
+			loader.onAbort = () => done(CANCELLED);
 
 			const doExtract = async () => {
 				const auth = await ctx.modelRegistry.getApiKeyAndHeaders(extractionModel);
 				if (!auth.ok) {
-					throw new Error(auth.error);
+					return new Error(auth.error);
 				}
 				const userMessage: UserMessage = {
 					role: "user",
@@ -169,11 +174,15 @@ export default function (pi: ExtensionAPI) {
 				const response = await complete(
 					extractionModel,
 					{ systemPrompt, messages: [userMessage] },
-					{ apiKey: auth.apiKey, headers: auth.headers, signal: loader.signal },
+					{ apiKey: auth.apiKey, headers: auth.headers, signal: loader.signal, thinkingEnabled: false },
 				);
 
 				if (response.stopReason === "aborted") {
-					return null;
+					return CANCELLED;
+				}
+
+				if (response.stopReason === "error") {
+					return new Error(`Model returned an error: ${response.errorMessage ?? "unknown error"}`);
 				}
 
 				const responseText = response.content
@@ -181,18 +190,30 @@ export default function (pi: ExtensionAPI) {
 					.map((c) => c.text)
 					.join("\n");
 
-				return parseExtractionResult(responseText);
+				const parsed = parseExtractionResult(responseText);
+				if (parsed === null) {
+					return new Error(`Could not parse questions from model response. Raw response:\n${responseText.slice(0, 500)}`);
+				}
+				return parsed;
 			};
 
 			doExtract()
 				.then(done)
-				.catch(() => done(null));
+				.catch((err) => {
+					console.error("[pi-answer] Extraction failed:", err?.message || err);
+					done(err instanceof Error ? err : new Error(String(err)));
+				});
 
 			return loader;
 		});
 
-		if (extractionResult === null) {
+		if (extractionResult === CANCELLED) {
 			ctx.ui.notify("Cancelled", "info");
+			return;
+		}
+
+		if (extractionResult instanceof Error) {
+			ctx.ui.notify(`Extraction failed: ${extractionResult.message}`, "error");
 			return;
 		}
 
