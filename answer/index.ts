@@ -10,7 +10,7 @@
  * 4. Submits the compiled answers when done
  */
 
-import { complete, type Model, type Api, type UserMessage } from "@mariozechner/pi-ai";
+import { complete, type Model, type Api, type AssistantMessage, type UserMessage } from "@mariozechner/pi-ai";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { BorderedLoader } from "@mariozechner/pi-coding-agent";
 import fs from "node:fs/promises";
@@ -36,9 +36,51 @@ import {
 } from "./utils";
 
 /**
- * Prefer configured extraction models, otherwise fallback to the current model.
+ * Sentinel returned by extraction helpers when the user cancelled the request.
+ * Exported so consumers (and tests) can distinguish cancellation from errors
+ * without overloading `null`.
  */
-async function selectExtractionModel(
+export const EXTRACTION_CANCELLED = Symbol("cancelled");
+export type ExtractionOutcome = typeof EXTRACTION_CANCELLED | ExtractionResult | Error;
+
+/**
+ * Classify a `complete()` response into one of three extraction outcomes:
+ * cancellation (sentinel), a successfully parsed result, or an Error.
+ *
+ * Pulled out of the TUI handler so the failure modes (aborted, provider error,
+ * empty/unparseable text from a thinking-only response) can be tested without
+ * spinning up a TUI or a real model.
+ */
+export function classifyExtractionResponse(response: AssistantMessage): ExtractionOutcome {
+	if (response.stopReason === "aborted") {
+		return EXTRACTION_CANCELLED;
+	}
+
+	if (response.stopReason === "error") {
+		return new Error(`Model returned an error: ${response.errorMessage ?? "unknown error"}`);
+	}
+
+	const responseText = response.content
+		.filter((c): c is { type: "text"; text: string } => c.type === "text")
+		.map((c) => c.text)
+		.join("\n");
+
+	const parsed = parseExtractionResult(responseText);
+	if (parsed === null) {
+		return new Error(`Could not parse questions from model response. Raw response:\n${responseText.slice(0, 500)}`);
+	}
+	return parsed;
+}
+
+/**
+ * Prefer configured extraction models, otherwise fallback to the current model.
+ *
+ * Skips entries whose provider returns `{ ok: true }` without an `apiKey` (e.g.
+ * keyless providers like `openai-codex`), because passing `apiKey: undefined`
+ * to `complete()` silently falls back to environment variables and produces
+ * confusing failure modes.
+ */
+export async function selectExtractionModel(
 	currentModel: Model<Api>,
 	modelRegistry: {
 		find: (provider: string, modelId: string) => Model<Api> | undefined;
@@ -151,16 +193,11 @@ export default function (pi: ExtensionAPI) {
 
 		const extractionModel = await selectExtractionModel(ctx.model, ctx.modelRegistry, modelPreferences);
 
-		// Sentinel value to distinguish user cancellation from other results
-		const CANCELLED = Symbol("cancelled");
-
-		type ExtractionOutcome = typeof CANCELLED | ExtractionResult | Error;
-
 		const extractionResult = await ctx.ui.custom<ExtractionOutcome>((tui, theme, _kb, done) => {
 			const loader = new BorderedLoader(tui, theme, `Extracting questions using ${extractionModel.id}...`);
-			loader.onAbort = () => done(CANCELLED);
+			loader.onAbort = () => done(EXTRACTION_CANCELLED);
 
-			const doExtract = async () => {
+			const doExtract = async (): Promise<ExtractionOutcome> => {
 				const auth = await ctx.modelRegistry.getApiKeyAndHeaders(extractionModel);
 				if (!auth.ok) {
 					throw new Error(auth.error);
@@ -177,24 +214,7 @@ export default function (pi: ExtensionAPI) {
 					{ apiKey: auth.apiKey, headers: auth.headers, signal: loader.signal, thinkingEnabled: false },
 				);
 
-				if (response.stopReason === "aborted") {
-					return CANCELLED;
-				}
-
-				if (response.stopReason === "error") {
-					return new Error(`Model returned an error: ${response.errorMessage ?? "unknown error"}`);
-				}
-
-				const responseText = response.content
-					.filter((c): c is { type: "text"; text: string } => c.type === "text")
-					.map((c) => c.text)
-					.join("\n");
-
-				const parsed = parseExtractionResult(responseText);
-				if (parsed === null) {
-					return new Error(`Could not parse questions from model response. Raw response:\n${responseText.slice(0, 500)}`);
-				}
-				return parsed;
+				return classifyExtractionResponse(response);
 			};
 
 			doExtract()
@@ -207,7 +227,7 @@ export default function (pi: ExtensionAPI) {
 			return loader;
 		});
 
-		if (extractionResult === CANCELLED) {
+		if (extractionResult === EXTRACTION_CANCELLED) {
 			ctx.ui.notify("Cancelled", "info");
 			return;
 		}
