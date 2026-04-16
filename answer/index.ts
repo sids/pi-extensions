@@ -163,7 +163,7 @@ export default function (pi: ExtensionAPI) {
 			const doExtract = async () => {
 				const auth = await ctx.modelRegistry.getApiKeyAndHeaders(extractionModel);
 				if (!auth.ok) {
-					return new Error(auth.error);
+					throw new Error(auth.error);
 				}
 				const userMessage: UserMessage = {
 					role: "user",
