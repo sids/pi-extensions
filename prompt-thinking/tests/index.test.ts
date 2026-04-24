@@ -1,19 +1,16 @@
 import { describe, expect, test } from "bun:test";
-import type { AutocompleteProvider, EditorTheme, TUI } from "@mariozechner/pi-tui";
-import { clearRememberedSessionEditorComponentFactory } from "@siddr/pi-shared-qna/session-editor-component";
-import promptThinkingExtension, { PromptThinkingEditor } from "../index";
+import type { AutocompleteProvider } from "@mariozechner/pi-tui";
+import promptThinkingExtension from "../index";
 import type { ThinkingLevel } from "../utils";
 
 type Handler = (event: any, ctx: any) => any;
 
-let sessionCounter = 0;
-
 function createHarness(initialThinkingLevel: ThinkingLevel = "high") {
 	const handlers = new Map<string, Handler[]>();
+	const providerFactories: Array<(current: AutocompleteProvider) => AutocompleteProvider> = [];
 	let currentThinkingLevel = initialThinkingLevel;
 	let getThinkingCalls = 0;
 	const setThinkingCalls: ThinkingLevel[] = [];
-	const editorFactories: Array<(tui: TUI, theme: EditorTheme, keybindings: any) => PromptThinkingEditor> = [];
 
 	const pi = {
 		on(name: string, handler: Handler) {
@@ -42,26 +39,39 @@ function createHarness(initialThinkingLevel: ThinkingLevel = "high") {
 		return result;
 	}
 
-	function setEditorFactory(factory: (tui: TUI, theme: EditorTheme, keybindings: any) => PromptThinkingEditor) {
-		editorFactories.push(factory);
+	function createSessionContext(model: { id: string; reasoning: boolean } = { id: "claude-sonnet-4-5", reasoning: true }) {
+		return {
+			hasUI: true,
+			model,
+			ui: {
+				addAutocompleteProvider(factory: (current: AutocompleteProvider) => AutocompleteProvider) {
+					providerFactories.push(factory);
+				},
+			},
+		};
 	}
 
 	return {
 		emit,
+		providerFactories,
+		createSessionContext,
 		getThinkingLevel: () => currentThinkingLevel,
 		getThinkingCallCount: () => getThinkingCalls,
 		setThinkingLevelForTest: (level: ThinkingLevel) => {
 			currentThinkingLevel = level;
 		},
 		setThinkingCalls,
-		editorFactories,
-		setEditorFactory,
 	};
 }
 
-function createEditorBaseProvider(): AutocompleteProvider {
+function createBaseProvider(): AutocompleteProvider {
 	return {
-		getSuggestions() {
+		getSuggestions(lines, cursorLine, cursorCol) {
+			const line = lines[cursorLine] || "";
+			const before = line.slice(0, cursorCol);
+			if (before.startsWith("/")) {
+				return { items: [{ value: "/help", label: "/help" }], prefix: before };
+			}
 			return null;
 		},
 		applyCompletion(lines, cursorLine, cursorCol, item, prefix) {
@@ -75,129 +85,54 @@ function createEditorBaseProvider(): AutocompleteProvider {
 	};
 }
 
-function createEditorTestDoubles() {
-	const tui = {
-		requestRender() {},
-	} as unknown as TUI;
-
-	const theme = {
-		borderColor: (text: string) => text,
-		selectList: {
-			selectedPrefix: (text: string) => text,
-			selectedText: (text: string) => text,
-			description: (text: string) => text,
-			scrollInfo: (text: string) => text,
-			noMatch: (text: string) => text,
-		},
-	} as unknown as EditorTheme;
-
-	const keybindings = {
-		matches() {
-			return false;
-		},
-	};
-
-	return { tui, theme, keybindings };
-}
-
-function createUiSessionContext(model: { id: string; reasoning: boolean } = { id: "claude-sonnet-4-5", reasoning: true }) {
-	const sessionFile = `/tmp/prompt-thinking-test-${++sessionCounter}.json`;
-	let installedFactory: ((tui: TUI, theme: EditorTheme, keybindings: any) => PromptThinkingEditor) | undefined;
-	return {
-		sessionFile,
-		getInstalledFactory: () => installedFactory,
-		ctx: {
-			hasUI: true,
-			sessionManager: {
-				getSessionFile: () => sessionFile,
-			},
-			model,
-			ui: {
-				setEditorComponent: (factory: typeof installedFactory) => {
-					installedFactory = factory;
-				},
-			},
-		},
-	};
-}
-
-function cleanupSession(sessionFile: string) {
-	clearRememberedSessionEditorComponentFactory({
-		sessionManager: {
-			getSessionFile: () => sessionFile,
-		},
-	});
+function composeProviders(factories: Array<(current: AutocompleteProvider) => AutocompleteProvider>): AutocompleteProvider {
+	let current = createBaseProvider();
+	for (const factory of factories) {
+		current = factory(current);
+	}
+	return current;
 }
 
 describe("prompt-thinking extension", () => {
-	test("installs a custom editor on session start", async () => {
+	test("registers an autocomplete provider on session start", async () => {
 		const harness = createHarness("high");
-		const { ctx, getInstalledFactory, sessionFile } = createUiSessionContext();
 
-		try {
-			await harness.emit("session_start", {}, ctx);
-			expect(typeof getInstalledFactory()).toBe("function");
-		} finally {
-			cleanupSession(sessionFile);
-		}
+		await harness.emit("session_start", {}, harness.createSessionContext());
+		expect(harness.providerFactories).toHaveLength(1);
 	});
 
-	test("installs a custom editor when session_start fires for resume", async () => {
+	test("registers an autocomplete provider when session_start fires for resume", async () => {
 		const harness = createHarness("high");
-		const { ctx, getInstalledFactory, sessionFile } = createUiSessionContext();
 
-		try {
-			await harness.emit("session_start", { reason: "resume" }, ctx);
-			expect(typeof getInstalledFactory()).toBe("function");
-		} finally {
-			cleanupSession(sessionFile);
-		}
+		await harness.emit("session_start", { reason: "resume" }, harness.createSessionContext());
+		expect(harness.providerFactories).toHaveLength(1);
 	});
 
-	test("reads the current thinking level when the dropdown opens", async () => {
+	test("reads the current thinking level when suggestions are requested", async () => {
 		const harness = createHarness("high");
-		const { ctx, getInstalledFactory, sessionFile } = createUiSessionContext();
+		await harness.emit("session_start", {}, harness.createSessionContext());
+		expect(harness.getThinkingCallCount()).toBe(0);
 
-		try {
-			await harness.emit("session_start", {}, ctx);
-			expect(harness.getThinkingCallCount()).toBe(0);
+		harness.setThinkingLevelForTest("low");
+		const provider = composeProviders(harness.providerFactories);
+		const result = provider.getSuggestions(["^"], 0, 1);
 
-			const { tui, theme, keybindings } = createEditorTestDoubles();
-			const editor = getInstalledFactory()!(tui, theme, keybindings);
-			editor.setAutocompleteProvider(createEditorBaseProvider());
-			harness.setThinkingLevelForTest("low");
-			editor.handleInput("^");
-
-			const selected = (editor as any).autocompleteList?.getSelectedItem();
-			expect(selected?.value).toBe("low");
-			expect(harness.getThinkingCallCount()).toBeGreaterThan(0);
-		} finally {
-			cleanupSession(sessionFile);
-		}
+		expect(result?.items[0]?.value).toBe("low");
+		expect(harness.getThinkingCallCount()).toBeGreaterThan(0);
 	});
 
-	test("refreshes available levels after model changes without reading the current level until dropdown open", async () => {
+	test("refreshes available levels after model changes without reading the current level until suggestions", async () => {
 		const harness = createHarness("off");
-		const { ctx, getInstalledFactory, sessionFile } = createUiSessionContext({ id: "gpt-4.1", reasoning: false });
+		await harness.emit("session_start", {}, harness.createSessionContext({ id: "gpt-4.1", reasoning: false }));
 
-		try {
-			await harness.emit("session_start", {}, ctx);
+		harness.setThinkingLevelForTest("xhigh");
+		await harness.emit("model_select", { model: { id: "gpt-5.3-codex", reasoning: true } }, {});
+		expect(harness.getThinkingCallCount()).toBe(0);
 
-			harness.setThinkingLevelForTest("xhigh");
-			await harness.emit("model_select", { model: { id: "gpt-5.3-codex", reasoning: true } }, {});
-			expect(harness.getThinkingCallCount()).toBe(0);
-
-			const { tui, theme, keybindings } = createEditorTestDoubles();
-			const editor = getInstalledFactory()!(tui, theme, keybindings);
-			editor.setAutocompleteProvider(createEditorBaseProvider());
-			editor.handleInput("^");
-
-			const selected = (editor as any).autocompleteList?.getSelectedItem();
-			expect(selected?.value).toBe("xhigh");
-			expect(harness.getThinkingCallCount()).toBeGreaterThan(0);
-		} finally {
-			cleanupSession(sessionFile);
-		}
+		const provider = composeProviders(harness.providerFactories);
+		const result = provider.getSuggestions(["^"], 0, 1);
+		expect(result?.items[0]?.value).toBe("xhigh");
+		expect(harness.getThinkingCallCount()).toBeGreaterThan(0);
 	});
 
 	test("transforms prompts with ^thinking tokens and restores the previous level after the prompt", async () => {
@@ -283,7 +218,7 @@ describe("prompt-thinking extension", () => {
 				hasUI: false,
 				model: { id: "claude-sonnet-4-5", reasoning: true },
 				ui: {
-					setEditorComponent: () => {},
+					addAutocompleteProvider: () => {},
 				},
 			},
 		);

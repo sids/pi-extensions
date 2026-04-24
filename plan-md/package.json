@@ -1,10 +1,12 @@
 {
   "name": "pi-plan-md",
-  "version": "0.1.11",
+  "version": "0.1.12",
   "type": "module",
   "description": "Branch-based planning workflow extension for pi",
   "license": "MIT",
-  "keywords": ["pi-package"],
+  "keywords": [
+    "pi-package"
+  ],
   "repository": {
     "type": "git",
     "url": "git+https://github.com/sids/pi-extensions.git",
@@ -15,13 +17,15 @@
   },
   "homepage": "https://github.com/sids/pi-extensions/tree/main/plan-md#readme",
   "pi": {
-    "extensions": ["./index.ts"]
+    "extensions": [
+      "./index.ts"
+    ]
   },
   "peerDependencies": {
     "@mariozechner/pi-agent-core": "*",
-    "@mariozechner/pi-coding-agent": "*",
+    "@mariozechner/pi-coding-agent": ">=0.65.0",
     "@mariozechner/pi-tui": "*",
-    "@sinclair/typebox": "*"
+    "typebox": "*"
   },
   "dependencies": {
     "@siddr/pi-shared-qna": "^0.1.0"

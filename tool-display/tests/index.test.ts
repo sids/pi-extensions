@@ -54,7 +54,7 @@ async function loadTools(activeTools = ["read", "bash", "edit", "write"]) {
 		throw new Error("expected session_start handler to be registered");
 	}
 
-	await sessionStartHandler({ reason: "startup" }, {});
+	await sessionStartHandler({ reason: "startup" }, { cwd: process.cwd() });
 
 	return { tools, setActiveToolsCalls };
 }

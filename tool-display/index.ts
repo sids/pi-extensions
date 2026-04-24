@@ -192,8 +192,8 @@ function getEditPrepareArguments(tool: unknown): ((args: unknown) => unknown) | 
 	return typeof prepareArguments === "function" ? prepareArguments : undefined;
 }
 
-function registerOverrides(pi: ExtensionAPI) {
-	const referenceTools = getBuiltInTools(process.cwd());
+function registerOverrides(pi: ExtensionAPI, cwd: string) {
+	const referenceTools = getBuiltInTools(cwd);
 	const editPrepareArguments = getEditPrepareArguments(referenceTools.edit);
 
 	pi.registerTool({
@@ -446,13 +446,13 @@ function registerOverrides(pi: ExtensionAPI) {
 export default function (pi: ExtensionAPI) {
 	let hasRegisteredOverrides = false;
 
-	pi.on("session_start", () => {
+	pi.on("session_start", (_event, ctx) => {
 		if (hasRegisteredOverrides) {
 			return;
 		}
 
 		const activeTools = pi.getActiveTools();
-		registerOverrides(pi);
+		registerOverrides(pi, ctx.cwd);
 		pi.setActiveTools(activeTools);
 		hasRegisteredOverrides = true;
 	});

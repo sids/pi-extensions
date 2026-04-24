@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.6 - 2026-04-23
+
+- Bound the published Pi peer dependency to post-0.65 releases that match the current session lifecycle hooks.
+
 ## 0.1.5 - 2026-04-06
 
 - Renamed the prompt-run timer to `agent`, renamed cumulative turn timing to `turn total`, and reset timers when a new session starts.

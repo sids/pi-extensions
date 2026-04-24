@@ -195,7 +195,15 @@ export function createThinkingAutocompleteProvider(
 					return item.label.toLowerCase().startsWith(queryLower);
 				});
 				if (items.length > 0) {
-					return { items, prefix: thinkingToken.token };
+					const orderedItems =
+						queryLower === ""
+							? [...items].sort((left, right) => {
+								const leftCurrent = left.description === "current level" ? 0 : 1;
+								const rightCurrent = right.description === "current level" ? 0 : 1;
+								return leftCurrent - rightCurrent;
+							})
+							: items;
+					return { items: orderedItems, prefix: thinkingToken.token };
 				}
 			}
 			return base.getSuggestions(lines, cursorLine, cursorCol, options);

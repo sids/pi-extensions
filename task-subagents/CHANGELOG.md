@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.5 - 2026-04-23
+
+- Migrated tool schemas from `@sinclair/typebox` to `typebox` for Pi 0.69 compatibility.
+- Replaced literal-union helper schemas with `StringEnum(...)` and bound the published Pi peer dependency to post-0.65 releases.
+
 ## 0.1.4 - 2026-03-30
 
 - Added a 30s auto-launch countdown directly on the per-task subagent review screen, with visible time remaining and automatic launch when the timer expires.

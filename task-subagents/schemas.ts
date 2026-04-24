@@ -1,21 +1,16 @@
-import { Type } from "@sinclair/typebox";
+import { StringEnum } from "@mariozechner/pi-ai";
+import { Type } from "typebox";
 import { SUBAGENT_CONTEXT_MODES, SUBAGENT_TOOL_THINKING_LEVELS } from "./types";
 
-const SubagentToolThinkingLevelSchema = Type.Union(
-	SUBAGENT_TOOL_THINKING_LEVELS.map((level) => Type.Literal(level)),
-	{
-		description:
-			"Optional default thinking level for launched subagents. Must be one of off, minimal, low, medium, high, or xhigh. Defaults to the current thinking level.",
-	},
-);
+const SubagentToolThinkingLevelSchema = StringEnum(SUBAGENT_TOOL_THINKING_LEVELS, {
+	description:
+		"Optional default thinking level for launched subagents. Must be one of off, minimal, low, medium, high, or xhigh. Defaults to the current thinking level.",
+});
 
-const SubagentContextSchema = Type.Union(
-	SUBAGENT_CONTEXT_MODES.map((mode) => Type.Literal(mode)),
-	{
-		description:
-			"Optional session context mode for launched subagents. Use fresh (default) for a clean ephemeral run, or fork to fork from the current session.",
-	},
-);
+const SubagentContextSchema = StringEnum(SUBAGENT_CONTEXT_MODES, {
+	description:
+		"Optional session context mode for launched subagents. Use fresh (default) for a clean ephemeral run, or fork to fork from the current session.",
+});
 
 export const SubagentTaskSchema = Type.Object(
 	{

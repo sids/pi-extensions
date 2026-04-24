@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { AutocompleteProvider, EditorTheme, TUI } from "@mariozechner/pi-tui";
-import { clearRememberedSessionEditorComponentFactory } from "@siddr/pi-shared-qna/session-editor-component";
+import type { AutocompleteProvider } from "@mariozechner/pi-tui";
 import mentionSkillsExtension from "../index";
 import promptThinkingExtension from "../../prompt-thinking/index";
 
@@ -20,10 +19,9 @@ function createCommand(name: string, source: "extension" | "prompt" | "skill", p
 type Handler = (event: any, ctx: any) => any;
 type ExtensionName = "mention" | "thinking";
 
-let sessionCounter = 0;
-
 function createHarness(commands: any[], extensionOrder: ExtensionName[] = ["mention"]) {
 	const handlers = new Map<string, Handler[]>();
+	const providerFactories: Array<(current: AutocompleteProvider) => AutocompleteProvider> = [];
 	let currentThinkingLevel = "low";
 
 	const pi = {
@@ -52,6 +50,7 @@ function createHarness(commands: any[], extensionOrder: ExtensionName[] = ["ment
 	}
 
 	return {
+		providerFactories,
 		async emit(name: string, event: any = {}, ctx: any = {}) {
 			const list = handlers.get(name) ?? [];
 			let result;
@@ -60,12 +59,28 @@ function createHarness(commands: any[], extensionOrder: ExtensionName[] = ["ment
 			}
 			return result;
 		},
+		createSessionContext() {
+			return {
+				hasUI: true,
+				model: { id: "claude-sonnet-4-5", reasoning: true },
+				ui: {
+					addAutocompleteProvider(factory: (current: AutocompleteProvider) => AutocompleteProvider) {
+						providerFactories.push(factory);
+					},
+				},
+			};
+		},
 	};
 }
 
-function createEditorBaseProvider(): AutocompleteProvider {
+function createBaseProvider(): AutocompleteProvider {
 	return {
-		getSuggestions() {
+		getSuggestions(lines, cursorLine, cursorCol) {
+			const line = lines[cursorLine] ?? "";
+			const before = line.slice(0, cursorCol);
+			if (before.startsWith("/")) {
+				return { items: [{ value: "/help", label: "/help" }], prefix: before };
+			}
 			return null;
 		},
 		applyCompletion(lines, cursorLine, cursorCol, item, prefix) {
@@ -79,71 +94,20 @@ function createEditorBaseProvider(): AutocompleteProvider {
 	};
 }
 
-function createEditorTestDoubles() {
-	const tui = {
-		requestRender() {},
-	} as unknown as TUI;
-
-	const theme = {
-		borderColor: (text: string) => text,
-		selectList: {
-			selectedPrefix: (text: string) => text,
-			selectedText: (text: string) => text,
-			description: (text: string) => text,
-			scrollInfo: (text: string) => text,
-			noMatch: (text: string) => text,
-		},
-	} as unknown as EditorTheme;
-
-	const keybindings = {
-		matches() {
-			return false;
-		},
-	};
-
-	return { tui, theme, keybindings };
-}
-
-function createUiSessionContext() {
-	const sessionFile = `/tmp/mention-skills-test-${++sessionCounter}.json`;
-	let installedFactory: ((...args: any[]) => any) | undefined;
-	return {
-		sessionFile,
-		getInstalledFactory: () => installedFactory,
-		ctx: {
-			hasUI: true,
-			sessionManager: {
-				getSessionFile: () => sessionFile,
-			},
-			model: { id: "claude-sonnet-4-5", reasoning: true },
-			ui: {
-				setEditorComponent: (factory: typeof installedFactory) => {
-					installedFactory = factory;
-				},
-			},
-		},
-	};
-}
-
-function cleanupSession(sessionFile: string) {
-	clearRememberedSessionEditorComponentFactory({
-		sessionManager: {
-			getSessionFile: () => sessionFile,
-		},
-	});
+function composeProviders(factories: Array<(current: AutocompleteProvider) => AutocompleteProvider>): AutocompleteProvider {
+	let current = createBaseProvider();
+	for (const factory of factories) {
+		current = factory(current);
+	}
+	return current;
 }
 
 describe("mention-skills extension", () => {
-	test("installs a custom editor on session start", async () => {
+	test("registers an autocomplete provider on session start", async () => {
 		const harness = createHarness([createCommand("skill:commit", "skill", "/skills/commit/SKILL.md")]);
-		const { ctx, getInstalledFactory, sessionFile } = createUiSessionContext();
 
-		try {
-			await harness.emit("session_start", {}, ctx);
-			expect(typeof getInstalledFactory()).toBe("function");
-		} finally {
-			cleanupSession(sessionFile);
-		}
+		await harness.emit("session_start", {}, harness.createSessionContext());
+		expect(harness.providerFactories).toHaveLength(1);
 	});
 
 	test("transforms skill mentions using discovered skills", async () => {
@@ -172,32 +136,15 @@ describe("mention-skills extension", () => {
 			[createCommand("skill:commit", "skill", "/skills/commit/SKILL.md")],
 			["mention", "thinking"],
 		);
-		const { ctx, getInstalledFactory, sessionFile } = createUiSessionContext();
 
-		try {
-			await harness.emit("session_start", {}, ctx);
-			const installedFactory = getInstalledFactory();
-			expect(typeof installedFactory).toBe("function");
+		await harness.emit("session_start", {}, harness.createSessionContext());
+		const provider = composeProviders(harness.providerFactories);
 
-			const { tui, theme, keybindings } = createEditorTestDoubles();
-			const createEditor = () => {
-				const editor = installedFactory!(tui, theme, keybindings);
-				editor.setAutocompleteProvider(createEditorBaseProvider());
-				return editor;
-			};
+		const mentionResult = provider.getSuggestions(["$"], 0, 1);
+		expect(mentionResult?.items[0]?.value).toBe("$commit");
 
-			const mentionEditor = createEditor();
-			mentionEditor.handleInput("$");
-			expect(mentionEditor.isShowingAutocomplete()).toBe(true);
-			expect((mentionEditor as any).autocompleteList?.getSelectedItem?.()?.value).toBe("$commit");
-
-			const thinkingEditor = createEditor();
-			thinkingEditor.handleInput("^");
-			expect(thinkingEditor.isShowingAutocomplete()).toBe(true);
-			expect((thinkingEditor as any).autocompleteList?.getSelectedItem?.()?.value).toBe("low");
-		} finally {
-			cleanupSession(sessionFile);
-		}
+		const thinkingResult = provider.getSuggestions(["^"], 0, 1);
+		expect(thinkingResult?.items[0]?.value).toBe("low");
 	});
 
 	test("keeps $ and ^ autocomplete when mention-skills installs after prompt-thinking", async () => {
@@ -205,31 +152,14 @@ describe("mention-skills extension", () => {
 			[createCommand("skill:commit", "skill", "/skills/commit/SKILL.md")],
 			["thinking", "mention"],
 		);
-		const { ctx, getInstalledFactory, sessionFile } = createUiSessionContext();
 
-		try {
-			await harness.emit("session_start", {}, ctx);
-			const installedFactory = getInstalledFactory();
-			expect(typeof installedFactory).toBe("function");
+		await harness.emit("session_start", {}, harness.createSessionContext());
+		const provider = composeProviders(harness.providerFactories);
 
-			const { tui, theme, keybindings } = createEditorTestDoubles();
-			const createEditor = () => {
-				const editor = installedFactory!(tui, theme, keybindings);
-				editor.setAutocompleteProvider(createEditorBaseProvider());
-				return editor;
-			};
+		const mentionResult = provider.getSuggestions(["$"], 0, 1);
+		expect(mentionResult?.items[0]?.value).toBe("$commit");
 
-			const mentionEditor = createEditor();
-			mentionEditor.handleInput("$");
-			expect(mentionEditor.isShowingAutocomplete()).toBe(true);
-			expect((mentionEditor as any).autocompleteList?.getSelectedItem?.()?.value).toBe("$commit");
-
-			const thinkingEditor = createEditor();
-			thinkingEditor.handleInput("^");
-			expect(thinkingEditor.isShowingAutocomplete()).toBe(true);
-			expect((thinkingEditor as any).autocompleteList?.getSelectedItem?.()?.value).toBe("low");
-		} finally {
-			cleanupSession(sessionFile);
-		}
+		const thinkingResult = provider.getSuggestions(["^"], 0, 1);
+		expect(thinkingResult?.items[0]?.value).toBe("low");
 	});
 });

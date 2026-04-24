@@ -1,10 +1,12 @@
 {
   "name": "@siddr/pi-fetch-url",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "type": "module",
   "description": "Readable content fetch tool extension for pi",
   "license": "MIT",
-  "keywords": ["pi-package"],
+  "keywords": [
+    "pi-package"
+  ],
   "repository": {
     "type": "git",
     "url": "git+https://github.com/sids/pi-extensions.git",
@@ -15,12 +17,14 @@
   },
   "homepage": "https://github.com/sids/pi-extensions/tree/main/fetch-url#readme",
   "pi": {
-    "extensions": ["./index.ts"]
+    "extensions": [
+      "./index.ts"
+    ]
   },
   "peerDependencies": {
-    "@mariozechner/pi-coding-agent": "*",
+    "@mariozechner/pi-coding-agent": ">=0.65.0",
     "@mariozechner/pi-tui": "*",
-    "@sinclair/typebox": "*"
+    "typebox": "*"
   },
   "dependencies": {
     "@mozilla/readability": "^0.5.0",

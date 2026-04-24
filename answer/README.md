@@ -33,7 +33,7 @@ Navigation:
 
 ## Configuration
 
-The extension reads settings from `~/.pi/agent/settings.json` and `.pi/settings.json` (project overrides global). Add an `answer` block:
+The extension reads settings from Pi's global agent dir `settings.json` (for example `~/.pi/agent/settings.json`, or the directory selected via `PI_CODING_AGENT_DIR`) and `.pi/settings.json` (project overrides global). Add an `answer` block:
 
 ```json
 {

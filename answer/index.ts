@@ -12,9 +12,8 @@
 
 import { complete, type Model, type Api, type UserMessage } from "@mariozechner/pi-ai";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { BorderedLoader } from "@mariozechner/pi-coding-agent";
+import { BorderedLoader, getAgentDir } from "@mariozechner/pi-coding-agent";
 import fs from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
 import {
 	collectAnswers,
@@ -81,9 +80,15 @@ async function readSettingsFile(
 	}
 }
 
+export function getAnswerSettingsPaths(cwd: string): { globalPath: string; projectPath: string } {
+	return {
+		globalPath: path.join(getAgentDir(), "settings.json"),
+		projectPath: path.join(cwd, ".pi", "settings.json"),
+	};
+}
+
 async function loadAnswerSettings(ctx: ExtensionContext): Promise<AnswerSettings> {
-	const globalPath = path.join(os.homedir(), ".pi", "agent", "settings.json");
-	const projectPath = path.join(ctx.cwd, ".pi", "settings.json");
+	const { globalPath, projectPath } = getAnswerSettingsPaths(ctx.cwd);
 
 	const [globalSettings, projectSettings] = await Promise.all([
 		readSettingsFile(globalPath, ctx),

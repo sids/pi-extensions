@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.12 - 2026-04-23
+
+- Migrated tool schemas from `@sinclair/typebox` to `typebox` for Pi 0.69 compatibility.
+- Bound the published Pi peer dependency to post-0.65 releases.
+
 ## 0.1.11 - 2026-04-13
 
 - Clarified when plan mode should discuss first, persist via `set_plan`, and summarize the saved plan.

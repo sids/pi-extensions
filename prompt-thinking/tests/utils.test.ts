@@ -200,11 +200,18 @@ describe("createThinkingAutocompleteProvider", () => {
 	}
 
 	describe("getSuggestions", () => {
-		test("returns all levels for bare caret", () => {
+		test("returns all levels for bare caret with the current level first", () => {
 			const provider = makeProvider();
 			const result = provider.getSuggestions(["^"], 0, 1);
 			expect(result).not.toBeNull();
-			expect(result!.items).toEqual(thinkingItems);
+			expect(result!.items).toEqual([
+				{ value: "high", label: "high", description: "current level" },
+				{ value: "off", label: "off" },
+				{ value: "minimal", label: "minimal" },
+				{ value: "low", label: "low" },
+				{ value: "medium", label: "medium" },
+				{ value: "xhigh", label: "xhigh" },
+			]);
 			expect(result!.prefix).toBe("^");
 		});
 

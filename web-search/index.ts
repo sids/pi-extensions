@@ -6,7 +6,7 @@ import {
 	keyHint,
 	truncateHead,
 } from "@mariozechner/pi-coding-agent";
-import { Type, type Static } from "@sinclair/typebox";
+import { Type, type Static } from "typebox";
 import { Text } from "@mariozechner/pi-tui";
 import {
 	buildErrorPayload,

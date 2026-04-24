@@ -6,7 +6,7 @@ import {
 	truncateHead,
 } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
-import { Type, type Static } from "@sinclair/typebox";
+import { Type, type Static } from "typebox";
 import { randomBytes } from "node:crypto";
 import { writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";

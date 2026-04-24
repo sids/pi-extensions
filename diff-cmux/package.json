@@ -1,10 +1,12 @@
 {
   "name": "@siddr/pi-diff-cmux",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "description": "cmux browser diff review extension for pi",
   "license": "MIT",
-  "keywords": ["pi-package"],
+  "keywords": [
+    "pi-package"
+  ],
   "repository": {
     "type": "git",
     "url": "git+https://github.com/sids/pi-extensions.git",
@@ -15,10 +17,12 @@
   },
   "homepage": "https://github.com/sids/pi-extensions/tree/main/diff-cmux#readme",
   "pi": {
-    "extensions": ["./index.ts"]
+    "extensions": [
+      "./index.ts"
+    ]
   },
   "peerDependencies": {
-    "@mariozechner/pi-coding-agent": "*"
+    "@mariozechner/pi-coding-agent": ">=0.65.0"
   },
   "dependencies": {
     "esbuild": "^0.28.0",

@@ -1,10 +1,12 @@
 {
   "name": "@siddr/pi-cmux-status",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "type": "module",
   "description": "cmux sidebar status extension for pi",
   "license": "MIT",
-  "keywords": ["pi-package"],
+  "keywords": [
+    "pi-package"
+  ],
   "repository": {
     "type": "git",
     "url": "git+https://github.com/sids/pi-extensions.git",
@@ -15,10 +17,12 @@
   },
   "homepage": "https://github.com/sids/pi-extensions/tree/main/cmux-status#readme",
   "pi": {
-    "extensions": ["./index.ts"]
+    "extensions": [
+      "./index.ts"
+    ]
   },
   "peerDependencies": {
-    "@mariozechner/pi-coding-agent": "*"
+    "@mariozechner/pi-coding-agent": ">=0.65.0"
   },
   "publishConfig": {
     "registry": "https://registry.npmjs.org/",

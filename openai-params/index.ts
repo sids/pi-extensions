@@ -15,7 +15,7 @@ import {
 } from "./utils";
 
 function getConfigCwd(ctx: ExtensionContext): string {
-	return ctx.cwd || process.cwd();
+	return ctx.cwd;
 }
 
 export default function openAIParams(pi: ExtensionAPI): void {
