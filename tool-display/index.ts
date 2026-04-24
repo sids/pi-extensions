@@ -31,6 +31,8 @@ type ToolDisplayDetails = {
 	content?: string;
 };
 
+const bashPreviewLines = 10;
+
 const toolCache = new Map<string, BuiltInTools>();
 const toolDisplayDetailsKey = "toolDisplay";
 
@@ -73,6 +75,10 @@ function formatEditorHint(description: string, theme: any): string {
 
 function formatRemainingLinesHint(remainingLines: number, theme: any): string {
 	return `${theme.fg("muted", `... (${remainingLines} more ${pluralize(remainingLines, "line")}, `)}${formatEditorHint("to expand", theme)}${theme.fg("muted", ")")}`;
+}
+
+function formatFullOutputHint(remainingLines: number, theme: any): string {
+	return `${theme.fg("muted", `... (${remainingLines} more ${pluralize(remainingLines, "line")}). Press `)}${theme.fg("dim", "ctrl+o")}${theme.fg("muted", " to see the full output.")}`;
 }
 
 function formatExpandHint(theme: any): string {
@@ -168,22 +174,22 @@ function renderBashResult(
 	const isError = isErrorResult(result, text);
 
 	if (isError) {
-		const preview = buildPreview(text);
+		const preview = buildPreview(text, bashPreviewLines);
 		const body = expanded ? text : preview.previewText;
 		const output = body.length > 0 ? theme.fg("error", body) : undefined;
-		const hint = !expanded && preview.hasMore ? formatRemainingLinesHint(preview.remainingLines, theme) : undefined;
+		const hint = !expanded && preview.hasMore ? formatFullOutputHint(preview.remainingLines, theme) : undefined;
 		return getTextComponent(joinSections(theme.fg("error", "↳ command failed"), output, hint));
 	}
 
 	const { body, notice } = splitTrailingNoticeBlock(text);
 	const previewSource = body.length > 0 ? body : text;
-	const preview = buildPreview(previewSource);
+	const preview = buildPreview(previewSource, bashPreviewLines);
 	const status = isPartial ? theme.fg("warning", "running...") : undefined;
 	const output = expanded ? previewSource : preview.previewText;
 	const display = output.length > 0
 		? renderDimmedText(output, theme)
 		: !isPartial ? theme.fg("muted", "↳ (no output)") : undefined;
-	const hint = !expanded && preview.hasMore ? formatRemainingLinesHint(preview.remainingLines, theme) : undefined;
+	const hint = !expanded && preview.hasMore ? formatFullOutputHint(preview.remainingLines, theme) : undefined;
 	return getTextComponent(joinSections(status, display, hint, formatWarning(notice, theme)));
 }
 

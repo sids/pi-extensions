@@ -170,6 +170,7 @@ describe("tool-display extension", () => {
 			expect(bashRunning).toContain("<dim>out 1");
 			expect(bashRunning).not.toContain("out 11");
 			expect(bashRunning).toContain("ctrl+o");
+			expect(bashRunning).toContain("see the full output");
 
 			const bashFailed = renderComponent(
 				bashTool.renderResult(
@@ -185,6 +186,7 @@ describe("tool-display extension", () => {
 			expect(bashFailed).toContain("err 1");
 			expect(bashFailed).not.toContain("err 11");
 			expect(bashFailed).toContain("ctrl+o");
+			expect(bashFailed).toContain("see the full output");
 
 			const editArgs = {
 				path: "edit-target.txt",
