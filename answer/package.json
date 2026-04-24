@@ -1,6 +1,6 @@
 {
   "name": "pi-answer",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "type": "module",
   "description": "Interactive Q&A extraction extension for pi",
   "license": "MIT",

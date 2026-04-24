@@ -40,7 +40,11 @@ The extension reads settings from Pi's global agent dir `settings.json` (for exa
   "answer": {
     "systemPrompt": "Custom extraction prompt...",
     "extractionModels": [
-      { "provider": "openai-codex", "id": "gpt-5.1-codex-mini" },
+      { "provider": "openai-codex", "id": "gpt-5.4-mini" },
+      { "provider": "github-copilot", "id": "gpt-5.4-mini" },
+      { "provider": "openai-codex", "id": "gpt-5.3-codex-spark" },
+      { "provider": "github-copilot", "id": "gemini-3-flash-preview" },
+      { "provider": "github-copilot", "id": "claude-haiku-4.5" },
       { "provider": "anthropic", "id": "claude-haiku-4-5" }
     ],
     "answerTemplates": [
