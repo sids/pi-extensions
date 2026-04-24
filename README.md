@@ -30,4 +30,5 @@ See each extension’s README for setup and usage. Developer notes live in `AGEN
 - Keep the same runtime packages in the workspace root `devDependencies` so local symlinked extensions resolve the same imports during development.
 - Run `npm run check:peer-runtime` before publishing. This verifies that all extension `peerDependencies` are represented in root `devDependencies`.
 - Run `npm run check:package-boundaries` before publishing. This verifies that packaged runtime source files stay within their package boundaries.
+- Use `scripts/publish-npmjs.sh --all --only-unpublished` to publish only package versions that are not already on npm (`--dry-run` is supported). Outside dry-run mode, the script checks npm auth first and runs `npm login` if needed.
 - Run `npm install` at the repo root after pulling changes so workspace links and runtime deps are present.
