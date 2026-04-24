@@ -1,3 +1,4 @@
+import path from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { getReviewCommentsForRun } from "./comments";
 import { isGitRepository } from "./git";
@@ -49,6 +50,7 @@ type ReviewFlowDependencies = {
 	buildInstructionsPrompt: (cwd: string) => Promise<string>;
 	buildEditorPrompt: (pi: ExtensionAPI, cwd: string, target: ReviewTarget) => Promise<string>;
 	describeTarget: (target: ReviewTarget) => string;
+	getActivePlanFilePath: (ctx: ExtensionContext) => string | undefined;
 	getCommentsForRun: (ctx: ExtensionContext, runId: string) => ReviewComment[];
 	runTriage: (ctx: ExtensionContext, comments: ReviewComment[], targetHint?: string) => Promise<{
 		comments: TriagedReviewComment[];
@@ -63,6 +65,68 @@ type ReviewFlowDependencies = {
 	}) => string;
 };
 
+type PlanModeState = {
+	version: number;
+	active: boolean;
+	planFilePath?: string;
+};
+
+const PLAN_MODE_STATE_ENTRY_TYPE = "plan-md:state";
+const PLAN_MODE_STATE_VERSION = 1;
+
+function isPlanModeState(value: unknown): value is PlanModeState {
+	if (!value || typeof value !== "object") {
+		return false;
+	}
+
+	const state = value as Partial<PlanModeState>;
+	return state.version === PLAN_MODE_STATE_VERSION && typeof state.active === "boolean";
+}
+
+function getPlanFilePathForSession(ctx: ExtensionContext): string {
+	const sessionFile = ctx.sessionManager.getSessionFile();
+	if (!sessionFile) {
+		return path.join(ctx.sessionManager.getSessionDir(), `${ctx.sessionManager.getSessionId()}.plan.md`);
+	}
+
+	const parsed = path.parse(sessionFile);
+	return path.join(parsed.dir, `${parsed.name}.plan.md`);
+}
+
+function resolvePlanFilePathForReview(ctx: ExtensionContext, planFilePath: string | undefined): string {
+	if (planFilePath && planFilePath.trim().length > 0) {
+		return planFilePath;
+	}
+	return getPlanFilePathForSession(ctx);
+}
+
+function getActivePlanFilePath(ctx: ExtensionContext): string | undefined {
+	const entries = ctx.sessionManager.getEntries();
+	for (let i = entries.length - 1; i >= 0; i--) {
+		const entry = entries[i];
+		if (entry.type !== "custom" || entry.customType !== PLAN_MODE_STATE_ENTRY_TYPE) {
+			continue;
+		}
+		if (!isPlanModeState(entry.data)) {
+			continue;
+		}
+		return entry.data.active ? resolvePlanFilePathForReview(ctx, entry.data.planFilePath) : undefined;
+	}
+	return undefined;
+}
+
+function addActivePlanStatement(editorPrompt: string, planFilePath: string | undefined): string {
+	if (!planFilePath) {
+		return editorPrompt;
+	}
+
+	return [
+		editorPrompt,
+		"",
+		`The changes under review are implementing the plan in: ${planFilePath}`,
+	].join("\n");
+}
+
 const defaultDependencies: ReviewFlowDependencies = {
 	isGitRepository,
 	resolveTarget: resolveReviewTarget,
@@ -70,6 +134,7 @@ const defaultDependencies: ReviewFlowDependencies = {
 	buildInstructionsPrompt: buildReviewInstructionsPrompt,
 	buildEditorPrompt: buildReviewEditorPrompt,
 	describeTarget: describeReviewTarget,
+	getActivePlanFilePath,
 	getCommentsForRun: getReviewCommentsForRun,
 	runTriage: runReviewTriage,
 	formatSummary: formatReviewSummaryMessage,
@@ -206,6 +271,7 @@ export async function startReviewMode(
 	const shouldRetryTargetSelection = rawArgs.length === 0;
 	let resolveArgs = rawArgs;
 	const originLeafId = ctx.sessionManager.getLeafId() ?? undefined;
+	const activePlanFilePath = dependencies.getActivePlanFilePath(ctx);
 	const canStartFromEmptyBranch = canOfferEmptyBranchStart(ctx, originLeafId);
 	let useFreshBranch = false;
 
@@ -267,7 +333,8 @@ export async function startReviewMode(
 	const runId = createReviewRunId();
 	const targetHint = dependencies.describeTarget(target);
 	const reviewInstructionsPrompt = await dependencies.buildInstructionsPrompt(ctx.cwd);
-	const editorPrompt = await dependencies.buildEditorPrompt(pi, ctx.cwd, target);
+	const targetEditorPrompt = await dependencies.buildEditorPrompt(pi, ctx.cwd, target);
+	const editorPrompt = addActivePlanStatement(targetEditorPrompt, useFreshBranch ? activePlanFilePath : undefined);
 
 	stateManager.startReviewMode(ctx, {
 		originLeafId,

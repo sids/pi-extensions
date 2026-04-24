@@ -137,6 +137,98 @@ describe("/review inactive", () => {
 		});
 	});
 
+	test("includes active plan file location in start prefill for empty branch reviews", async () => {
+		const editorPrefills: string[] = [];
+		const planFilePath = "/tmp/project/session.plan.md";
+		const { handler } = createRegisteredReviewHandler({
+			stateManager: {
+				getState: () => ({ version: 1, active: false }),
+				setState: () => {},
+				startReviewMode: () => {},
+			},
+			flow: {
+				isGitRepository: async () => true,
+				resolveTarget: async () => ({ type: "uncommitted" }),
+				buildInstructionsPrompt: async () => "review instructions",
+				buildEditorPrompt: async () => "review target prompt",
+				describeTarget: () => "current changes",
+			},
+		});
+
+		await handler("", {
+			hasUI: true,
+			cwd: "/tmp/project",
+			waitForIdle: async () => {},
+			navigateTree: async () => ({ cancelled: false }),
+			sessionManager: {
+				getLeafId: () => "leaf-2",
+				getEntries: () => [
+					{ id: "user-1", type: "message", message: { role: "user" } },
+					{ id: "leaf-2", type: "message", message: { role: "assistant" } },
+					{
+						id: "plan-state",
+						type: "custom",
+						customType: "plan-md:state",
+						data: { version: 1, active: true, planFilePath },
+					},
+				],
+			},
+			ui: {
+				select: async () => "Empty branch",
+				notify: () => {},
+				setEditorText: (text: string) => editorPrefills.push(text),
+			},
+		});
+
+		expect(editorPrefills.at(-1)).toBe(
+			`review target prompt\n\nThe changes under review are implementing the plan in: ${planFilePath}`,
+		);
+	});
+
+	test("does not include active plan file location in start prefill for current branch reviews", async () => {
+		const editorPrefills: string[] = [];
+		const { handler } = createRegisteredReviewHandler({
+			stateManager: {
+				getState: () => ({ version: 1, active: false }),
+				setState: () => {},
+				startReviewMode: () => {},
+			},
+			flow: {
+				isGitRepository: async () => true,
+				resolveTarget: async () => ({ type: "uncommitted" }),
+				buildInstructionsPrompt: async () => "review instructions",
+				buildEditorPrompt: async () => "review target prompt",
+				describeTarget: () => "current changes",
+			},
+		});
+
+		await handler("", {
+			hasUI: true,
+			cwd: "/tmp/project",
+			waitForIdle: async () => {},
+			sessionManager: {
+				getLeafId: () => "leaf-2",
+				getEntries: () => [
+					{ id: "user-1", type: "message", message: { role: "user" } },
+					{ id: "leaf-2", type: "message", message: { role: "assistant" } },
+					{
+						id: "plan-state",
+						type: "custom",
+						customType: "plan-md:state",
+						data: { version: 1, active: true, planFilePath: "/tmp/project/session.plan.md" },
+					},
+				],
+			},
+			ui: {
+				select: async () => "Current branch",
+				notify: () => {},
+				setEditorText: (text: string) => editorPrefills.push(text),
+			},
+		});
+
+		expect(editorPrefills).toEqual(["review target prompt"]);
+	});
+
 	test("does not resolve target when start-location prompt is cancelled", async () => {
 		const resolveCalls: string[] = [];
 		const notifications: Array<{ message: string; level: string }> = [];
