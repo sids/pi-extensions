@@ -3,6 +3,7 @@ import { Box, Text } from "@mariozechner/pi-tui";
 import { registerAddReviewCommentTool } from "./comments";
 import {
 	registerReviewCommand,
+	REVIEW_CHANGE_SUMMARY_ENTRY_TYPE,
 	REVIEW_PROMPT_ENTRY_TYPE,
 	REVIEW_SUMMARY_ENTRY_TYPE,
 	type ReviewPromptDetails,
@@ -17,6 +18,29 @@ export default function (pi: ExtensionAPI) {
 		const box = new Box(1, 0, (segment) => theme.bg("customMessageBg", segment));
 		box.addChild(new Text(String(message.content ?? ""), 0, 0));
 		return box;
+	});
+
+	pi.registerMessageRenderer(REVIEW_CHANGE_SUMMARY_ENTRY_TYPE, (message, { expanded }, theme) => {
+		const renderInMessageBox = (text: string) => {
+			const box = new Box(1, 0, (segment) => theme.bg("customMessageBg", segment));
+			box.addChild(new Text(text, 0, 0));
+			return box;
+		};
+
+		const summary = String(message.content ?? "");
+		if (expanded) {
+			return renderInMessageBox(summary);
+		}
+
+		const allSummaryLines = summary.split("\n");
+		const previewLineCount = 4;
+		const previewLines = allSummaryLines.slice(0, previewLineCount);
+		const lines = [...previewLines];
+		if (allSummaryLines.length > previewLineCount) {
+			lines.push(theme.fg("dim", "..."));
+		}
+		lines.push(keyHint("app.tools.expand", "to expand"));
+		return renderInMessageBox(lines.join("\n"));
 	});
 
 	pi.registerMessageRenderer(REVIEW_PROMPT_ENTRY_TYPE, (message, { expanded }, theme) => {

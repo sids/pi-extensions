@@ -1,5 +1,6 @@
 import path from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import { summarizeChangesFromSessionHistory } from "./change-summary";
 import { getReviewCommentsForRun } from "./comments";
 import { isGitRepository } from "./git";
 import { buildReviewEditorPrompt, buildReviewInstructionsPrompt, describeReviewTarget } from "./prompts";
@@ -28,11 +29,17 @@ type ReviewModeStateManager = {
 
 export const REVIEW_SUMMARY_ENTRY_TYPE = "review-mode:summary";
 export const REVIEW_PROMPT_ENTRY_TYPE = "review-mode:prompt";
+export const REVIEW_CHANGE_SUMMARY_ENTRY_TYPE = "review-mode:change-summary";
 
 export type ReviewPromptDetails = {
 	runId?: string;
 	targetHint: string;
 	instructionsPrompt: string;
+};
+
+export type ReviewChangeSummaryDetails = {
+	runId?: string;
+	targetHint: string;
 };
 
 export type ReviewEndSummary = {
@@ -50,6 +57,7 @@ type ReviewFlowDependencies = {
 	buildInstructionsPrompt: (cwd: string) => Promise<string>;
 	buildEditorPrompt: (pi: ExtensionAPI, cwd: string, target: ReviewTarget) => Promise<string>;
 	describeTarget: (target: ReviewTarget) => string;
+	summarizeChangesFromSessionHistory: (ctx: ExtensionContext, sourceLeafId: string | undefined) => Promise<string | null>;
 	getActivePlanFilePath: (ctx: ExtensionContext) => string | undefined;
 	getCommentsForRun: (ctx: ExtensionContext, runId: string) => ReviewComment[];
 	runTriage: (ctx: ExtensionContext, comments: ReviewComment[], targetHint?: string) => Promise<{
@@ -134,6 +142,7 @@ const defaultDependencies: ReviewFlowDependencies = {
 	buildInstructionsPrompt: buildReviewInstructionsPrompt,
 	buildEditorPrompt: buildReviewEditorPrompt,
 	describeTarget: describeReviewTarget,
+	summarizeChangesFromSessionHistory,
 	getActivePlanFilePath,
 	getCommentsForRun: getReviewCommentsForRun,
 	runTriage: runReviewTriage,
@@ -332,6 +341,21 @@ export async function startReviewMode(
 
 	const runId = createReviewRunId();
 	const targetHint = dependencies.describeTarget(target);
+	let changeSummary: string | null = null;
+	if (useFreshBranch && target.type === "uncommitted") {
+		ctx.ui.notify("Summarizing changes from session history...", "info");
+		try {
+			changeSummary = await dependencies.summarizeChangesFromSessionHistory(ctx, originLeafId);
+			if (!changeSummary) {
+				ctx.ui.notify("Could not summarize changes from session history. Continuing review startup.", "warning");
+			}
+		} catch (error) {
+			ctx.ui.notify(
+				`Could not summarize changes from session history: ${error instanceof Error ? error.message : String(error)}. Continuing review startup.`,
+				"warning",
+			);
+		}
+	}
 	const reviewInstructionsPrompt = await dependencies.buildInstructionsPrompt(ctx.cwd);
 	const targetEditorPrompt = await dependencies.buildEditorPrompt(pi, ctx.cwd, target);
 	const editorPrompt = addActivePlanStatement(targetEditorPrompt, useFreshBranch ? activePlanFilePath : undefined);
@@ -358,6 +382,17 @@ export async function startReviewMode(
 			instructionsPrompt: reviewInstructionsPrompt,
 		} satisfies ReviewPromptDetails,
 	});
+	if (changeSummary) {
+		pi.sendMessage({
+			customType: REVIEW_CHANGE_SUMMARY_ENTRY_TYPE,
+			content: changeSummary,
+			display: true,
+			details: {
+				runId,
+				targetHint,
+			} satisfies ReviewChangeSummaryDetails,
+		});
+	}
 	ctx.ui.notify(`Review mode ready: ${targetHint}${modeSuffix}. Edit and send when ready.`, "info");
 }
 

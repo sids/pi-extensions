@@ -137,6 +137,204 @@ describe("/review inactive", () => {
 		});
 	});
 
+	test("summarizes uncommitted changes after review instructions for empty branch reviews", async () => {
+		const summarizeCalls: any[] = [];
+		const { handler, sentMessages } = createRegisteredReviewHandler({
+			stateManager: {
+				getState: () => ({ version: 1, active: false }),
+				setState: () => {},
+				startReviewMode: () => {},
+			},
+			flow: {
+				isGitRepository: async () => true,
+				resolveTarget: async () => ({ type: "uncommitted" }),
+				summarizeChangesFromSessionHistory: async (_ctx: any, sourceLeafId: string | undefined) => {
+					summarizeCalls.push(sourceLeafId);
+					return "## Change summary\n\nUpdates review startup.";
+				},
+				buildInstructionsPrompt: async () => "review instructions",
+				buildEditorPrompt: async () => "review target prompt",
+				describeTarget: () => "current changes",
+			},
+		});
+
+		await handler("", {
+			hasUI: true,
+			cwd: "/tmp/project",
+			waitForIdle: async () => {},
+			navigateTree: async () => ({ cancelled: false }),
+			sessionManager: {
+				getLeafId: () => "leaf-2",
+				getEntries: () => [
+					{ id: "user-1", type: "message", message: { role: "user" } },
+					{ id: "leaf-2", type: "message", message: { role: "assistant" } },
+				],
+			},
+			ui: {
+				select: async () => "Empty branch",
+				notify: () => {},
+				setEditorText: () => {},
+			},
+		});
+
+		expect(summarizeCalls).toEqual(["leaf-2"]);
+		expect(sentMessages).toEqual([
+			{
+				customType: "review-mode:prompt",
+				content: "Review instructions",
+				display: true,
+				details: {
+					runId: expect.any(String),
+					targetHint: "current changes",
+					instructionsPrompt: "review instructions",
+				},
+			},
+			{
+				customType: "review-mode:change-summary",
+				content: "## Change summary\n\nUpdates review startup.",
+				display: true,
+				details: {
+					runId: expect.any(String),
+					targetHint: "current changes",
+				},
+			},
+		]);
+	});
+
+	test("does not summarize uncommitted changes for current branch reviews", async () => {
+		const { handler, sentMessages } = createRegisteredReviewHandler({
+			stateManager: {
+				getState: () => ({ version: 1, active: false }),
+				setState: () => {},
+				startReviewMode: () => {},
+			},
+			flow: {
+				isGitRepository: async () => true,
+				resolveTarget: async () => ({ type: "uncommitted" }),
+				summarizeChangesFromSessionHistory: async () => {
+					throw new Error("should not summarize");
+				},
+				buildInstructionsPrompt: async () => "review instructions",
+				buildEditorPrompt: async () => "review target prompt",
+				describeTarget: () => "current changes",
+			},
+		});
+
+		await handler("", {
+			hasUI: true,
+			cwd: "/tmp/project",
+			waitForIdle: async () => {},
+			sessionManager: {
+				getLeafId: () => "leaf-2",
+				getEntries: () => [
+					{ id: "user-1", type: "message", message: { role: "user" } },
+					{ id: "leaf-2", type: "message", message: { role: "assistant" } },
+				],
+			},
+			ui: {
+				select: async () => "Current branch",
+				notify: () => {},
+				setEditorText: () => {},
+			},
+		});
+
+		expect(sentMessages.map((message) => message.customType)).toEqual(["review-mode:prompt"]);
+	});
+
+	test("does not summarize non-uncommitted targets for empty branch reviews", async () => {
+		const { handler, sentMessages } = createRegisteredReviewHandler({
+			stateManager: {
+				getState: () => ({ version: 1, active: false }),
+				setState: () => {},
+				startReviewMode: () => {},
+			},
+			flow: {
+				isGitRepository: async () => true,
+				resolveTarget: async () => ({ type: "commit", sha: "abc123" }),
+				checkoutTarget: async () => true,
+				summarizeChangesFromSessionHistory: async () => {
+					throw new Error("should not summarize");
+				},
+				buildInstructionsPrompt: async () => "review instructions",
+				buildEditorPrompt: async () => "review target prompt",
+				describeTarget: () => "commit abc123",
+			},
+		});
+
+		await handler("commit abc123", {
+			hasUI: true,
+			cwd: "/tmp/project",
+			waitForIdle: async () => {},
+			navigateTree: async () => ({ cancelled: false }),
+			sessionManager: {
+				getLeafId: () => "leaf-2",
+				getEntries: () => [
+					{ id: "user-1", type: "message", message: { role: "user" } },
+					{ id: "leaf-2", type: "message", message: { role: "assistant" } },
+				],
+			},
+			ui: {
+				select: async () => "Empty branch",
+				notify: () => {},
+				setEditorText: () => {},
+			},
+		});
+
+		expect(sentMessages.map((message) => message.customType)).toEqual(["review-mode:prompt"]);
+	});
+
+	test("continues review startup when change summary generation fails", async () => {
+		const startCalls: any[] = [];
+		const notifications: Array<{ message: string; level: string }> = [];
+		const { handler, sentMessages } = createRegisteredReviewHandler({
+			stateManager: {
+				getState: () => ({ version: 1, active: false }),
+				setState: () => {},
+				startReviewMode: (_ctx, options) => startCalls.push(options),
+			},
+			flow: {
+				isGitRepository: async () => true,
+				resolveTarget: async () => ({ type: "uncommitted" }),
+				summarizeChangesFromSessionHistory: async () => {
+					throw new Error("summary unavailable");
+				},
+				buildInstructionsPrompt: async () => "review instructions",
+				buildEditorPrompt: async () => "review target prompt",
+				describeTarget: () => "current changes",
+			},
+		});
+
+		await handler("", {
+			hasUI: true,
+			cwd: "/tmp/project",
+			waitForIdle: async () => {},
+			navigateTree: async () => ({ cancelled: false }),
+			sessionManager: {
+				getLeafId: () => "leaf-2",
+				getEntries: () => [
+					{ id: "user-1", type: "message", message: { role: "user" } },
+					{ id: "leaf-2", type: "message", message: { role: "assistant" } },
+				],
+			},
+			ui: {
+				select: async () => "Empty branch",
+				notify: (message: string, level: string) => notifications.push({ message, level }),
+				setEditorText: () => {},
+			},
+		});
+
+		expect(startCalls).toHaveLength(1);
+		expect(sentMessages.map((message) => message.customType)).toEqual(["review-mode:prompt"]);
+		expect(notifications).toContainEqual({
+			message: "Could not summarize changes from session history: summary unavailable. Continuing review startup.",
+			level: "warning",
+		});
+		expect(notifications).toContainEqual({
+			message: "Review mode ready: current changes (empty branch). Edit and send when ready.",
+			level: "info",
+		});
+	});
+
 	test("includes active plan file location in start prefill for empty branch reviews", async () => {
 		const editorPrefills: string[] = [];
 		const planFilePath = "/tmp/project/session.plan.md";

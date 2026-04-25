@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.7 - 2026-04-24
+
+- Added session-history based change summaries for empty-branch reviews of uncommitted changes.
+- Display change summaries after review instructions with a collapsed preview that can be expanded.
+- Generate change summary output as structured JSON before rendering it with a consistent title.
+
 ## 0.1.6 - 2026-04-23
 
 - Migrated tool schemas from `@sinclair/typebox` to `typebox` for Pi 0.69 compatibility.

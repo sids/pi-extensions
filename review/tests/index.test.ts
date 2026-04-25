@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
+import { initTheme } from "@mariozechner/pi-coding-agent";
 import reviewExtension from "../index";
+
+initTheme(undefined, false);
 
 type Handler = (event: any, ctx: any) => any;
 
@@ -53,6 +56,33 @@ function createHarness(entries: any[]) {
 		messageRenderers,
 	};
 }
+
+describe("review change summary renderer", () => {
+	test("shows a short preview until expanded", () => {
+		const harness = createHarness([]);
+		const renderer = harness.messageRenderers.get("review-mode:change-summary");
+		expect(renderer).toBeDefined();
+
+		const theme = {
+			bg: (_name: string, text: string) => text,
+			fg: (_name: string, text: string) => text,
+			bold: (text: string) => text,
+		} as any;
+		const message = {
+			content: ["line 1", "line 2", "line 3", "line 4", "line 5"].join("\n"),
+		};
+
+		const collapsed = renderer(message, { expanded: false }, theme).render(120).join("\n");
+		expect(collapsed).toContain("line 1");
+		expect(collapsed).toContain("line 4");
+		expect(collapsed).not.toContain("line 5");
+		expect(collapsed).toContain("to expand");
+
+		const expanded = renderer(message, { expanded: true }, theme).render(120).join("\n");
+		expect(expanded).toContain("line 5");
+		expect(expanded).not.toContain("to expand");
+	});
+});
 
 describe("review prompt renderer", () => {
 	test("hides stale review prompts when inactive or from another run", async () => {
