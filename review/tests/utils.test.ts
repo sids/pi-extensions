@@ -8,6 +8,7 @@ import {
 	parsePrLocator,
 	parsePrReference,
 	parseReviewPaths,
+	tokenizeReviewArgs,
 } from "../utils";
 
 describe("normalizeReviewPriority", () => {
@@ -101,21 +102,86 @@ describe("parsePrReference", () => {
 	});
 });
 
+describe("tokenizeReviewArgs", () => {
+	test("splits by whitespace outside quotes", () => {
+		expect(tokenizeReviewArgs("commit abc123 \"Fix quoted title\"")).toEqual([
+			"commit",
+			"abc123",
+			"Fix quoted title",
+		]);
+	});
+
+	test("supports single quotes and quoted escapes", () => {
+		expect(tokenizeReviewArgs("custom 'don\\'t miss auth' \"and \\\"security\\\"\"")).toEqual([
+			"custom",
+			"don't miss auth",
+			'and "security"',
+		]);
+	});
+
+	test("preserves quotes inside unquoted tokens", () => {
+		expect(tokenizeReviewArgs("custom don't miss auth")).toEqual(["custom", "don't", "miss", "auth"]);
+		expect(tokenizeReviewArgs("folder docs/O'Reilly src")).toEqual(["folder", "docs/O'Reilly", "src"]);
+	});
+
+	test("preserves unmatched opening quotes", () => {
+		expect(tokenizeReviewArgs('custom "focus on auth')).toEqual(["custom", '"focus on auth']);
+	});
+
+	test("preserves unsupported backslash escapes inside quoted tokens", () => {
+		expect(tokenizeReviewArgs('folder "C:\\Users\\Sid\\test fixtures"')).toEqual([
+			"folder",
+			"C:\\Users\\Sid\\test fixtures",
+		]);
+	});
+});
+
 describe("parseReviewPaths", () => {
 	test("splits by whitespace", () => {
 		expect(parseReviewPaths("src docs\nREADME.md")).toEqual(["src", "docs", "README.md"]);
 	});
+
+	test("keeps quoted paths together", () => {
+		expect(parseReviewPaths('"src/components with spaces" docs "test fixtures/input.ts"')).toEqual([
+			"src/components with spaces",
+			"docs",
+			"test fixtures/input.ts",
+		]);
+	});
+
+	test("preserves apostrophes and quoted backslashes in paths", () => {
+		expect(parseReviewPaths('docs/O\'Reilly "C:\\Users\\Sid\\test fixtures"')).toEqual([
+			"docs/O'Reilly",
+			"C:\\Users\\Sid\\test fixtures",
+		]);
+	});
 });
 
 describe("getReviewTargetHint", () => {
-	test("uses selector wording for all target types", () => {
-		expect(getReviewTargetHint({ type: "uncommitted" })).toBe("Review uncommitted changes");
-		expect(getReviewTargetHint({ type: "baseBranch", branch: "main" })).toBe("Review against a base branch (local)");
-		expect(getReviewTargetHint({ type: "commit", sha: "abc123" })).toBe("Review a commit");
-		expect(getReviewTargetHint({ type: "custom", instructions: "check security" })).toBe("Custom review instructions");
-		expect(getReviewTargetHint({ type: "pullRequest", prNumber: 12 })).toBe("Review a pull request (GitHub PR)");
-		expect(getReviewTargetHint({ type: "folder", paths: ["src"] })).toBe(
-			"Review a folder (or more) (snapshot, not diff)",
+	test("uses context-rich wording for all target types", () => {
+		expect(getReviewTargetHint({ type: "uncommitted" })).toBe("current changes");
+		expect(getReviewTargetHint({ type: "baseBranch", branch: "main" })).toBe("changes against 'main'");
+		expect(getReviewTargetHint({ type: "commit", sha: "abc123456", title: "Fix auth" })).toBe(
+			"commit abc1234: Fix auth",
+		);
+		expect(getReviewTargetHint({ type: "commit", sha: "abc123456" })).toBe("commit abc1234");
+		expect(getReviewTargetHint({ type: "custom", instructions: "check security" })).toBe("custom review instructions");
+		expect(getReviewTargetHint({ type: "pullRequest", prNumber: 12, title: "Fix URL handling" })).toBe(
+			"PR #12: Fix URL handling",
+		);
+		expect(getReviewTargetHint({ type: "folder", paths: ["src", "docs"] })).toBe("folders: src, docs");
+	});
+
+	test("truncates long pull request titles and folder paths", () => {
+		expect(
+			getReviewTargetHint({
+				type: "pullRequest",
+				prNumber: 12,
+				title: "This is a very long pull request title",
+			}),
+		).toBe("PR #12: This is a very long pull re...");
+		expect(getReviewTargetHint({ type: "folder", paths: ["src/components", "docs/reference", "test/fixtures"] })).toBe(
+			"folders: src/components, docs/reference, test/...",
 		);
 	});
 });

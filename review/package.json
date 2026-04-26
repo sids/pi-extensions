@@ -1,6 +1,6 @@
 {
   "name": "@siddr/pi-review",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "type": "module",
   "description": "Interactive review mode extension for pi",
   "license": "MIT",

@@ -34,11 +34,23 @@ pi install npm:@siddr/pi-review
 - `/review custom [instructions...]`
 - `/review pr <number-or-url>`
 
+Direct command arguments support single and double quotes, so paths and instructions can contain spaces:
+
+```bash
+/review commit abc123 "Fix URL handling"
+/review folder src "test fixtures"
+/review custom 'focus on auth and error handling'
+```
+
+Pull-request reviews require the GitHub CLI (`gh`) to be installed and authenticated. If `gh --version` or `gh auth status` fails, the extension shows setup guidance before attempting to fetch PR details.
+
 ## Start and end flow
 
 When review mode starts, the extension asks where to start (`Empty branch` or `Current branch`) only when the session has branchable history. It then resolves the target, enables review mode, and prefills the editor with the selected review focus before you send the first review prompt.
 
 For `Empty branch` reviews of uncommitted changes, the extension also posts a visible AI-generated summary after the review instructions message. The summary is generated from the source branch's session history, focuses on goal/motivation, and is shown as a short preview that can be expanded with the standard expand keybinding.
+
+When review mode starts and ends, summaries and triage context use target-specific labels such as `current changes`, `changes against 'main'`, `commit abc1234: title`, `PR #42: title`, or `folders: src, docs`.
 
 When review mode ends, the extension opens triage for recorded comments (keep/discard, priority, optional note). If triage is confirmed, it exits review mode, restores model/thinking values captured at start, and posts a summary containing kept comments only. If no comments are kept, it exits cleanly without posting a summary.
 

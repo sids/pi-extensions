@@ -5,6 +5,32 @@ async function exec(pi: ExtensionAPI, command: string, args: string[], cwd?: str
 	return pi.exec(command, args, cwd ? { cwd } : undefined);
 }
 
+export type GithubCliStatus = "ready" | "missing" | "unauthenticated";
+
+export async function getGithubCliStatus(pi: ExtensionAPI, cwd?: string): Promise<GithubCliStatus> {
+	let ghVersion: { code: number };
+	try {
+		ghVersion = await exec(pi, "gh", ["--version"], cwd);
+	} catch {
+		return "missing";
+	}
+	if (ghVersion.code !== 0) {
+		return "missing";
+	}
+
+	let ghAuthStatus: { code: number };
+	try {
+		ghAuthStatus = await exec(pi, "gh", ["auth", "status"], cwd);
+	} catch {
+		return "unauthenticated";
+	}
+	if (ghAuthStatus.code !== 0) {
+		return "unauthenticated";
+	}
+
+	return "ready";
+}
+
 export async function isGitRepository(pi: ExtensionAPI, cwd: string): Promise<boolean> {
 	const { code } = await exec(pi, "git", ["rev-parse", "--git-dir"], cwd);
 	return code === 0;

@@ -37,11 +37,62 @@ export function normalizeReviewPriority(value: unknown): ReviewPriority | null {
 	return isReviewPriority(normalized) ? normalized : null;
 }
 
+export function tokenizeReviewArgs(value: string): string[] {
+	const tokens: string[] = [];
+	let current = "";
+	let quote: '"' | "'" | null = null;
+
+	for (let i = 0; i < value.length; i++) {
+		const char = value[i];
+
+		if (quote) {
+			if (char === "\\" && i + 1 < value.length) {
+				const next = value[i + 1];
+				if (next === quote || next === "\\") {
+					current += next;
+					i += 1;
+					continue;
+				}
+				current += char;
+				continue;
+			}
+			if (char === quote) {
+				quote = null;
+				continue;
+			}
+			current += char;
+			continue;
+		}
+
+		if ((char === '"' || char === "'") && current.length === 0) {
+			quote = char;
+			continue;
+		}
+
+		if (/\s/.test(char)) {
+			if (current.length > 0) {
+				tokens.push(current);
+				current = "";
+			}
+			continue;
+		}
+
+		current += char;
+	}
+
+	if (quote) {
+		current = `${quote}${current}`;
+	}
+
+	if (current.length > 0) {
+		tokens.push(current);
+	}
+
+	return tokens;
+}
+
 export function parseReviewPaths(value: string): string[] {
-	return value
-		.split(/\s+/)
-		.map((item) => item.trim())
-		.filter((item) => item.length > 0);
+	return tokenizeReviewArgs(value).filter((item) => item.length > 0);
 }
 
 export function normalizeFilePath(filePath: unknown): string {
@@ -160,17 +211,32 @@ export function parsePrReference(ref: string): number | null {
 export function getReviewTargetHint(target: { type: string } & Record<string, unknown>): string {
 	switch (target.type) {
 		case "uncommitted":
-			return "Review uncommitted changes";
-		case "baseBranch":
-			return "Review against a base branch (local)";
-		case "commit":
-			return "Review a commit";
+			return "current changes";
+		case "baseBranch": {
+			const branch = typeof target.branch === "string" && target.branch.trim() ? target.branch.trim() : "base branch";
+			return `changes against '${branch}'`;
+		}
+		case "commit": {
+			const sha = typeof target.sha === "string" ? target.sha.trim() : "";
+			const shortSha = sha ? sha.slice(0, 7) : "unknown";
+			const title = typeof target.title === "string" ? target.title.trim() : "";
+			return title ? `commit ${shortSha}: ${title}` : `commit ${shortSha}`;
+		}
 		case "custom":
-			return "Custom review instructions";
-		case "pullRequest":
-			return "Review a pull request (GitHub PR)";
-		case "folder":
-			return "Review a folder (or more) (snapshot, not diff)";
+			return "custom review instructions";
+		case "pullRequest": {
+			const prNumber = typeof target.prNumber === "number" ? target.prNumber : undefined;
+			const title = typeof target.title === "string" ? target.title.trim() : "";
+			const shortTitle = title.length > 30 ? `${title.slice(0, 27)}...` : title;
+			const prefix = prNumber ? `PR #${prNumber}` : "PR";
+			return shortTitle ? `${prefix}: ${shortTitle}` : prefix;
+		}
+		case "folder": {
+			const paths = Array.isArray(target.paths) ? target.paths.filter((item): item is string => typeof item === "string") : [];
+			const joined = paths.join(", ");
+			const displayPaths = joined.length > 40 ? `${joined.slice(0, 37)}...` : joined;
+			return displayPaths ? `folders: ${displayPaths}` : "folders";
+		}
 		default:
 			return "review target";
 	}

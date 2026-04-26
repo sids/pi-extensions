@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.8 - 2026-04-26
+
+- Added quoted argument parsing for direct review commands, including paths, commit titles, and custom instructions.
+- Added clearer GitHub CLI install/auth checks before pull request reviews.
+- Improved review target labels in review-mode prompts, triage, and summaries.
+
 ## 0.1.7 - 2026-04-24
 
 - Added session-history based change summaries for empty-branch reviews of uncommitted changes.

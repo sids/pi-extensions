@@ -1,5 +1,44 @@
 import { describe, expect, test } from "bun:test";
-import { checkoutPullRequestTarget, resolveReviewTarget } from "../target-selector";
+import { checkoutPullRequestTarget, parseReviewArgs, resolveReviewTarget } from "../target-selector";
+
+describe("parseReviewArgs", () => {
+	test("preserves quoted commit titles", () => {
+		expect(parseReviewArgs('commit abc123 "Fix quoted title"')).toEqual({
+			type: "commit",
+			sha: "abc123",
+			title: "Fix quoted title",
+		});
+	});
+
+	test("preserves quoted custom instructions", () => {
+		expect(parseReviewArgs('custom "focus on auth and security"')).toEqual({
+			type: "custom",
+			instructions: "focus on auth and security",
+		});
+	});
+
+	test("preserves apostrophes in unquoted custom instructions", () => {
+		expect(parseReviewArgs("custom don't miss auth")).toEqual({
+			type: "custom",
+			instructions: "don't miss auth",
+		});
+	});
+
+	// Unmatched quotes are kept literal so typoed input is visible instead of being silently rewritten.
+	test("preserves unmatched quotes in custom instructions", () => {
+		expect(parseReviewArgs('custom "focus on auth')).toEqual({
+			type: "custom",
+			instructions: '"focus on auth',
+		});
+	});
+
+	test("preserves quoted folder paths", () => {
+		expect(parseReviewArgs('folder src "docs with spaces" "test fixtures/input.ts"')).toEqual({
+			type: "folder",
+			paths: ["src", "docs with spaces", "test fixtures/input.ts"],
+		});
+	});
+});
 
 describe("resolveReviewTarget selector", () => {
 	test("keeps configured selector order when smart default is uncommitted", async () => {
@@ -300,6 +339,12 @@ describe("resolveReviewTarget pull request refs", () => {
 				if (command === "git" && args[0] === "status") {
 					return { code: 0, stdout: "", stderr: "" };
 				}
+				if (command === "gh" && args[0] === "--version") {
+					return { code: 0, stdout: "gh version 2.0.0", stderr: "" };
+				}
+				if (command === "gh" && args[0] === "auth" && args[1] === "status") {
+					return { code: 0, stdout: "Logged in", stderr: "" };
+				}
 				if (command === "gh" && args[0] === "pr" && args[1] === "view") {
 					return {
 						code: 0,
@@ -342,6 +387,12 @@ describe("resolveReviewTarget pull request refs", () => {
 				if (command === "git" && args[0] === "status") {
 					return { code: 0, stdout: "", stderr: "" };
 				}
+				if (command === "gh" && args[0] === "--version") {
+					return { code: 0, stdout: "gh version 2.0.0", stderr: "" };
+				}
+				if (command === "gh" && args[0] === "auth" && args[1] === "status") {
+					return { code: 0, stdout: "Logged in", stderr: "" };
+				}
 				if (command === "gh" && args[0] === "pr" && args[1] === "view") {
 					return { code: 1, stdout: "", stderr: "not found" };
 				}
@@ -359,7 +410,67 @@ describe("resolveReviewTarget pull request refs", () => {
 		const target = await resolveReviewTarget(pi, ctx, "pr 42");
 		expect(target).toBeNull();
 		expect(notifications).toContainEqual({
-			message: "Could not find PR #42. Make sure gh is authenticated and the PR exists.",
+			message: "Could not find PR #42. Make sure it exists and your GitHub auth has access (check with `gh auth status`).",
+			level: "error",
+		});
+	});
+
+	test("shows install guidance when gh is missing", async () => {
+		const notifications: Array<{ message: string; level: string }> = [];
+		const pi = {
+			exec: async (command: string, args: string[]) => {
+				if (command === "git" && args[0] === "status") {
+					return { code: 0, stdout: "", stderr: "" };
+				}
+				if (command === "gh" && args[0] === "--version") {
+					return { code: 1, stdout: "", stderr: "command not found" };
+				}
+				throw new Error(`Unexpected command: ${command} ${args.join(" ")}`);
+			},
+		} as any;
+		const ctx = {
+			cwd: "/tmp/project",
+			ui: {
+				notify: (message: string, level: string) => notifications.push({ message, level }),
+			},
+		} as any;
+
+		const target = await resolveReviewTarget(pi, ctx, "pr 42");
+		expect(target).toBeNull();
+		expect(notifications).toContainEqual({
+			message:
+				"PR review requires GitHub CLI (`gh`). Install GitHub CLI (`gh`) from https://cli.github.com/ (macOS: `brew install gh`), then sign in with `gh auth login` and verify with `gh auth status`.",
+			level: "error",
+		});
+	});
+
+	test("shows auth guidance when gh is not authenticated", async () => {
+		const notifications: Array<{ message: string; level: string }> = [];
+		const pi = {
+			exec: async (command: string, args: string[]) => {
+				if (command === "git" && args[0] === "status") {
+					return { code: 0, stdout: "", stderr: "" };
+				}
+				if (command === "gh" && args[0] === "--version") {
+					return { code: 0, stdout: "gh version 2.0.0", stderr: "" };
+				}
+				if (command === "gh" && args[0] === "auth" && args[1] === "status") {
+					return { code: 1, stdout: "", stderr: "not logged in" };
+				}
+				throw new Error(`Unexpected command: ${command} ${args.join(" ")}`);
+			},
+		} as any;
+		const ctx = {
+			cwd: "/tmp/project",
+			ui: {
+				notify: (message: string, level: string) => notifications.push({ message, level }),
+			},
+		} as any;
+
+		const target = await resolveReviewTarget(pi, ctx, "pr 42");
+		expect(target).toBeNull();
+		expect(notifications).toContainEqual({
+			message: "GitHub CLI is installed, but you're not signed in. Run `gh auth login`, then verify with `gh auth status`.",
 			level: "error",
 		});
 	});

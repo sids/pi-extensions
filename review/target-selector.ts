@@ -4,6 +4,7 @@ import {
 	getCurrentBranch,
 	getDefaultBranch,
 	getDefaultBranchInfo,
+	getGithubCliStatus,
 	getLocalBranches,
 	getPrInfo,
 	getRecentCommits,
@@ -11,7 +12,7 @@ import {
 	hasUncommittedChanges,
 } from "./git";
 import type { ReviewTarget } from "./types";
-import { parsePrLocator, parseReviewPaths } from "./utils";
+import { parsePrLocator, parseReviewPaths, tokenizeReviewArgs } from "./utils";
 
 type ReviewPreset = "uncommitted" | "commit" | "baseBranch" | "pullRequest" | "folder" | "custom";
 
@@ -23,6 +24,9 @@ const REVIEW_PRESETS: Array<{ value: ReviewPreset; label: string; description: s
 	{ value: "folder", label: "Review a folder (or more)", description: "(snapshot, not diff)" },
 	{ value: "custom", label: "Custom review instructions", description: "" },
 ];
+
+const GH_SETUP_INSTRUCTIONS =
+	"Install GitHub CLI (`gh`) from https://cli.github.com/ (macOS: `brew install gh`), then sign in with `gh auth login` and verify with `gh auth status`.";
 
 export type ParsedReviewArgs = ReviewTarget | { type: "pr"; ref: string } | null;
 
@@ -82,7 +86,7 @@ export function parseReviewArgs(args: string | undefined): ParsedReviewArgs {
 		return null;
 	}
 
-	const parts = args.trim().split(/\s+/);
+	const parts = tokenizeReviewArgs(args.trim());
 	const subcommand = (parts[0] ?? "").toLowerCase();
 
 	switch (subcommand) {
@@ -104,7 +108,7 @@ export function parseReviewArgs(args: string | undefined): ParsedReviewArgs {
 			return { type: "commit", sha, title };
 		}
 		case "folder": {
-			const paths = parseReviewPaths(parts.slice(1).join(" "));
+			const paths = parts.slice(1).filter((item) => item.length > 0);
 			if (paths.length === 0) {
 				return null;
 			}
@@ -126,6 +130,22 @@ export function parseReviewArgs(args: string | undefined): ParsedReviewArgs {
 	}
 }
 
+async function ensureGithubCliReady(pi: ExtensionAPI, ctx: ExtensionContext): Promise<boolean> {
+	const status = await getGithubCliStatus(pi, ctx.cwd);
+	if (status === "missing") {
+		ctx.ui.notify(`PR review requires GitHub CLI (\`gh\`). ${GH_SETUP_INSTRUCTIONS}`, "error");
+		return false;
+	}
+	if (status === "unauthenticated") {
+		ctx.ui.notify(
+			"GitHub CLI is installed, but you're not signed in. Run `gh auth login`, then verify with `gh auth status`.",
+			"error",
+		);
+		return false;
+	}
+	return true;
+}
+
 async function resolvePullRequestTarget(pi: ExtensionAPI, ctx: ExtensionContext, ref: string): Promise<ReviewTarget | null> {
 	if (await hasPendingChanges(pi, ctx.cwd)) {
 		ctx.ui.notify("Cannot checkout PR: you have uncommitted changes. Please commit or stash them first.", "error");
@@ -138,10 +158,17 @@ async function resolvePullRequestTarget(pi: ExtensionAPI, ctx: ExtensionContext,
 		return null;
 	}
 
+	if (!(await ensureGithubCliReady(pi, ctx))) {
+		return null;
+	}
+
 	ctx.ui.notify(`Fetching PR #${parsedRef.prNumber} info...`, "info");
 	const prInfo = await getPrInfo(pi, parsedRef.ghRef, ctx.cwd);
 	if (!prInfo) {
-		ctx.ui.notify(`Could not find PR #${parsedRef.prNumber}. Make sure gh is authenticated and the PR exists.`, "error");
+		ctx.ui.notify(
+			`Could not find PR #${parsedRef.prNumber}. Make sure it exists and your GitHub auth has access (check with \`gh auth status\`).`,
+			"error",
+		);
 		return null;
 	}
 
