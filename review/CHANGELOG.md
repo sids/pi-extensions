@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.9 - 2026-04-27
+
+- Prefill PR review exits with a GitHub CLI inline-comment instruction.
+- Preserve repo-qualified pull request URLs when preparing inline-comment follow-ups.
+
 ## 0.1.8 - 2026-04-26
 
 - Added quoted argument parsing for direct review commands, including paths, commit titles, and custom instructions.

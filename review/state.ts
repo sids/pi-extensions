@@ -140,6 +140,8 @@ export function createReviewModeStateManager(pi: ExtensionAPI) {
 			originLeafId?: string;
 			runId: string;
 			targetHint: string;
+			targetPrNumber?: number;
+			targetPrRef?: string;
 			reviewInstructionsPrompt: string;
 			originModelProvider?: string;
 			originModelId?: string;
@@ -153,6 +155,8 @@ export function createReviewModeStateManager(pi: ExtensionAPI) {
 			lastReviewLeafId: state.lastReviewLeafId,
 			runId: options.runId,
 			targetHint: options.targetHint,
+			...(options.targetPrNumber ? { targetPrNumber: options.targetPrNumber } : {}),
+			...(options.targetPrRef ? { targetPrRef: options.targetPrRef } : {}),
 			reviewInstructionsPrompt: options.reviewInstructionsPrompt,
 			originModelProvider: options.originModelProvider,
 			originModelId: options.originModelId,

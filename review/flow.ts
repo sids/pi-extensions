@@ -19,6 +19,8 @@ type ReviewModeStateManager = {
 			originLeafId?: string;
 			runId: string;
 			targetHint: string;
+			targetPrNumber?: number;
+			targetPrRef?: string;
 			reviewInstructionsPrompt: string;
 			originModelProvider?: string;
 			originModelId?: string;
@@ -256,6 +258,25 @@ function canOfferEmptyBranchStart(ctx: ExtensionContext, originLeafId: string | 
 	return Boolean(originLeafId && firstUserMessageId && firstUserMessageId !== originLeafId);
 }
 
+function getReviewPrReference(state: ReviewModeState): string | undefined {
+	if (state.targetPrRef?.trim()) {
+		const targetPrRef = state.targetPrRef.trim();
+		return /^\d+$/.test(targetPrRef) ? `#${targetPrRef}` : targetPrRef;
+	}
+
+	if (state.targetPrNumber) {
+		return `#${state.targetPrNumber}`;
+	}
+
+	const match = state.targetHint?.match(/^PR #(\d+)(?:\b|:)/);
+	if (!match) {
+		return undefined;
+	}
+
+	const prNumber = Number.parseInt(match[1], 10);
+	return Number.isInteger(prNumber) && prNumber > 0 ? `#${prNumber}` : undefined;
+}
+
 export async function startReviewMode(
 	pi: ExtensionAPI,
 	ctx: ExtensionContext,
@@ -364,6 +385,9 @@ export async function startReviewMode(
 		originLeafId,
 		runId,
 		targetHint,
+		...(target.type === "pullRequest"
+			? { targetPrNumber: target.prNumber, targetPrRef: target.ghRef?.trim() || String(target.prNumber) }
+			: {}),
 		reviewInstructionsPrompt,
 		originModelProvider: ctx.model?.provider,
 		originModelId: ctx.model?.id,
@@ -471,13 +495,18 @@ export async function endReviewMode(
 		totalCount: summary.totalCount,
 	});
 
-	const prefillLines = [
-		summary.kept.length === 1 ? "Address the review comment" : "Address the review comments",
-	];
-	if (summary.kept.some((comment) => comment.note?.trim())) {
-		prefillLines.push("", "Pay attention to the user notes in response to the review comments");
+	const reviewPrReference = getReviewPrReference(state);
+	if (reviewPrReference) {
+		ctx.ui.setEditorText(`Use the gh cli to add these as inline comments on PR ${reviewPrReference}.`);
+	} else {
+		const prefillLines = [
+			summary.kept.length === 1 ? "Address the review comment" : "Address the review comments",
+		];
+		if (summary.kept.some((comment) => comment.note?.trim())) {
+			prefillLines.push("", "Pay attention to the user notes in response to the review comments");
+		}
+		ctx.ui.setEditorText(prefillLines.join("\n"));
 	}
-	ctx.ui.setEditorText(prefillLines.join("\n"));
 
 	pi.sendMessage({
 		customType: REVIEW_SUMMARY_ENTRY_TYPE,

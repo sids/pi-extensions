@@ -617,6 +617,50 @@ describe("/review inactive", () => {
 		expect(checkoutTargets.map((target) => target.prNumber)).toEqual([1, 2]);
 		expect(notifications).toContainEqual({ message: "Please select a different review target.", level: "info" });
 		expect(startCalls.at(-1)?.targetHint).toBe("PR #2");
+		expect(startCalls.at(-1)?.targetPrNumber).toBe(2);
+		expect(startCalls.at(-1)?.targetPrRef).toBe("2");
+	});
+
+	test("preserves repo-qualified PR refs when starting review mode", async () => {
+		const startCalls: any[] = [];
+		const { handler } = createRegisteredReviewHandler({
+			stateManager: {
+				getState: () => ({ version: 1, active: false }),
+				setState: () => {},
+				startReviewMode: (_ctx, options) => startCalls.push(options),
+			},
+			flow: {
+				isGitRepository: async () => true,
+				resolveTarget: async () => ({
+					type: "pullRequest",
+					prNumber: 42,
+					baseBranch: "main",
+					title: "Fix issue",
+					ghRef: "https://github.com/acme/widgets/pull/42",
+				}),
+				checkoutTarget: async () => true,
+				buildInstructionsPrompt: async () => "instructions",
+				buildEditorPrompt: async () => "editor prompt",
+				describeTarget: () => "PR #42",
+			},
+		});
+
+		await handler("pr https://github.com/acme/widgets/pull/42", {
+			hasUI: true,
+			cwd: "/tmp/project",
+			waitForIdle: async () => {},
+			sessionManager: {
+				getLeafId: () => "leaf-1",
+				getEntries: () => [{ id: "leaf-1", type: "message", message: { role: "user" } }],
+			},
+			ui: {
+				notify: () => {},
+				setEditorText: () => {},
+			},
+		});
+
+		expect(startCalls.at(-1)?.targetPrNumber).toBe(42);
+		expect(startCalls.at(-1)?.targetPrRef).toBe("https://github.com/acme/widgets/pull/42");
 	});
 
 	test("returns to origin branch when checkout fails after moving to empty branch", async () => {
@@ -861,6 +905,73 @@ describe("/review active", () => {
 			"Address the review comment\n\nPay attention to the user notes in response to the review comments",
 		]);
 		expect(notifications.length).toBe(0);
+	});
+
+	test("prefills PR inline-comment instruction when ending a PR review", async () => {
+		let state = {
+			version: 1,
+			active: true,
+			runId: "run-1",
+			targetPrNumber: 42,
+			targetPrRef: "https://github.com/acme/widgets/pull/42",
+		};
+		const editorPrefills: string[] = [];
+
+		const { handler } = createRegisteredReviewHandler({
+			stateManager: {
+				getState: () => state,
+				setState: (_ctx, next) => {
+					state = next;
+				},
+				startReviewMode: () => {},
+			},
+			flow: {
+				getCommentsForRun: () => [
+					{
+						version: 1,
+						id: "c1",
+						runId: "run-1",
+						priority: "P1",
+						comment: "kept finding",
+						references: [],
+						createdAt: 1,
+					},
+				],
+				runTriage: async () => ({
+					comments: [
+						{
+							id: "c1",
+							keep: true,
+							priority: "P1",
+							comment: "kept finding",
+							references: [],
+							note: "include this note",
+							originalPriority: "P1",
+						},
+					],
+					keptCount: 1,
+					discardedCount: 0,
+				}),
+			},
+		});
+
+		await handler("", {
+			hasUI: true,
+			cwd: "/tmp/project",
+			waitForIdle: async () => {},
+			sessionManager: {
+				getLeafId: () => "review-leaf",
+				getEntries: () => [],
+			},
+			ui: {
+				notify: () => {},
+				setEditorText: (text: string) => editorPrefills.push(text),
+			},
+		});
+
+		expect(editorPrefills).toEqual([
+			"Use the gh cli to add these as inline comments on PR https://github.com/acme/widgets/pull/42.",
+		]);
 	});
 
 	test("does not post a summary when all triaged comments are discarded", async () => {

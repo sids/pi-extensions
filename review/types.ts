@@ -21,6 +21,8 @@ export type ReviewModeState = {
 	lastReviewLeafId?: string;
 	runId?: string;
 	targetHint?: string;
+	targetPrNumber?: number;
+	targetPrRef?: string;
 	reviewInstructionsPrompt?: string;
 	originModelProvider?: string;
 	originModelId?: string;
