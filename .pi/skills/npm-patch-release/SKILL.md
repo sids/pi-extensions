@@ -1,6 +1,6 @@
 ---
 name: npm-patch-release
-description: Update an npm package patch version, changelog, and lockfile; run relevant tests/checks; commit the release changes; and give the user the exact npmjs publish command without publishing. Use when asked to "update patch version, changelog; commit; give me a command to publish this to npmjs" or similar npm package release-prep tasks.
+description: Update an npm package patch version, changelog, and lockfile; run relevant tests/checks; commit the release changes; and give the user the exact npmjs publish command, preferring repo publish scripts such as scripts/publish-npmjs.sh, without publishing. Use when asked to "update patch version, changelog; commit; give me a command to publish this to npmjs" or similar npm package release-prep tasks.
 ---
 
 # NPM Patch Release
@@ -36,7 +36,15 @@ Perform release prep for an npm package. Do not publish or push unless explicitl
 
 5. Validate.
    - Run existing tests/checks relevant to the package.
-   - Run a packaging dry-run when practical:
+   - If this repo has `scripts/publish-npmjs.sh`, run the publish script in dry-run mode from the repo root instead of raw `npm pack` / `npm publish` dry-runs:
+     ```bash
+     scripts/publish-npmjs.sh <package-directory> --dry-run
+     ```
+     For all packages:
+     ```bash
+     scripts/publish-npmjs.sh --all --dry-run
+     ```
+   - If no repo publish script exists, run a packaging dry-run when practical:
      ```bash
      npm pack --workspace <workspace-name-or-path> --dry-run
      ```
@@ -59,6 +67,26 @@ Perform release prep for an npm package. Do not publish or push unless explicitl
    - Give a command only; do not publish.
 
 ## Publish Command
+
+If this repo has `scripts/publish-npmjs.sh`, give the user that command from the repo root and do not publish yourself:
+
+```bash
+scripts/publish-npmjs.sh <package-directory>
+```
+
+For all packages:
+
+```bash
+scripts/publish-npmjs.sh --all
+```
+
+Add `--only-unpublished` when releasing multiple packages or when the user may rerun the command safely:
+
+```bash
+scripts/publish-npmjs.sh --all --only-unpublished
+```
+
+Only fall back to raw npm commands when no repo publish script exists.
 
 For npm workspaces:
 
