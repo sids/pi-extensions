@@ -1,4 +1,4 @@
-import { supportsXhigh } from "@mariozechner/pi-ai";
+import * as piAi from "@mariozechner/pi-ai";
 import type { AutocompleteItem, AutocompleteProvider } from "@mariozechner/pi-tui";
 
 export const THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh"] as const;
@@ -9,6 +9,13 @@ export type ThinkingModel = {
 	id: string;
 	reasoning?: boolean;
 };
+
+type PiAiCompat = {
+	getSupportedThinkingLevels?: (model: unknown) => readonly string[];
+	supportsXhigh?: (model: unknown) => boolean;
+};
+
+const piAiCompat = piAi as PiAiCompat;
 
 /** Regex matching a ^thinking token ending at cursor position. */
 const THINKING_TOKEN_PATTERN = /(?:^|\s)\^([a-zA-Z]*)$/;
@@ -63,9 +70,20 @@ export function getAvailableThinkingLevels(model: ThinkingModel | null | undefin
 	if (!model?.reasoning) {
 		return ["off"];
 	}
-	return supportsXhigh(model as Parameters<typeof supportsXhigh>[0])
-		? [...THINKING_LEVELS]
-		: [...THINKING_LEVELS_WITHOUT_XHIGH];
+
+	if (typeof piAiCompat.getSupportedThinkingLevels === "function") {
+		const supportedLevels = piAiCompat.getSupportedThinkingLevels(model);
+		const filteredLevels = supportedLevels.filter((level): level is ThinkingLevel =>
+			(THINKING_LEVELS as readonly string[]).includes(level),
+		);
+		return filteredLevels.length > 0 ? filteredLevels : ["off"];
+	}
+
+	if (typeof piAiCompat.supportsXhigh === "function") {
+		return piAiCompat.supportsXhigh(model) ? [...THINKING_LEVELS] : [...THINKING_LEVELS_WITHOUT_XHIGH];
+	}
+
+	return [...THINKING_LEVELS_WITHOUT_XHIGH];
 }
 
 /**

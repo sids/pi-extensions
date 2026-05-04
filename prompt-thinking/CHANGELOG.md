@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Added compatibility with newer `@mariozechner/pi-ai` versions that expose `getSupportedThinkingLevels()` instead of `supportsXhigh()`.
+
 ## 0.1.6 - 2026-04-23
 
 - Replaced the custom editor autocomplete integration with stacked `ctx.ui.addAutocompleteProvider(...)` providers.
