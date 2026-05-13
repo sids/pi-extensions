@@ -39,7 +39,12 @@ function createHarness(initialThinkingLevel: ThinkingLevel = "high") {
 		return result;
 	}
 
-	function createSessionContext(model: { id: string; reasoning: boolean } = { id: "claude-sonnet-4-5", reasoning: true }) {
+	function createSessionContext(
+		model: { id: string; reasoning: boolean; thinkingLevelMap?: Partial<Record<ThinkingLevel, string | null>> } = {
+			id: "claude-sonnet-4-5",
+			reasoning: true,
+		},
+	) {
 		return {
 			hasUI: true,
 			model,

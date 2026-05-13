@@ -44,7 +44,7 @@ describe("getAvailableThinkingLevels", () => {
 		]);
 	});
 
-	test("includes xhigh for supported models", () => {
+	test("includes xhigh for supported legacy models", () => {
 		expect(getAvailableThinkingLevels({ id: "gpt-5.3-codex", reasoning: true })).toEqual([
 			"off",
 			"minimal",
@@ -53,6 +53,26 @@ describe("getAvailableThinkingLevels", () => {
 			"high",
 			"xhigh",
 		]);
+	});
+
+	test("uses thinkingLevelMap when present", () => {
+		expect(
+			getAvailableThinkingLevels({
+				id: "claude-opus-4-6-thinking",
+				reasoning: true,
+				thinkingLevelMap: { minimal: null, low: null, medium: null, high: "high", xhigh: "max" },
+			}),
+		).toEqual(["off", "high", "xhigh"]);
+	});
+
+	test("hides off when thinkingLevelMap marks it unsupported", () => {
+		expect(
+			getAvailableThinkingLevels({
+				id: "gemini-3-pro",
+				reasoning: true,
+				thinkingLevelMap: { off: null },
+			}),
+		).toEqual(["minimal", "low", "medium", "high"]);
 	});
 });
 
