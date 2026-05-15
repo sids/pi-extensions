@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.7 - 2026-05-15
+
+- Updated package metadata for the pnpm workspace migration.
+
 ## 0.1.6 - 2026-05-15
 
 - Migrated runtime imports and peer dependencies to the `@earendil-works/*` Pi 0.74 package scope.

@@ -1,12 +1,15 @@
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { beforeEach, describe, expect, test, vi } from "vitest";
 
-const clipboardCalls: string[] = [];
-let clipboardError: Error | null = null;
+const clipboardState = vi.hoisted(() => ({
+	calls: [] as string[],
+	error: null as Error | null,
+}));
+const clipboardCalls = clipboardState.calls;
 
-mock.module("@earendil-works/pi-coding-agent", () => ({
+vi.mock("@earendil-works/pi-coding-agent", () => ({
 	copyToClipboard: async (text: string) => {
-		if (clipboardError) {
-			throw clipboardError;
+		if (clipboardState.error) {
+			throw clipboardState.error;
 		}
 		clipboardCalls.push(text);
 	},
@@ -136,7 +139,7 @@ function createHarness(options: HarnessOptions = {}) {
 
 beforeEach(() => {
 	clipboardCalls.length = 0;
-	clipboardError = null;
+	clipboardState.error = null;
 });
 
 describe("prompt-save extension", () => {
@@ -210,13 +213,13 @@ describe("prompt-save extension", () => {
 		expect(harness.getNotifications()).toContainEqual({ message: "Copied prompt to clipboard", type: "info" });
 
 		harness.setEditorText("copy me again");
-		clipboardError = new Error("no clipboard");
+		clipboardState.error = new Error("no clipboard");
 		await harness.runShortcut(COPY_SHORTCUT);
 		expect(harness.getEditorText()).toBe("copy me again");
 		expect(harness.getNotifications()).toContainEqual({ message: "Clipboard copy failed", type: "error" });
 
 		harness.setEditorText("  ");
-		clipboardError = null;
+		clipboardState.error = null;
 		await harness.runShortcut(COPY_SHORTCUT);
 		expect(clipboardCalls).toEqual(["copy me"]);
 		expect(harness.getNotifications()).toContainEqual({ message: "Editor is empty", type: "info" });

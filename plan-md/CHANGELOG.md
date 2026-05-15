@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.14 - 2026-05-15
+
+- Updated package metadata for the pnpm workspace migration.
+- Linked the shared Q&A package through the local pnpm workspace.
+
 ## 0.1.13 - 2026-05-15
 
 - Migrated runtime imports and peer dependencies to the `@earendil-works/*` Pi 0.74 package scope.

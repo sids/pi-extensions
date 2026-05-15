@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vitest";
 import {
 	areCmuxStatusPresentationsEqual,
 	formatCmuxStatusKey,
@@ -91,13 +91,13 @@ describe("areCmuxStatusPresentationsEqual", () => {
 				getCmuxStatusPresentation(undefined, "Working", 0),
 				getCmuxStatusPresentation(undefined, "Working", 0),
 			),
-		).toBeTrue();
+		).toBe(true);
 		expect(
 			areCmuxStatusPresentationsEqual(
 				getCmuxStatusPresentation(undefined, "Working", 0),
 				getCmuxStatusPresentation(undefined, "Working", 1),
 			),
-		).toBeFalse();
+		).toBe(false);
 	});
 });
 

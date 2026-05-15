@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vitest";
 import { getFileDetailText } from "../web/components/file-diff";
 
 describe("getFileDetailText", () => {

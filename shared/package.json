@@ -1,6 +1,6 @@
 {
   "name": "@siddr/pi-shared-qna",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "type": "module",
   "description": "Shared TUI helpers for siddr pi extensions",
   "license": "MIT",

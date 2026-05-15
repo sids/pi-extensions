@@ -1,6 +1,6 @@
 {
   "name": "pi-answer",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "type": "module",
   "description": "Interactive Q&A extraction extension for pi",
   "license": "MIT",
@@ -27,7 +27,7 @@
     "@earendil-works/pi-tui": ">=0.74.0"
   },
   "dependencies": {
-    "@siddr/pi-shared-qna": "^0.1.0"
+    "@siddr/pi-shared-qna": "workspace:^"
   },
   "publishConfig": {
     "registry": "https://registry.npmjs.org/",

@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vitest";
 import statusExtension from "../index";
 import { OPENAI_PARAMS_EVENT_CHANNEL } from "../utils";
 

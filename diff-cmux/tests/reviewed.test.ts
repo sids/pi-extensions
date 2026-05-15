@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vitest";
 import { buildViewedFingerprintsByFileId, getInvalidatedReviewedFileIds, getNextReviewedToggleState, reconcileReviewedByFileId } from "../web/reviewed";
 
 describe("getNextReviewedToggleState", () => {

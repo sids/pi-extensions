@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vitest";
 import type { AutocompleteProvider } from "@earendil-works/pi-tui";
 import promptThinkingExtension from "../index";
 import type { ThinkingLevel } from "../utils";

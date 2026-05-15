@@ -77,7 +77,7 @@ Toggle the behavior with `/custom-cmux-status`.
 ## Tests
 
 ```bash
-bun test cmux-status/tests/utils.test.ts
-bun test cmux-status/tests/cmux.test.ts
-bun test cmux-status/tests/index.test.ts
+pnpm test -- cmux-status/tests/utils.test.ts
+pnpm test -- cmux-status/tests/cmux.test.ts
+pnpm test -- cmux-status/tests/index.test.ts
 ```

@@ -1,6 +1,6 @@
 {
   "name": "pi-task-subagents",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "type": "module",
   "description": "Standalone subagent delegation tools for pi",
   "license": "MIT",
@@ -29,7 +29,7 @@
     "typebox": "*"
   },
   "dependencies": {
-    "@siddr/pi-shared-qna": "^0.1.2"
+    "@siddr/pi-shared-qna": "workspace:^"
   },
   "publishConfig": {
     "registry": "https://registry.npmjs.org/",

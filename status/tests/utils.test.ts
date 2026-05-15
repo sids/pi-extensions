@@ -1,6 +1,6 @@
 import os from "node:os";
 import path from "node:path";
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vitest";
 import {
 	activeAgentDurationMs,
 	carryForwardTimingDurations,
@@ -263,15 +263,15 @@ describe("parseAllowedGitHubHosts", () => {
 describe("isGitHubHost", () => {
 	test("accepts allowed hosts", () => {
 		const allowed = parseAllowedGitHubHosts("github.acme.local");
-		expect(isGitHubHost("github.com", allowed)).toBeTrue();
-		expect(isGitHubHost("github.acme.local", allowed)).toBeTrue();
+		expect(isGitHubHost("github.com", allowed)).toBe(true);
+		expect(isGitHubHost("github.acme.local", allowed)).toBe(true);
 	});
 
 	test("rejects unknown or spoofed hosts", () => {
-		expect(isGitHubHost("github.com.evil.tld")).toBeFalse();
-		expect(isGitHubHost("github.localhost")).toBeFalse();
-		expect(isGitHubHost("gitlab.com")).toBeFalse();
-		expect(isGitHubHost(undefined)).toBeFalse();
+		expect(isGitHubHost("github.com.evil.tld")).toBe(false);
+		expect(isGitHubHost("github.localhost")).toBe(false);
+		expect(isGitHubHost("gitlab.com")).toBe(false);
+		expect(isGitHubHost(undefined)).toBe(false);
 	});
 });
 

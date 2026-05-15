@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vitest";
 import path from "node:path";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { getAnswerSettingsPaths } from "../index";

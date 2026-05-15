@@ -1,0 +1,28 @@
+packages:
+  - shared
+  - answer
+  - cmux-status
+  - diff-cmux
+  - fetch-url
+  - mention-skills
+  - openai-params
+  - plan-md
+  - prompt-save
+  - prompt-thinking
+  - review
+  - status
+  - task-subagents
+  - tool-display
+  - web-search
+
+allowBuilds:
+  '@google/genai': true
+  esbuild: true
+  koffi: true
+  protobufjs: true
+
+onlyBuiltDependencies:
+  - '@google/genai'
+  - esbuild
+  - koffi
+  - protobufjs

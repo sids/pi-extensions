@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vitest";
 import planMdExtension from "../index";
 
 type Handler = (event: any, ctx: any) => any;

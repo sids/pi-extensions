@@ -64,28 +64,28 @@ This repository contains the **answer**, **fetch-url**, **web-search**, **status
 ## Development notes
 
 - Always add/update tests when making changes.
-- Run `npm install` at repo root before testing or local extension runs. This links workspace dependencies (notably `@siddr/pi-shared-qna` used by `answer` and `plan-md`).
+- Run `pnpm install` at repo root before testing or local extension runs. This links workspace dependencies (notably `@siddr/pi-shared-qna` used by `answer` and `plan-md`).
 - Always run tests after making changes.
 - Run tests with:
   ```bash
-  bun test answer/tests/utils.test.ts
-  bun test answer/tests/qna-adapter.test.ts
-  bun test fetch-url/tests/utils.test.ts
-  bun test web-search/tests/utils.test.ts
-  bun test status/tests/utils.test.ts
-  bun test plan-md/tests/utils.test.ts
-  bun test plan-md/tests/state.test.ts
-  bun test plan-md/tests/plan-files.test.ts
-  bun test plan-md/tests/flow.test.ts
-  bun test plan-md/tests/request-user-input.test.ts
-  bun test plan-md/tests/prompts.test.ts
-  bun test task-subagents/tests/*.test.ts
-  bun test review/tests/utils.test.ts
-  bun test review/tests/state.test.ts
-  bun test review/tests/comments.test.ts
-  bun test review/tests/flow.test.ts
-  bun test review/tests/triage-tui.test.ts
-  bun test review/tests/target-selector.test.ts
-  bun test mention-skills/tests/utils.test.ts
+  pnpm test -- answer/tests/utils.test.ts
+  pnpm test -- answer/tests/qna-adapter.test.ts
+  pnpm test -- fetch-url/tests/utils.test.ts
+  pnpm test -- web-search/tests/utils.test.ts
+  pnpm test -- status/tests/utils.test.ts
+  pnpm test -- plan-md/tests/utils.test.ts
+  pnpm test -- plan-md/tests/state.test.ts
+  pnpm test -- plan-md/tests/plan-files.test.ts
+  pnpm test -- plan-md/tests/flow.test.ts
+  pnpm test -- plan-md/tests/request-user-input.test.ts
+  pnpm test -- plan-md/tests/prompts.test.ts
+  pnpm test -- task-subagents/tests/*.test.ts
+  pnpm test -- review/tests/utils.test.ts
+  pnpm test -- review/tests/state.test.ts
+  pnpm test -- review/tests/comments.test.ts
+  pnpm test -- review/tests/flow.test.ts
+  pnpm test -- review/tests/triage-tui.test.ts
+  pnpm test -- review/tests/target-selector.test.ts
+  pnpm test -- mention-skills/tests/utils.test.ts
   ```
 - To load an extension locally, symlink its directory into `~/.pi/agent/extensions/<name>` and run `/reload` in pi.

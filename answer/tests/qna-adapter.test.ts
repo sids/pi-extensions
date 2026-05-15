@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vitest";
 import { createDraftStore, getLatestDraft, type AnswerDraft } from "../qna-adapter";
 
 const QUESTIONS = [

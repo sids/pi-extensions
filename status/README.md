@@ -32,5 +32,5 @@ Toggle the behavior with `/custom-status`.
 ## Tests
 
 ```bash
-bun test status/tests/*.test.ts
+pnpm test -- status/tests/*.test.ts
 ```

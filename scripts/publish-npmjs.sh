@@ -94,8 +94,8 @@ run_publish_checks() {
   echo "==> Running publish checks"
   (
     cd "$REPO_ROOT"
-    npm run check:peer-runtime
-    npm run check:package-boundaries
+    pnpm run check:peer-runtime
+    pnpm run check:package-boundaries
   )
 }
 

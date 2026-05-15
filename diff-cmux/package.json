@@ -1,6 +1,6 @@
 {
   "name": "@siddr/pi-diff-cmux",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "type": "module",
   "description": "cmux browser diff review extension for pi",
   "license": "MIT",
@@ -32,7 +32,7 @@
   },
   "scripts": {
     "build": "node ./scripts/build-web.mjs",
-    "test": "bun test tests/*.test.ts"
+    "test": "vitest run tests/*.test.ts"
   },
   "publishConfig": {
     "registry": "https://registry.npmjs.org/",

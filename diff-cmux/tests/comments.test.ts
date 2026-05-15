@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vitest";
 import { appendCommentsToEditor, appendTextToEditor, findReusableDraftComment, formatCommentsForEditor, isDiffComment, isEmptyDraftComment, removeCommentById, updateCommentText, validateDiffComments } from "../comments";
 import type { DiffComment, ResolvedDiffTarget } from "../types";
 
@@ -52,7 +52,7 @@ const COMMENTS: DiffComment[] = [
 
 describe("comment validation", () => {
 	test("accepts valid comments", () => {
-		expect(COMMENTS.every(isDiffComment)).toBeTrue();
+		expect(COMMENTS.every(isDiffComment)).toBe(true);
 		expect(validateDiffComments(COMMENTS)).toEqual(COMMENTS);
 	});
 
@@ -90,8 +90,8 @@ describe("draft helpers", () => {
 	});
 
 	test("detects empty drafts", () => {
-		expect(isEmptyDraftComment({ ...COMMENTS[2]!, text: "   " })).toBeTrue();
-		expect(isEmptyDraftComment(COMMENTS[2]!)).toBeFalse();
+		expect(isEmptyDraftComment({ ...COMMENTS[2]!, text: "   " })).toBe(true);
+		expect(isEmptyDraftComment(COMMENTS[2]!)).toBe(false);
 	});
 });
 
@@ -117,7 +117,7 @@ describe("appendCommentsToEditor", () => {
 
 		await appendCommentsToEditor(ui, TARGET, COMMENTS);
 		expect(editorText).toContain("existing draft\n\nLooks close, but needs another pass.\n\n./src/foo.ts:42 (new)");
-		expect(editorText.endsWith("./src/foo.ts\n   Consider extracting this helper.\n\n")).toBeTrue();
+		expect(editorText.endsWith("./src/foo.ts\n   Consider extracting this helper.\n\n")).toBe(true);
 	});
 
 	test("adds an extra trailing newline when appending a single comment", async () => {
@@ -131,7 +131,7 @@ describe("appendCommentsToEditor", () => {
 
 		await appendCommentsToEditor(ui, TARGET, [COMMENTS[0]!]);
 		expect(editorText).toContain("existing draft\n\n./src/foo.ts:42 (new)");
-		expect(editorText.endsWith("./src/foo.ts:42 (new)\n   Please rename this.\n\n")).toBeTrue();
+		expect(editorText.endsWith("./src/foo.ts:42 (new)\n   Please rename this.\n\n")).toBe(true);
 	});
 });
 

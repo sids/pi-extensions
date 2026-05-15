@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vitest";
 import {
 	MUTATION_ENTRY_TYPE,
 	STATE_ENTRY_TYPE,

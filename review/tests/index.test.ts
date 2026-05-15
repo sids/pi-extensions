@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vitest";
 import { initTheme } from "@earendil-works/pi-coding-agent";
 import reviewExtension from "../index";
 

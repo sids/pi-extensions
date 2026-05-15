@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vitest";
 import {
 	getCommentSendHint,
 	getSendAllHint,
@@ -11,9 +11,9 @@ import {
 
 describe("comment shortcuts", () => {
 	test("detects Apple platforms", () => {
-		expect(isApplePlatform("MacIntel")).toBeTrue();
-		expect(isApplePlatform("iPhone")).toBeTrue();
-		expect(isApplePlatform("Linux x86_64")).toBeFalse();
+		expect(isApplePlatform("MacIntel")).toBe(true);
+		expect(isApplePlatform("iPhone")).toBe(true);
+		expect(isApplePlatform("Linux x86_64")).toBe(false);
 	});
 
 	test("uses cmd+enter on Apple platforms", () => {
@@ -26,7 +26,7 @@ describe("comment shortcuts", () => {
 				},
 				"MacIntel",
 			),
-		).toBeTrue();
+		).toBe(true);
 		expect(
 			isCommentSendShortcut(
 				{
@@ -36,7 +36,7 @@ describe("comment shortcuts", () => {
 				},
 				"MacIntel",
 			),
-		).toBeFalse();
+		).toBe(false);
 	});
 
 	test("uses ctrl+enter on non-Apple platforms", () => {
@@ -49,7 +49,7 @@ describe("comment shortcuts", () => {
 				},
 				"Linux x86_64",
 			),
-		).toBeTrue();
+		).toBe(true);
 		expect(
 			isCommentSendShortcut(
 				{
@@ -59,7 +59,7 @@ describe("comment shortcuts", () => {
 				},
 				"Linux x86_64",
 			),
-		).toBeFalse();
+		).toBe(false);
 	});
 
 	test("does not trigger comment send on plain enter or shift+enter", () => {
@@ -72,7 +72,7 @@ describe("comment shortcuts", () => {
 				},
 				"MacIntel",
 			),
-		).toBeFalse();
+		).toBe(false);
 		expect(
 			isCommentSendShortcut(
 				{
@@ -83,7 +83,7 @@ describe("comment shortcuts", () => {
 				},
 				"MacIntel",
 			),
-		).toBeFalse();
+		).toBe(false);
 	});
 
 	test("returns the correct comment send hint", () => {
@@ -102,7 +102,7 @@ describe("comment shortcuts", () => {
 				},
 				"MacIntel",
 			),
-		).toBeTrue();
+		).toBe(true);
 		expect(
 			isSendAllShortcut(
 				{
@@ -112,7 +112,7 @@ describe("comment shortcuts", () => {
 				},
 				"MacIntel",
 			),
-		).toBeFalse();
+		).toBe(false);
 	});
 
 	test("uses ctrl+alt+enter for send all on non-Apple platforms", () => {
@@ -126,7 +126,7 @@ describe("comment shortcuts", () => {
 				},
 				"Linux x86_64",
 			),
-		).toBeTrue();
+		).toBe(true);
 		expect(
 			isSendAllShortcut(
 				{
@@ -137,7 +137,7 @@ describe("comment shortcuts", () => {
 				},
 				"Linux x86_64",
 			),
-		).toBeFalse();
+		).toBe(false);
 	});
 
 	test("returns the correct send all hint", () => {
@@ -152,7 +152,7 @@ describe("comment shortcuts", () => {
 				metaKey: false,
 				ctrlKey: false,
 			}),
-		).toBeTrue();
+		).toBe(true);
 		expect(
 			isFocusSearchShortcut({
 				key: "T",
@@ -160,7 +160,7 @@ describe("comment shortcuts", () => {
 				ctrlKey: false,
 				shiftKey: true,
 			}),
-		).toBeFalse();
+		).toBe(false);
 	});
 
 	test("detects the refresh shortcut", () => {
@@ -170,13 +170,13 @@ describe("comment shortcuts", () => {
 				metaKey: false,
 				ctrlKey: false,
 			}),
-		).toBeTrue();
+		).toBe(true);
 		expect(
 			isRefreshShortcut({
 				key: "r",
 				metaKey: false,
 				ctrlKey: true,
 			}),
-		).toBeFalse();
+		).toBe(false);
 	});
 });

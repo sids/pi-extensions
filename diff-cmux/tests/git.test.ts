@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "vitest";
 import { mkdtempSync, rmSync, writeFileSync, mkdirSync, renameSync, unlinkSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -69,13 +69,13 @@ describe("git helpers", () => {
 		const repoRoot = createTempRepo();
 		const pi = createPi();
 
-		await expect(isGitRepository(pi, repoRoot)).resolves.toBeTrue();
+		await expect(isGitRepository(pi, repoRoot)).resolves.toBe(true);
 		await expect(getRepoRoot(pi, repoRoot)).resolves.toBe(realpathSync(repoRoot));
-		await expect(hasHeadCommit(pi, repoRoot)).resolves.toBeFalse();
+		await expect(hasHeadCommit(pi, repoRoot)).resolves.toBe(false);
 
 		write(repoRoot, "README.md", "hello\n");
 		commitAll(repoRoot, "Initial commit");
-		await expect(hasHeadCommit(pi, repoRoot)).resolves.toBeTrue();
+		await expect(hasHeadCommit(pi, repoRoot)).resolves.toBe(true);
 	});
 
 	test("resolves merge-base for branch comparisons", async () => {

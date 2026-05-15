@@ -45,9 +45,9 @@ Install deps in `diff-cmux/` if needed, then build the browser bundle:
 
 ```bash
 cd diff-cmux
-npm install
-npm run build
-bun test tests/*.test.ts
+pnpm install
+pnpm run build
+pnpm test -- tests/*.test.ts
 ```
 
 To load locally, symlink `diff-cmux/` into `~/.pi/agent/extensions/diff-cmux` and run `/reload` in pi.

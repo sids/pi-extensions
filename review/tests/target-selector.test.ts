@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vitest";
 import { checkoutPullRequestTarget, parseReviewArgs, resolveReviewTarget } from "../target-selector";
 
 describe("parseReviewArgs", () => {

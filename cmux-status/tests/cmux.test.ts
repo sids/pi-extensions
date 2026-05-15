@@ -1,5 +1,5 @@
 import { createServer } from "node:net";
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vitest";
 import { buildClearStatusSocketCommand, buildSetStatusSocketCommand, createCmuxTransport, getCmuxSocketPath, isSuccessfulCmuxSocketCommandResponse, parseCmuxSocketAddress, sendCmuxSocketLine } from "../cmux";
 import type { CmuxStatusPresentation } from "../utils";
 
@@ -53,10 +53,10 @@ describe("socket command helpers", () => {
 	});
 
 	test("detects socket command failures from text and json responses", () => {
-		expect(isSuccessfulCmuxSocketCommandResponse("")).toBeTrue();
-		expect(isSuccessfulCmuxSocketCommandResponse('{"ok":true}')).toBeTrue();
-		expect(isSuccessfulCmuxSocketCommandResponse('{"ok":false}')).toBeFalse();
-		expect(isSuccessfulCmuxSocketCommandResponse("error unsupported command")).toBeFalse();
+		expect(isSuccessfulCmuxSocketCommandResponse("")).toBe(true);
+		expect(isSuccessfulCmuxSocketCommandResponse('{"ok":true}')).toBe(true);
+		expect(isSuccessfulCmuxSocketCommandResponse('{"ok":false}')).toBe(false);
+		expect(isSuccessfulCmuxSocketCommandResponse("error unsupported command")).toBe(false);
 	});
 });
 

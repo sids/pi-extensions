@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { createCmuxStatusExtension } from "../index";
 import type { CmuxTransport, CmuxTransportResult, CreateCmuxTransportOptions } from "../cmux";
 import type { CmuxStatusPresentation } from "../utils";
