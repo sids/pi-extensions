@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { AutocompleteItem, AutocompleteProvider } from "@mariozechner/pi-tui";
+import type { AutocompleteItem, AutocompleteProvider } from "@earendil-works/pi-tui";
 import {
 	buildThinkingAutocompleteItems,
 	createThinkingAutocompleteProvider,

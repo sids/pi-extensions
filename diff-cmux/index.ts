@@ -1,4 +1,4 @@
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { appendCommentsToEditor } from "./comments";
 import { openCmuxPane, openCmuxSurface, resolveCmuxCallerContext } from "./cmux";
 import { buildDiffViewerData, isGitRepository } from "./git";

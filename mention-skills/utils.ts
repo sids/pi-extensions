@@ -1,5 +1,5 @@
-import type { AutocompleteItem, AutocompleteProvider } from "@mariozechner/pi-tui";
-import type { SlashCommandInfo } from "@mariozechner/pi-coding-agent";
+import type { AutocompleteItem, AutocompleteProvider } from "@earendil-works/pi-tui";
+import type { SlashCommandInfo } from "@earendil-works/pi-coding-agent";
 
 /** Prefix used for skill command names (e.g. "skill:my-skill"). */
 const SKILL_COMMAND_PREFIX = "skill:";

@@ -1,4 +1,4 @@
-import type { Theme } from "@mariozechner/pi-coding-agent";
+import type { Theme } from "@earendil-works/pi-coding-agent";
 import {
 	matchesKey,
 	SelectList,
@@ -8,7 +8,7 @@ import {
 	type TUI,
 	visibleWidth,
 	wrapTextWithAnsi,
-} from "@mariozechner/pi-tui";
+} from "@earendil-works/pi-tui";
 import { buildPromptPreview, type SavedPromptItem } from "./utils";
 
 type PromptSavePickerOptions = {

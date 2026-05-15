@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, mock, test } from "bun:test";
 const clipboardCalls: string[] = [];
 let clipboardError: Error | null = null;
 
-mock.module("@mariozechner/pi-coding-agent", () => ({
+mock.module("@earendil-works/pi-coding-agent", () => ({
 	copyToClipboard: async (text: string) => {
 		if (clipboardError) {
 			throw clipboardError;

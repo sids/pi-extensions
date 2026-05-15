@@ -1,4 +1,4 @@
-import type { AutocompleteItem, AutocompleteProvider } from "@mariozechner/pi-tui";
+import type { AutocompleteItem, AutocompleteProvider } from "@earendil-works/pi-tui";
 
 export const THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh"] as const;
 export const THINKING_LEVELS_WITHOUT_XHIGH = THINKING_LEVELS.slice(0, -1) as Exclude<ThinkingLevel, "xhigh">[];

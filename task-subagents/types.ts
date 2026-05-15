@@ -1,4 +1,4 @@
-import type { AssistantMessage, ToolResultMessage } from "@mariozechner/pi-ai";
+import type { AssistantMessage, ToolResultMessage } from "@earendil-works/pi-ai";
 
 export const SUBAGENT_THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh"] as const;
 export const SUBAGENT_TOOL_THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh"] as const;

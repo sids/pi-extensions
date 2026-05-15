@@ -1,6 +1,6 @@
 {
   "name": "pi-answer",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "type": "module",
   "description": "Interactive Q&A extraction extension for pi",
   "license": "MIT",
@@ -22,9 +22,9 @@
     ]
   },
   "peerDependencies": {
-    "@mariozechner/pi-ai": "*",
-    "@mariozechner/pi-coding-agent": ">=0.63.0",
-    "@mariozechner/pi-tui": "*"
+    "@earendil-works/pi-ai": ">=0.74.0",
+    "@earendil-works/pi-coding-agent": ">=0.74.0",
+    "@earendil-works/pi-tui": ">=0.74.0"
   },
   "dependencies": {
     "@siddr/pi-shared-qna": "^0.1.0"

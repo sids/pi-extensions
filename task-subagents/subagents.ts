@@ -5,9 +5,9 @@ import { copyFile, mkdtemp, readdir, rm, stat, symlink } from "node:fs/promises"
 import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
-import type { AgentMessage, AgentToolResult } from "@mariozechner/pi-agent-core";
-import { supportsXhigh, type TextContent } from "@mariozechner/pi-ai";
-import type { ExtensionAPI, SessionEntry } from "@mariozechner/pi-coding-agent";
+import type { AgentMessage, AgentToolResult } from "@earendil-works/pi-agent-core";
+import { getSupportedThinkingLevels, type Model, type TextContent } from "@earendil-works/pi-ai";
+import type { ExtensionAPI, SessionEntry } from "@earendil-works/pi-coding-agent";
 import {
 	createInitialReviewedSubagentTasks,
 	runSubagentLaunchReview,
@@ -47,13 +47,13 @@ const require = createRequire(import.meta.url);
 
 function requirePiTui() {
 	try {
-		return require("@mariozechner/pi-tui");
+		return require("@earendil-works/pi-tui");
 	} catch (error) {
 		const code = (error as { code?: string }).code;
 		if (code !== "MODULE_NOT_FOUND") {
 			throw error;
 		}
-		return require(path.join(os.homedir(), ".bun", "install", "global", "node_modules", "@mariozechner", "pi-tui"));
+		return require(path.join(os.homedir(), ".bun", "install", "global", "node_modules", "@earendil-works", "pi-tui"));
 	}
 }
 
@@ -588,9 +588,8 @@ function getAvailableSubagentThinkingLevels(model: { id: string; api?: string; r
 	if (!model?.reasoning) {
 		return ["off"];
 	}
-	return supportsXhigh(model as Parameters<typeof supportsXhigh>[0])
-		? [...SUBAGENT_THINKING_LEVEL_ORDER]
-		: SUBAGENT_THINKING_LEVEL_ORDER.slice(0, -1);
+	const supportedLevels = new Set(getSupportedThinkingLevels(model as Model<string>));
+	return SUBAGENT_THINKING_LEVEL_ORDER.filter((level) => supportedLevels.has(level));
 }
 
 function clampSubagentThinkingLevel(

@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import type { File as ParsedDiffFile } from "gitdiff-parser";
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { parseDiff } from "react-diff-view";
 import type { DiffFileEntry, DiffFilePayload, DiffFileStatus, DiffTarget, DiffViewerData, RepoMetadata, ResolvedDiffTarget } from "./types";
 

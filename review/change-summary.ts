@@ -1,10 +1,10 @@
-import { completeSimple, type Api, type AssistantMessage, type Model, type UserMessage } from "@mariozechner/pi-ai";
+import { completeSimple, type Api, type AssistantMessage, type Model, type UserMessage } from "@earendil-works/pi-ai";
 import {
 	buildSessionContext,
 	convertToLlm,
 	type ExtensionContext,
 	type SessionEntry,
-} from "@mariozechner/pi-coding-agent";
+} from "@earendil-works/pi-coding-agent";
 
 const FALLBACK_SYSTEM_PROMPT = "You are a helpful coding assistant.";
 

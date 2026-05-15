@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.10 - 2026-05-15
+
+- Migrated runtime imports and peer dependencies to the `@earendil-works/*` Pi 0.74 package scope.
+
 ## 0.1.9 - 2026-04-27
 
 - Prefill PR review exits with a GitHub CLI inline-comment instruction.

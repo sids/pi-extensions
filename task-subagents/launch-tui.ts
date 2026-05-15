@@ -4,7 +4,7 @@ import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import {
 	SUBAGENT_THINKING_LEVELS,
 	type NormalizedSubagentTask,
@@ -17,13 +17,13 @@ const require = createRequire(import.meta.url);
 
 function requirePiTui() {
 	try {
-		return require("@mariozechner/pi-tui");
+		return require("@earendil-works/pi-tui");
 	} catch (error) {
 		const code = (error as { code?: string }).code;
 		if (code !== "MODULE_NOT_FOUND") {
 			throw error;
 		}
-		return require(path.join(os.homedir(), ".bun", "install", "global", "node_modules", "@mariozechner", "pi-tui"));
+		return require(path.join(os.homedir(), ".bun", "install", "global", "node_modules", "@earendil-works", "pi-tui"));
 	}
 }
 
@@ -44,7 +44,7 @@ function findPackageDir(startDir: string, packageName: string): string | undefin
 
 function requirePiCodingAgentModule(modulePath: string) {
 	try {
-		return require(`@mariozechner/pi-coding-agent/${modulePath}`);
+		return require(`@earendil-works/pi-coding-agent/${modulePath}`);
 	} catch (error) {
 		const code = (error as { code?: string }).code;
 		if (code !== "MODULE_NOT_FOUND" && code !== "ERR_PACKAGE_PATH_NOT_EXPORTED") {
@@ -57,13 +57,13 @@ function requirePiCodingAgentModule(modulePath: string) {
 			resolveLaunchReviewAgentDir(),
 		];
 		for (const searchRoot of searchRoots) {
-			const packageDir = findPackageDir(searchRoot, path.join("@mariozechner", "pi-coding-agent"));
+			const packageDir = findPackageDir(searchRoot, path.join("@earendil-works", "pi-coding-agent"));
 			if (packageDir) {
 				return require(path.join(packageDir, modulePath));
 			}
 		}
 
-		return require(path.join(os.homedir(), ".bun", "install", "global", "node_modules", "@mariozechner", "pi-coding-agent", modulePath));
+		return require(path.join(os.homedir(), ".bun", "install", "global", "node_modules", "@earendil-works", "pi-coding-agent", modulePath));
 	}
 }
 

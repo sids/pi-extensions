@@ -1,8 +1,8 @@
 import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
-import type { AgentToolResult } from "@mariozechner/pi-agent-core";
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { AgentToolResult } from "@earendil-works/pi-agent-core";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { ReviewModeState } from "./types";
 import type { PersistedReviewComment, ReviewPriority, ReviewReference } from "./types";
 import {
@@ -17,13 +17,13 @@ const require = createRequire(import.meta.url);
 
 function requirePiTui() {
 	try {
-		return require("@mariozechner/pi-tui");
+		return require("@earendil-works/pi-tui");
 	} catch (error) {
 		const code = (error as { code?: string }).code;
 		if (code !== "MODULE_NOT_FOUND") {
 			throw error;
 		}
-		return require(path.join(os.homedir(), ".bun", "install", "global", "node_modules", "@mariozechner", "pi-tui"));
+		return require(path.join(os.homedir(), ".bun", "install", "global", "node_modules", "@earendil-works", "pi-tui"));
 	}
 }
 

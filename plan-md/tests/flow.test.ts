@@ -1,16 +1,8 @@
-import { afterEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-
-mock.module("@mariozechner/pi-coding-agent", () => ({
-	BorderedLoader: class BorderedLoader {
-		onAbort?: () => void;
-		constructor(..._args: unknown[]) {}
-	},
-}));
-
-const { registerPlanModeCommand } = await import("../flow");
+import { registerPlanModeCommand } from "../flow";
 
 const tempDirs: string[] = [];
 

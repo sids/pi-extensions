@@ -1,6 +1,6 @@
 {
   "name": "@siddr/pi-diff-cmux",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "type": "module",
   "description": "cmux browser diff review extension for pi",
   "license": "MIT",
@@ -22,7 +22,7 @@
     ]
   },
   "peerDependencies": {
-    "@mariozechner/pi-coding-agent": ">=0.65.0"
+    "@earendil-works/pi-coding-agent": ">=0.74.0"
   },
   "dependencies": {
     "esbuild": "^0.28.0",

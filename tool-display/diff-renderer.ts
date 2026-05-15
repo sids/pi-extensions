@@ -1,6 +1,6 @@
-import { getLanguageFromPath, highlightCode } from "@mariozechner/pi-coding-agent";
-import type { Component } from "@mariozechner/pi-tui";
-import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@mariozechner/pi-tui";
+import { getLanguageFromPath, highlightCode } from "@earendil-works/pi-coding-agent";
+import type { Component } from "@earendil-works/pi-tui";
+import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
 import { getDiffStats, splitLines } from "./utils";
 
 type DiffTheme = {

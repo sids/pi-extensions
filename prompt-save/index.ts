@@ -1,4 +1,4 @@
-import { copyToClipboard, type ExtensionAPI, type ExtensionContext } from "@mariozechner/pi-coding-agent";
+import { copyToClipboard, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { PromptSavePicker } from "./picker";
 import {
 	MUTATION_ENTRY_TYPE,

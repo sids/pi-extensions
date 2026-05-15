@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.5 - 2026-05-15
+
+- Migrated runtime imports and peer dependencies to the `@earendil-works/*` Pi 0.74 package scope.
+
 ## 0.1.4 - 2026-04-23
 
 - Migrated tool schemas from `@sinclair/typebox` to `typebox` for Pi 0.69 compatibility.

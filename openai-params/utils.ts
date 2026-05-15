@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import type { Api, Model } from "@mariozechner/pi-ai";
+import type { Api, Model } from "@earendil-works/pi-ai";
 
 export const OPENAI_PARAMS_COMMAND = "openai-params";
 export const OPENAI_PARAMS_CONFIG_BASENAME = "openai-params.json";

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.5 - 2026-05-15
+
+- Migrated runtime imports and peer dependencies to the `@earendil-works/*` Pi 0.74 package scope.
+
 ## 0.1.4 - 2026-04-24
 
 - Updated the default question extraction model preference order to prefer current OpenAI Codex and GitHub Copilot mini/fast models before Haiku fallbacks.

@@ -1,4 +1,4 @@
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { parsePrReference } from "./utils";
 
 async function exec(pi: ExtensionAPI, command: string, args: string[], cwd?: string) {

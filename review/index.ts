@@ -1,5 +1,5 @@
-import { keyHint, type ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { Box, Text } from "@mariozechner/pi-tui";
+import { keyHint, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { Box, Text } from "@earendil-works/pi-tui";
 import { registerAddReviewCommentTool } from "./comments";
 import {
 	registerReviewCommand,

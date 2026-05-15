@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { AutocompleteProvider } from "@mariozechner/pi-tui";
+import type { AutocompleteProvider } from "@earendil-works/pi-tui";
 import mentionSkillsExtension from "../index";
 import promptThinkingExtension from "../../prompt-thinking/index";
 

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.7 - 2026-05-15
+
+- Migrated runtime imports and peer dependencies to the `@earendil-works/*` Pi 0.74 package scope.
+
 ## 0.1.6 - 2026-04-23
 
 - Replaced the custom editor autocomplete integration with stacked `ctx.ui.addAutocompleteProvider(...)` providers.

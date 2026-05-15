@@ -1,6 +1,6 @@
 {
   "name": "@siddr/pi-openai-params",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "type": "module",
   "description": "Combined OpenAI fast mode and verbosity settings for pi",
   "license": "MIT",
@@ -22,9 +22,9 @@
     ]
   },
   "peerDependencies": {
-    "@mariozechner/pi-ai": "*",
-    "@mariozechner/pi-coding-agent": ">=0.65.0",
-    "@mariozechner/pi-tui": "*"
+    "@earendil-works/pi-ai": ">=0.74.0",
+    "@earendil-works/pi-coding-agent": ">=0.74.0",
+    "@earendil-works/pi-tui": ">=0.74.0"
   },
   "publishConfig": {
     "registry": "https://registry.npmjs.org/",

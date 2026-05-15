@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import type { EditorTheme, TUI } from "@mariozechner/pi-tui";
-import type { KeybindingsManager } from "@mariozechner/pi-coding-agent";
+import type { EditorTheme, TUI } from "@earendil-works/pi-tui";
+import type { KeybindingsManager } from "@earendil-works/pi-coding-agent";
 
 type SessionEditorModule = typeof import("../session-editor-component");
 

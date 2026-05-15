@@ -1,4 +1,4 @@
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { getCurrentBranch, getDefaultBranch, getDefaultBranchInfo, getLocalBranches, getRecentCommits, hasWorkingTreeChanges } from "./git";
 import type { DiffTarget } from "./types";
 
