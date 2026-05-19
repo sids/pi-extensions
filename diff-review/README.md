@@ -4,7 +4,7 @@ Browser diff review for pi.
 
 ## Commands
 
-- `/diff-review [target]` — starts a local HTTP diff review and opens it in the default browser.
+- `/diff-review [target]` — starts a local HTTP diff review and opens it in a browser.
 
 ## Supported targets
 
@@ -18,7 +18,13 @@ Examples:
 - `/diff-review branch main`
 - `/diff-review commit abc123`
 
-If you omit args, the extension offers an interactive target picker.
+If you omit args and the working tree has uncommitted changes, the extension reviews those changes immediately. If the working tree is clean, it offers an interactive target picker.
+
+When run inside cmux, the extension asks where to open the review:
+
+1. cmux Surface
+2. cmux Pane (right)
+3. Default Browser
 
 ## Review behavior
 
