@@ -193,5 +193,9 @@ export async function resolveDiffTargetFromArgs(
 		return null;
 	}
 
+	if (await hasWorkingTreeChanges(pi, ctx.cwd)) {
+		return { type: "uncommitted" };
+	}
+
 	return await showTargetSelector(pi, ctx);
 }

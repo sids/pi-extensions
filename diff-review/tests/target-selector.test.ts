@@ -14,8 +14,8 @@ describe("parseDiffTargetArgs", () => {
 });
 
 describe("resolveDiffTargetFromArgs", () => {
-	test("keeps uncommitted first when the working tree is dirty", async () => {
-		let labelsSeen: string[] | undefined;
+	test("uses uncommitted changes without showing a menu when the working tree is dirty", async () => {
+		let selectCalled = false;
 		const pi = {
 			exec: async (command: string, args: string[]) => {
 				if (command === "git" && args[0] === "status") {
@@ -27,20 +27,16 @@ describe("resolveDiffTargetFromArgs", () => {
 		const ctx = {
 			cwd: "/tmp/project",
 			ui: {
-				select: async (_prompt: string, labels: string[]) => {
-					labelsSeen = labels;
+				select: async () => {
+					selectCalled = true;
 					return undefined;
 				},
 				notify: () => {},
 			},
 		} as any;
 
-		await expect(resolveDiffTargetFromArgs(pi, ctx, "")).resolves.toBeNull();
-		expect(labelsSeen).toEqual([
-			"Review uncommitted changes",
-			"Compare against a branch",
-			"Review a commit",
-		]);
+		await expect(resolveDiffTargetFromArgs(pi, ctx, "")).resolves.toEqual({ type: "uncommitted" });
+		expect(selectCalled).toBe(false);
 	});
 
 	test("moves branch comparison to the front on a clean feature branch", async () => {
