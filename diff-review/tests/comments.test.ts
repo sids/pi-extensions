@@ -133,6 +133,20 @@ describe("appendCommentsToEditor", () => {
 		expect(editorText).toContain("existing draft\n\n./src/foo.ts:42 (new)");
 		expect(editorText.endsWith("./src/foo.ts:42 (new)\n   Please rename this.\n\n")).toBe(true);
 	});
+
+	test("nudges the pi UI to redraw after setting editor text", async () => {
+		const statusUpdates: Array<{ key: string; text: string | undefined }> = [];
+		const ui = {
+			getEditorText: () => "existing draft",
+			setEditorText: () => {},
+			setStatus: (key: string, text: string | undefined) => {
+				statusUpdates.push({ key, text });
+			},
+		};
+
+		await appendCommentsToEditor(ui, TARGET, [COMMENTS[0]!]);
+		expect(statusUpdates).toEqual([{ key: "diff-review.editor-sync", text: undefined }]);
+	});
 });
 
 describe("updateCommentText", () => {

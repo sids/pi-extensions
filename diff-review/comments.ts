@@ -193,6 +193,7 @@ export async function appendCommentsToEditor(
 	ui: {
 		getEditorText: () => string;
 		setEditorText: (value: string) => void | Promise<void>;
+		setStatus?: (key: string, text: string | undefined) => void;
 	},
 	target: ResolvedDiffTarget,
 	comments: DiffComment[],
@@ -201,5 +202,6 @@ export async function appendCommentsToEditor(
 	const formattedForEditor = `${formatted}\n`;
 	const nextText = appendCommentsBlockToEditor(ui.getEditorText(), formattedForEditor);
 	await ui.setEditorText(nextText);
+	ui.setStatus?.("diff-review.editor-sync", undefined);
 	return formattedForEditor;
 }
