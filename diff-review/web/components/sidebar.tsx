@@ -8,6 +8,26 @@ type SidebarCounts = {
 	sent: number;
 };
 
+const TREE_SEARCH_CSS = `
+[data-file-tree-search-container] {
+	box-sizing: border-box !important;
+	width: 100% !important;
+	min-width: 0 !important;
+	max-width: 100% !important;
+	padding-inline: 0.75rem !important;
+	padding-top: 0.45rem !important;
+	overflow: hidden !important;
+}
+
+[data-file-tree-search-input] {
+	box-sizing: border-box !important;
+	width: 100% !important;
+	min-width: 0 !important;
+	max-width: 100% !important;
+	flex: 0 1 auto !important;
+}
+`;
+
 type SidebarProps = {
 	repoName: string;
 	targetLabel: string;
@@ -65,6 +85,7 @@ export function Sidebar(props: SidebarProps) {
 		icons: "minimal",
 		search: true,
 		initialSearchQuery: props.searchQuery,
+		unsafeCSS: TREE_SEARCH_CSS,
 		fileTreeSearchMode: "hide-non-matches",
 		searchBlurBehavior: "retain",
 		onSearchChange: (value) => currentPropsRef.current.onSearchChange(value ?? ""),
