@@ -79,6 +79,22 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
 	return await response.json();
 }
 
+type SubmittedCommentSnapshot = Pick<DiffComment, "id" | "text" | "updatedAt">;
+
+export function getSubmittedCommentIds(current: DiffComment[], submittedComments: SubmittedCommentSnapshot[]): string[] {
+	return submittedComments
+		.filter((submittedComment) => {
+			const comment = current.find((candidate) => candidate.id === submittedComment.id);
+			return comment?.text === submittedComment.text && comment.updatedAt === submittedComment.updatedAt;
+		})
+		.map((comment) => comment.id);
+}
+
+export function markSubmittedCommentsSent(current: DiffComment[], submittedComments: SubmittedCommentSnapshot[], sentAt: number): DiffComment[] {
+	const submittedIds = new Set(getSubmittedCommentIds(current, submittedComments));
+	return current.map((comment) => (submittedIds.has(comment.id) ? { ...comment, sentAt } : comment));
+}
+
 export function App({ reviewToken }: AppProps) {
 	const initialStoredState = useMemo(() => loadReviewState(reviewToken), [reviewToken]);
 	const [bootstrap, setBootstrap] = useState<ReviewBootstrapPayload | null>(null);
@@ -113,8 +129,10 @@ export function App({ reviewToken }: AppProps) {
 	const fileSectionRefs = useRef<Record<string, HTMLElement | null>>({});
 	const commentTextareaRefs = useRef<Record<string, HTMLTextAreaElement | null>>({});
 	const activeFileUpdateFrameRef = useRef<number | null>(null);
+	const sendingCommentIdsRef = useRef<Set<string>>(new Set());
 	const commentSendHint = useMemo(() => getCommentSendHint(), []);
 	const [searchRequestCount, setSearchRequestCount] = useState(0);
+	const [sendingCommentIds, setSendingCommentIds] = useState<Record<string, boolean>>({});
 	const [sidebarPopoverOpen, setSidebarPopoverOpen] = useState(false);
 	const [isNarrowViewport, setIsNarrowViewport] = useState(() =>
 		typeof window !== "undefined" ? window.matchMedia("(max-width: 1000px)").matches : false,
@@ -125,7 +143,7 @@ export function App({ reviewToken }: AppProps) {
 	const sidebarOverlayMode = isNarrowViewport;
 	const sidebarCollapsedState = sidebarOverlayMode ? false : sidebarCollapsed;
 	const currentViewedFingerprintsByFileId = useMemo(() => buildViewedFingerprintsByFileId(files), [files]);
-	const unsentComments = useMemo(() => comments.filter((comment) => comment.sentAt === null && comment.text.trim().length > 0), [comments]);
+	const unsentComments = useMemo(() => comments.filter((comment) => comment.sentAt === null && comment.text.trim().length > 0 && !sendingCommentIds[comment.id]), [comments, sendingCommentIds]);
 	const commentCounts = useMemo(() => {
 		return comments.reduce<Record<string, { unsent: number; sent: number }>>((counts, comment) => {
 			if (comment.kind === "overall") {
@@ -388,26 +406,52 @@ export function App({ reviewToken }: AppProps) {
 			if (items.length === 0 || expired) {
 				return;
 			}
-			const pendingComments = items.filter((comment) => comment.sentAt === null && comment.text.trim().length > 0);
+			const pendingComments = items.filter((comment) => comment.sentAt === null && comment.text.trim().length > 0 && !sendingCommentIdsRef.current.has(comment.id));
 			if (pendingComments.length === 0) {
 				return;
 			}
-			const response = await fetchJson<SendCommentsResponse>(`/api/review/${reviewToken}/send`, {
-				method: "POST",
-				headers: {
-					"Content-Type": "application/json",
-				},
-				body: JSON.stringify({ comments: pendingComments }),
-			});
-			setComments((current) =>
-				current.map((comment) =>
-					pendingComments.some((candidate) => candidate.id === comment.id) ? { ...comment, sentAt: response.sentAt } : comment,
-				),
-			);
-			setCollapsedCommentIds((current) => ({
+			const submittedComments = pendingComments.map((comment) => ({
+				id: comment.id,
+				text: comment.text,
+				updatedAt: comment.updatedAt,
+			}));
+			for (const comment of pendingComments) {
+				sendingCommentIdsRef.current.add(comment.id);
+			}
+			setSendingCommentIds((current) => ({
 				...current,
 				...Object.fromEntries(pendingComments.map((comment) => [comment.id, true])),
 			}));
+			try {
+				const response = await fetchJson<SendCommentsResponse>(`/api/review/${reviewToken}/send`, {
+					method: "POST",
+					headers: {
+						"Content-Type": "application/json",
+					},
+					body: JSON.stringify({ comments: pendingComments }),
+				});
+				setComments((current) => {
+					const sentCommentIds = getSubmittedCommentIds(current, submittedComments);
+					if (sentCommentIds.length > 0) {
+						setCollapsedCommentIds((collapsedCurrent) => ({
+							...collapsedCurrent,
+							...Object.fromEntries(sentCommentIds.map((commentId) => [commentId, true])),
+						}));
+					}
+					return markSubmittedCommentsSent(current, submittedComments, response.sentAt);
+				});
+			} finally {
+				for (const comment of pendingComments) {
+					sendingCommentIdsRef.current.delete(comment.id);
+				}
+				setSendingCommentIds((current) => {
+					const next = { ...current };
+					for (const comment of pendingComments) {
+						delete next[comment.id];
+					}
+					return next;
+				});
+			}
 		},
 		[expired, reviewToken],
 	);
@@ -667,10 +711,11 @@ export function App({ reviewToken }: AppProps) {
 						{overallComments.length > 0 ? (
 							<div className="overall-comments__list">
 								{overallComments.map((comment) => {
-									const canSend = !expired && comment.sentAt === null && comment.text.trim().length > 0;
+									const isSending = Boolean(sendingCommentIds[comment.id]);
+									const canSend = !expired && !isSending && comment.sentAt === null && comment.text.trim().length > 0;
 									const collapsed = isCommentCollapsed(comment.id);
 									const preview = comment.text.trim();
-									const sendLabel = comment.sentAt ? "Sent" : "Send";
+									const sendLabel = isSending ? "Sending…" : comment.sentAt ? "Sent" : "Send";
 									if (collapsed) {
 										return (
 											<div className="comment-card comment-card--collapsed" key={comment.id}>
@@ -767,6 +812,7 @@ export function App({ reviewToken }: AppProps) {
 								onToggleCommentCollapsed={toggleCommentCollapsed}
 								isCommentCollapsed={isCommentCollapsed}
 								registerCommentTextarea={registerCommentTextarea}
+								isCommentSending={(commentId) => Boolean(sendingCommentIds[commentId])}
 								onSendComment={(commentId) => void sendComment(commentId)}
 							/>
 						</section>

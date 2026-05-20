@@ -75,13 +75,12 @@ function splitGitDiffPatches(diffText: string): string[] {
 	return diffText
 		.split(/^diff --git /m)
 		.map((chunk, index) => (index === 0 ? chunk : `diff --git ${chunk}`))
-		.map((chunk) => chunk.trim())
-		.filter((chunk) => chunk.length > 0);
+		.filter((chunk) => chunk.trim().length > 0);
 }
 
 function parseDiffIntoFiles(diffText: string): RawDiffFile[] {
-	const normalized = diffText.replace(/\r\n/g, "\n").trim();
-	if (!normalized) {
+	const normalized = diffText.replace(/\r\n/g, "\n");
+	if (!normalized.trim()) {
 		return [];
 	}
 

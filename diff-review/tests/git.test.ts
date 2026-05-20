@@ -155,6 +155,19 @@ describe("git helpers", () => {
 		expect(payload?.parsedDiff?.hunks[0]?.collapsedBefore).toBe(6);
 	});
 
+	test("preserves trailing spaces in raw patches", async () => {
+		const repoRoot = createTempRepo();
+		write(repoRoot, "src/space.txt", "value\n");
+		commitAll(repoRoot, "Initial commit");
+		write(repoRoot, "src/space.txt", "value   ");
+
+		const review = await buildReview(repoRoot, { type: "uncommitted" });
+		const fileId = review.files.find((file) => file.path === "src/space.txt")?.id;
+		const payload = review.filePayloads.get(fileId!);
+		expect(payload?.diffText).toContain("+value   ");
+		expect(payload?.diffText).toContain("\\ No newline at end of file");
+	});
+
 	test("filters explicit binary and minified assets from review output", async () => {
 		const repoRoot = createTempRepo();
 		write(repoRoot, "src/keep.ts", "export const keep = 1;\n");

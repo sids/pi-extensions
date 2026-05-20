@@ -56,5 +56,9 @@ export function saveReviewState(reviewToken: string, state: StoredReviewState): 
 	if (typeof localStorage === "undefined") {
 		return;
 	}
-	localStorage.setItem(`${STORAGE_PREFIX}${reviewToken}`, JSON.stringify(state));
+	try {
+		localStorage.setItem(`${STORAGE_PREFIX}${reviewToken}`, JSON.stringify(state));
+	} catch {
+		// Draft persistence should not break the review page when storage is unavailable.
+	}
 }

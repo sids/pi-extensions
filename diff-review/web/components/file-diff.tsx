@@ -94,6 +94,7 @@ type FileDiffProps = {
 	onRemoveComment: (commentId: string) => void;
 	onToggleCommentCollapsed: (commentId: string) => void;
 	isCommentCollapsed: (commentId: string) => boolean;
+	isCommentSending: (commentId: string) => boolean;
 	registerCommentTextarea: (commentId: string, element: HTMLTextAreaElement | null) => void;
 	onSendComment: (commentId: string) => void;
 };
@@ -204,11 +205,14 @@ function renderCommentEditor(
 	onRemoveComment: (commentId: string) => void,
 	onToggleCommentCollapsed: (commentId: string) => void,
 	onSendComment: (commentId: string) => void,
+	isCommentSending: (commentId: string) => boolean,
 	registerCommentTextarea: (commentId: string, element: HTMLTextAreaElement | null) => void,
 ) {
 	const sendHint = getCommentSendHint();
-	const canSend = !expired && comment.sentAt === null && comment.text.trim().length > 0;
+	const isSending = isCommentSending(comment.id);
+	const canSend = !expired && !isSending && comment.sentAt === null && comment.text.trim().length > 0;
 	const preview = comment.text.trim();
+	const sendLabel = isSending ? "Sending…" : comment.sentAt ? "Sent" : "Send";
 	if (collapsed) {
 		return (
 			<div className="comment-card comment-card--collapsed" key={comment.id}>
@@ -266,11 +270,11 @@ function renderCommentEditor(
 			<div className="comment-card__footer">
 				<div className="comment-card__actions">
 					<button className="comment-card__send button-with-shortcut" disabled={!canSend} onClick={() => void onSendComment(comment.id)} type="button">
-						{comment.sentAt ? (
-							<span>Sent</span>
+						{comment.sentAt || isSending ? (
+							<span>{sendLabel}</span>
 						) : (
 							<>
-								<span>Send</span>
+								<span>{sendLabel}</span>
 								<span className="shortcut-chip">{sendHint}</span>
 							</>
 						)}
@@ -361,6 +365,7 @@ export function FileDiff(props: FileDiffProps) {
 							props.onRemoveComment,
 							props.onToggleCommentCollapsed,
 							props.onSendComment,
+							props.isCommentSending,
 							props.registerCommentTextarea,
 						),
 					)}
@@ -396,6 +401,7 @@ export function FileDiff(props: FileDiffProps) {
 								props.onRemoveComment,
 								props.onToggleCommentCollapsed,
 								props.onSendComment,
+								props.isCommentSending,
 								props.registerCommentTextarea,
 							)
 						}
