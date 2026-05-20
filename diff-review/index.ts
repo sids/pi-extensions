@@ -2,7 +2,7 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { appendCommentsToEditor } from "./comments";
 import { openCmuxPane, openCmuxSurface, resolveCmuxCallerContext, type CmuxCallerContext } from "./cmux";
 import { buildDiffReviewData, isGitRepository } from "./git";
-import { openInDefaultBrowser } from "./opener";
+import { isGlimpseInstalled, openInDefaultBrowser, openInGlimpse } from "./opener";
 import { createDiffReviewServer, type DiffReviewServer } from "./server";
 import { resolveDiffTargetFromArgs } from "./target-selector";
 import type { DiffComment, DiffViewMode, SendCommentsResponse } from "./types";
@@ -15,18 +15,22 @@ export type DiffReviewExtensionDependencies = {
 	resolveCmuxCallerContext: typeof resolveCmuxCallerContext;
 	openCmuxPane: typeof openCmuxPane;
 	openCmuxSurface: typeof openCmuxSurface;
+	isGlimpseInstalled: typeof isGlimpseInstalled;
 	openInDefaultBrowser: typeof openInDefaultBrowser;
+	openInGlimpse: typeof openInGlimpse;
 	appendCommentsToEditor: typeof appendCommentsToEditor;
 };
 
 type ReviewOpenTarget =
 	| { kind: "browser" }
+	| { kind: "glimpse" }
 	| { kind: "cmuxPane"; workspaceId: string }
 	| { kind: "cmuxSurface"; workspaceId: string; paneRef: string };
 
 const REVIEW_COMMAND = "diff-review";
 const OPEN_IN_CMUX_SURFACE_LABEL = "cmux Surface";
 const OPEN_IN_CMUX_PANE_LABEL = "cmux Pane (right)";
+const OPEN_IN_GLIMPSE_LABEL = "Glimpse";
 const OPEN_IN_BROWSER_LABEL = "Default Browser";
 
 function notify(ctx: ExtensionContext, message: string, level: "info" | "error" | "success" = "info") {
@@ -44,27 +48,37 @@ function createDefaultDependencies(): DiffReviewExtensionDependencies {
 		resolveCmuxCallerContext,
 		openCmuxPane,
 		openCmuxSurface,
+		isGlimpseInstalled,
 		openInDefaultBrowser,
+		openInGlimpse,
 		appendCommentsToEditor,
 	};
 }
 
-async function selectOpenTarget(ctx: ExtensionContext, cmuxContext: CmuxCallerContext | null): Promise<ReviewOpenTarget | null> {
-	if (!cmuxContext) {
+async function selectOpenTarget(ctx: ExtensionContext, cmuxContext: CmuxCallerContext | null, glimpseAvailable: boolean): Promise<ReviewOpenTarget | null> {
+	if (!cmuxContext && !glimpseAvailable) {
 		return { kind: "browser" };
 	}
 
-	const selection = await ctx.ui.select("Open in...", [OPEN_IN_CMUX_SURFACE_LABEL, OPEN_IN_CMUX_PANE_LABEL, OPEN_IN_BROWSER_LABEL]);
+	const labels = [
+		...(cmuxContext ? [OPEN_IN_CMUX_SURFACE_LABEL, OPEN_IN_CMUX_PANE_LABEL] : []),
+		...(glimpseAvailable ? [OPEN_IN_GLIMPSE_LABEL] : []),
+		OPEN_IN_BROWSER_LABEL,
+	];
+	const selection = await ctx.ui.select("Open in...", labels);
 	if (selection === undefined) {
 		return null;
 	}
 	if (selection === OPEN_IN_BROWSER_LABEL) {
 		return { kind: "browser" };
 	}
-	if (selection === OPEN_IN_CMUX_PANE_LABEL) {
+	if (selection === OPEN_IN_GLIMPSE_LABEL) {
+		return { kind: "glimpse" };
+	}
+	if (selection === OPEN_IN_CMUX_PANE_LABEL && cmuxContext) {
 		return { kind: "cmuxPane", workspaceId: cmuxContext.workspaceId };
 	}
-	if (selection === OPEN_IN_CMUX_SURFACE_LABEL) {
+	if (selection === OPEN_IN_CMUX_SURFACE_LABEL && cmuxContext) {
 		if (!cmuxContext.callerPaneRef) {
 			ctx.ui.notify("Could not determine the current cmux pane. Choose cmux Pane (right) or Default Browser instead.", "error");
 			return null;
@@ -84,6 +98,8 @@ async function openReviewTarget(
 	switch (openTarget.kind) {
 		case "browser":
 			return await dependencies.openInDefaultBrowser(pi, ctx.cwd, url);
+		case "glimpse":
+			return await dependencies.openInGlimpse(pi, ctx.cwd, url);
 		case "cmuxPane":
 			return await dependencies.openCmuxPane(pi, ctx.cwd, openTarget.workspaceId, url);
 		case "cmuxSurface":
@@ -98,6 +114,9 @@ function getOpenFailureMessage(openTarget: ReviewOpenTarget, stderr: string, url
 	}
 	if (openTarget.kind === "browser") {
 		return `Failed to open the diff review in the default browser. Open it manually: ${url}`;
+	}
+	if (openTarget.kind === "glimpse") {
+		return `Failed to open the diff review in Glimpse. Open it manually: ${url}`;
 	}
 	return `Failed to open the diff review in cmux. Open it manually: ${url}`;
 }
@@ -131,8 +150,11 @@ export function createDiffReviewExtension(overrides: Partial<DiffReviewExtension
 			}
 
 			try {
-				const cmuxContext = await dependencies.resolveCmuxCallerContext(pi, ctx.cwd);
-				const openTarget = await selectOpenTarget(ctx, cmuxContext);
+				const [cmuxContext, glimpseAvailable] = await Promise.all([
+					dependencies.resolveCmuxCallerContext(pi, ctx.cwd),
+					dependencies.isGlimpseInstalled(pi, ctx.cwd),
+				]);
+				const openTarget = await selectOpenTarget(ctx, cmuxContext, glimpseAvailable);
 				if (!openTarget) {
 					return;
 				}

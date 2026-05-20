@@ -11,6 +11,8 @@ function createHarness(options?: {
 	openCode?: number;
 	openPaneCode?: number;
 	openSurfaceCode?: number;
+	glimpseInstalled?: boolean;
+	openGlimpseCode?: number;
 	openSelection?: string;
 }) {
 	const commands = new Map<string, Handler>();
@@ -20,6 +22,7 @@ function createHarness(options?: {
 	const openCalls: Array<{ url: string }> = [];
 	const openPaneCalls: Array<{ workspaceId: string; url: string }> = [];
 	const openSurfaceCalls: Array<{ workspaceId: string; paneRef: string; url: string }> = [];
+	const openGlimpseCalls: Array<{ url: string }> = [];
 	const selectCalls: Array<{ prompt: string; labels: string[] }> = [];
 	let createServerCount = 0;
 	let stopCount = 0;
@@ -63,6 +66,11 @@ function createHarness(options?: {
 		openCmuxSurface: async (_pi, _cwd, workspaceId, paneRef, url) => {
 			openSurfaceCalls.push({ workspaceId, paneRef, url });
 			return { stdout: "", stderr: "", code: options?.openSurfaceCode ?? 0 } as any;
+		},
+		isGlimpseInstalled: async () => options?.glimpseInstalled ?? false,
+		openInGlimpse: async (_pi, _cwd, url) => {
+			openGlimpseCalls.push({ url });
+			return { stdout: "", stderr: "", code: options?.openGlimpseCode ?? 0 } as any;
 		},
 		openInDefaultBrowser: async (_pi, _cwd, url) => {
 			openCalls.push({ url });
@@ -112,6 +120,7 @@ function createHarness(options?: {
 		openCalls,
 		openPaneCalls,
 		openSurfaceCalls,
+		openGlimpseCalls,
 		selectCalls,
 		getCreateServerCount: () => createServerCount,
 		getStopCount: () => stopCount,
@@ -205,6 +214,38 @@ describe("diff-review extension", () => {
 		expect(harness.openCalls).toEqual([{ url: "http://127.0.0.1:1234/review/1" }]);
 		expect(harness.openPaneCalls).toEqual([]);
 		expect(harness.openSurfaceCalls).toEqual([]);
+	});
+
+	test("offers Glimpse when it is installed", async () => {
+		const harness = createHarness({
+			glimpseInstalled: true,
+			openSelection: "Glimpse",
+		});
+		await harness.run("diff-review", "uncommitted");
+		expect(harness.selectCalls).toEqual([
+			{
+				prompt: "Open in...",
+				labels: ["Glimpse", "Default Browser"],
+			},
+		]);
+		expect(harness.openGlimpseCalls).toEqual([{ url: "http://127.0.0.1:1234/review/1" }]);
+		expect(harness.openCalls).toEqual([]);
+	});
+
+	test("offers Glimpse with cmux targets when both are available", async () => {
+		const harness = createHarness({
+			cmuxContext: { workspaceId: "workspace:1", callerPaneRef: "pane:current" },
+			glimpseInstalled: true,
+			openSelection: "Glimpse",
+		});
+		await harness.run("diff-review", "uncommitted");
+		expect(harness.selectCalls).toEqual([
+			{
+				prompt: "Open in...",
+				labels: ["cmux Surface", "cmux Pane (right)", "Glimpse", "Default Browser"],
+			},
+		]);
+		expect(harness.openGlimpseCalls).toEqual([{ url: "http://127.0.0.1:1234/review/1" }]);
 	});
 
 	test("stops the server on session shutdown", async () => {

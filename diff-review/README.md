@@ -26,6 +26,8 @@ When run inside cmux, the extension asks where to open the review:
 2. cmux Pane (right)
 3. Default Browser
 
+If [`glimpseui`](https://github.com/hazat/glimpse) is installed, `Glimpse` is also offered as an open target.
+
 ## Review behavior
 
 - Continuous changed-files stream, similar to GitHub's changed-files review view.
