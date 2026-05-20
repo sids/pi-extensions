@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { parsePatchFiles, type ChangeTypes, type FileDiffMetadata } from "@pierre/diffs";
+import { parsePatchFiles, processFile, type ChangeTypes, type FileContents, type FileDiffMetadata } from "@pierre/diffs";
 import type { DiffFileEntry, DiffFilePayload, DiffFileStatus, DiffTarget, DiffReviewData, RepoMetadata, ResolvedDiffTarget } from "./types";
 
 const EMPTY_TREE_SHA = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
@@ -99,6 +99,31 @@ async function runGitDiff(pi: ExtensionAPI, cwd: string, args: string[]): Promis
 		throw new Error(result.stderr.trim() || result.stdout.trim() || `git ${args.join(" ")} failed`);
 	}
 	return result.stdout;
+}
+
+async function readGitFileText(pi: ExtensionAPI, cwd: string, rev: string | null, filePath: string | null): Promise<string> {
+	if (!rev || rev === EMPTY_TREE_SHA || !filePath) {
+		return "";
+	}
+	const result = await exec(pi, "git", ["show", `${rev}:${filePath}`], cwd);
+	if (result.code !== 0) {
+		throw new Error(result.stderr.trim() || `git show ${rev}:${filePath} failed`);
+	}
+	return result.stdout.replace(/\r\n/g, "\n");
+}
+
+async function readWorkingFileText(repoRoot: string, filePath: string | null): Promise<string> {
+	if (!filePath) {
+		return "";
+	}
+	return (await readFile(path.join(repoRoot, filePath), "utf8")).replace(/\r\n/g, "\n");
+}
+
+function toFileContents(name: string | null, contents: string): FileContents {
+	return {
+		name: name ?? "file",
+		contents,
+	};
 }
 
 async function getCommitTitle(pi: ExtensionAPI, sha: string, cwd?: string): Promise<string | null> {
@@ -210,6 +235,39 @@ function buildFileEntry(rawFile: RawDiffFile, index: number): DiffFileEntry {
 	};
 }
 
+async function addFullContextToRawFile(pi: ExtensionAPI, repoRoot: string, target: ResolvedDiffTarget, rawFile: RawDiffFile): Promise<RawDiffFile> {
+	if (/(?:^|\n)(?:GIT binary patch|Binary files )/m.test(rawFile.rawPatch)) {
+		return rawFile;
+	}
+
+	const oldPath = stripGitPrefix(rawFile.parsed.prevName);
+	const newPath = stripGitPrefix(rawFile.parsed.name);
+	try {
+		const oldText =
+			rawFile.parsed.type === "new"
+				? ""
+				: await readGitFileText(pi, repoRoot, target.type === "uncommitted" ? target.baseRev : target.baseRev, oldPath ?? newPath);
+		const newText =
+			rawFile.parsed.type === "deleted"
+				? ""
+				: target.type === "uncommitted"
+					? await readWorkingFileText(repoRoot, newPath ?? oldPath)
+					: await readGitFileText(pi, repoRoot, target.headRev, newPath ?? oldPath);
+		const parsedWithContext = processFile(rawFile.rawPatch, {
+			oldFile: toFileContents(oldPath ?? newPath, oldText),
+			newFile: toFileContents(newPath ?? oldPath, newText),
+			throwOnError: true,
+		});
+		return parsedWithContext ? { ...rawFile, parsed: parsedWithContext } : rawFile;
+	} catch {
+		return rawFile;
+	}
+}
+
+async function addFullContextToRawFiles(pi: ExtensionAPI, repoRoot: string, target: ResolvedDiffTarget, rawFiles: RawDiffFile[]): Promise<RawDiffFile[]> {
+	return await Promise.all(rawFiles.map((rawFile) => addFullContextToRawFile(pi, repoRoot, target, rawFile)));
+}
+
 async function loadRawDiffFilesForTarget(pi: ExtensionAPI, repoRoot: string, target: ResolvedDiffTarget): Promise<RawDiffFile[]> {
 	let rawFiles: RawDiffFile[] = [];
 
@@ -229,7 +287,7 @@ async function loadRawDiffFilesForTarget(pi: ExtensionAPI, repoRoot: string, tar
 				rawFiles.push(...parseDiffIntoFiles(patch));
 			}
 		}
-		return rawFiles;
+		return await addFullContextToRawFiles(pi, repoRoot, target, rawFiles);
 	}
 
 	if (!target.baseRev || !target.headRev) {
@@ -237,7 +295,7 @@ async function loadRawDiffFilesForTarget(pi: ExtensionAPI, repoRoot: string, tar
 	}
 
 	const diffText = await runGitDiff(pi, repoRoot, [target.baseRev, target.headRev, "--"]);
-	return parseDiffIntoFiles(diffText);
+	return await addFullContextToRawFiles(pi, repoRoot, target, parseDiffIntoFiles(diffText));
 }
 
 export async function isGitRepository(pi: ExtensionAPI, cwd: string): Promise<boolean> {
@@ -427,6 +485,7 @@ export async function buildDiffReviewData(pi: ExtensionAPI, cwd: string, target:
 		filePayloads.set(file.id, {
 			file,
 			diffText: file.isBinary ? null : rawFile.rawPatch,
+			parsedDiff: file.isBinary ? undefined : rawFile.parsed,
 			message: file.isBinary ? "Binary or unrenderable file" : undefined,
 		});
 	}

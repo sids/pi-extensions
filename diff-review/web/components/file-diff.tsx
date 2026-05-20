@@ -176,6 +176,9 @@ function resolveDiffLineTarget(fileDiff: FileDiffMetadata, side: DiffLineComment
 }
 
 function parseFileDiff(payload: DiffFilePayload | null): FileDiffMetadata | null {
+	if (payload?.parsedDiff) {
+		return payload.parsedDiff;
+	}
 	if (!payload?.diffText) {
 		return null;
 	}

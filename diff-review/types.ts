@@ -1,3 +1,5 @@
+import type { FileDiffMetadata } from "@pierre/diffs";
+
 export type DiffTarget =
 	| { type: "uncommitted" }
 	| { type: "baseBranch"; branch: string }
@@ -35,6 +37,7 @@ export type DiffFileEntry = {
 export type DiffFilePayload = {
 	file: DiffFileEntry;
 	diffText: string | null;
+	parsedDiff?: FileDiffMetadata;
 	message?: string;
 };
 

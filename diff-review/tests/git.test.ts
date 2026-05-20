@@ -139,6 +139,22 @@ describe("git helpers", () => {
 		]);
 	});
 
+	test("includes full file context for expandable hunks", async () => {
+		const repoRoot = createTempRepo();
+		write(repoRoot, "src/context.ts", Array.from({ length: 20 }, (_, index) => `line ${index + 1}`).join("\n") + "\n");
+		commitAll(repoRoot, "Initial commit");
+		write(repoRoot, "src/context.ts", Array.from({ length: 20 }, (_, index) => (index === 9 ? "line ten" : `line ${index + 1}`)).join("\n") + "\n");
+
+		const review = await buildReview(repoRoot, { type: "uncommitted" });
+		const fileId = review.files.find((file) => file.path === "src/context.ts")?.id;
+		const payload = review.filePayloads.get(fileId!);
+		expect(payload?.diffText).toContain("@@ -7,7 +7,7 @@");
+		expect(payload?.parsedDiff?.isPartial).toBe(false);
+		expect(payload?.parsedDiff?.additionLines).toContain("line 1\n");
+		expect(payload?.parsedDiff?.additionLines).toContain("line 20\n");
+		expect(payload?.parsedDiff?.hunks[0]?.collapsedBefore).toBe(6);
+	});
+
 	test("filters explicit binary and minified assets from review output", async () => {
 		const repoRoot = createTempRepo();
 		write(repoRoot, "src/keep.ts", "export const keep = 1;\n");
