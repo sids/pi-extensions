@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef } from "react";
 import { FileTree, useFileTree } from "@pierre/trees/react";
-import type { GitStatusEntry } from "@pierre/trees";
+import type { FileTreeSortEntry, GitStatusEntry } from "@pierre/trees";
 import type { DiffFileEntry } from "../../types";
 
 type SidebarCounts = {
@@ -63,6 +63,43 @@ function buildDecoration(file: DiffFileEntry, counts: SidebarCounts | undefined,
 	return badges.join(" · ");
 }
 
+function getKindAtDepth(entry: FileTreeSortEntry, depth: number): "directory" | "file" {
+	return depth < entry.segments.length - 1 || entry.isDirectory ? "directory" : "file";
+}
+
+function compareSegments(left: string, right: string): number {
+	return left.localeCompare(right, undefined, { numeric: true, sensitivity: "base" });
+}
+
+export function compareSidebarTreeEntries(left: FileTreeSortEntry, right: FileTreeSortEntry): number {
+	const sharedDepth = Math.min(left.segments.length, right.segments.length);
+	for (let depth = 0; depth < sharedDepth; depth += 1) {
+		const leftSegment = left.segments[depth];
+		const rightSegment = right.segments[depth];
+		if (leftSegment === rightSegment) {
+			continue;
+		}
+
+		const leftKind = getKindAtDepth(left, depth);
+		const rightKind = getKindAtDepth(right, depth);
+		if (leftKind !== rightKind) {
+			if (depth === 0) {
+				return leftKind === "file" ? -1 : 1;
+			}
+			return leftKind === "directory" ? -1 : 1;
+		}
+		return compareSegments(leftSegment ?? "", rightSegment ?? "");
+	}
+
+	if (left.segments.length !== right.segments.length) {
+		return left.segments.length < right.segments.length ? -1 : 1;
+	}
+	if (left.isDirectory !== right.isDirectory) {
+		return left.isDirectory ? -1 : 1;
+	}
+	return 0;
+}
+
 export function Sidebar(props: SidebarProps) {
 	const fileByPath = useMemo(() => new Map(props.files.map((file) => [file.path, file])), [props.files]);
 	const currentPropsRef = useRef(props);
@@ -82,6 +119,7 @@ export function Sidebar(props: SidebarProps) {
 		initialExpansion: "open",
 		initialSelectedPaths: activePath ? [activePath] : [],
 		flattenEmptyDirectories: true,
+		sort: compareSidebarTreeEntries,
 		icons: "minimal",
 		search: true,
 		initialSearchQuery: props.searchQuery,
