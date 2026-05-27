@@ -106,7 +106,7 @@ export function buildNewPaneArgs(workspaceId: string, url: string): string[] {
 }
 
 export function buildNewSurfaceArgs(workspaceId: string, paneRef: string, url: string): string[] {
-	return ["new-surface", "--type", "browser", "--workspace", workspaceId, "--pane", paneRef, "--url", url];
+	return ["new-surface", "--type", "browser", "--workspace", workspaceId, "--pane", paneRef, "--url", url, "--focus"];
 }
 
 async function execCmux(pi: ExtensionAPI, args: string[], cwd: string): Promise<ExecResult> {
