@@ -58,6 +58,7 @@ describe("cmux open command builders", () => {
 			"--url",
 			"http://127.0.0.1:1234/review/token",
 			"--focus",
+			"true",
 		]);
 	});
 });
