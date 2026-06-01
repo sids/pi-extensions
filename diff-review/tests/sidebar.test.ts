@@ -24,12 +24,21 @@ describe("compareSidebarTreeEntries", () => {
 		]);
 	});
 
-	test("keeps directories before files below the root", () => {
+	test("places files before directories below the root", () => {
 		const paths = [entry("diff-review/README.md"), entry("diff-review/web", true), entry("diff-review/CHANGELOG.md")];
 		expect([...paths].sort(compareSidebarTreeEntries).map((item) => item.path)).toEqual([
-			"diff-review/web",
 			"diff-review/CHANGELOG.md",
 			"diff-review/README.md",
+			"diff-review/web",
+		]);
+	});
+
+	test("places files before nested file directories", () => {
+		const paths = [entry("diff-review/web/app.tsx"), entry("diff-review/README.md"), entry("diff-review/CHANGELOG.md")];
+		expect([...paths].sort(compareSidebarTreeEntries).map((item) => item.path)).toEqual([
+			"diff-review/CHANGELOG.md",
+			"diff-review/README.md",
+			"diff-review/web/app.tsx",
 		]);
 	});
 });

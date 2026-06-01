@@ -83,10 +83,7 @@ export function compareSidebarTreeEntries(left: FileTreeSortEntry, right: FileTr
 		const leftKind = getKindAtDepth(left, depth);
 		const rightKind = getKindAtDepth(right, depth);
 		if (leftKind !== rightKind) {
-			if (depth === 0) {
-				return leftKind === "file" ? -1 : 1;
-			}
-			return leftKind === "directory" ? -1 : 1;
+			return leftKind === "file" ? -1 : 1;
 		}
 		return compareSegments(leftSegment ?? "", rightSegment ?? "");
 	}
