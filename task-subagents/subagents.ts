@@ -7,7 +7,7 @@ import os from "node:os";
 import path from "node:path";
 import type { AgentMessage, AgentToolResult } from "@earendil-works/pi-agent-core";
 import { getSupportedThinkingLevels, type Model, type TextContent } from "@earendil-works/pi-ai";
-import type { ExtensionAPI, SessionEntry } from "@earendil-works/pi-coding-agent";
+import { getAgentDir, type ExtensionAPI, type SessionEntry } from "@earendil-works/pi-coding-agent";
 import {
 	createInitialReviewedSubagentTasks,
 	runSubagentLaunchReview,
@@ -75,20 +75,6 @@ const SUBAGENT_EXTENSION_DISABLED_ENV = "PI_TASK_SUBAGENTS_DISABLED";
 const SUBAGENT_DIR_COPIED_FILES = new Set(["auth.json", "models.json", "settings.json"]);
 const SUBAGENT_DIR_SKIPPED_FILES = new Set(["auth.json.lock", "models.json.lock", "settings.json.lock"]);
 
-export function resolveSubagentDir(env: NodeJS.ProcessEnv = process.env): string {
-	const value = env[SUBAGENT_DIR_ENV]?.trim();
-	if (!value) {
-		return path.join(os.homedir(), ".pi", "agent");
-	}
-	if (value === "~") {
-		return os.homedir();
-	}
-	if (value.startsWith("~/")) {
-		return path.join(os.homedir(), value.slice(2));
-	}
-	return value;
-}
-
 export function isSubagentExtensionDisabled(env: NodeJS.ProcessEnv = process.env): boolean {
 	const value = env[SUBAGENT_EXTENSION_DISABLED_ENV]?.trim().toLowerCase();
 	return value === "1" || value === "true";
@@ -101,7 +87,7 @@ function getAgentDirSymlinkType(isDirectory: boolean): "file" | "dir" | "junctio
 	return process.platform === "win32" ? "junction" : "dir";
 }
 
-export async function createSubagentDir(sourceAgentDir: string = resolveSubagentDir()): Promise<string | null> {
+export async function createSubagentDir(sourceAgentDir: string = getAgentDir()): Promise<string | null> {
 	const resolvedSourceAgentDir = path.resolve(sourceAgentDir);
 	let entries: Dirent[];
 	try {

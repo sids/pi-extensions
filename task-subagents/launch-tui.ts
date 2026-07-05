@@ -4,7 +4,7 @@ import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { CONFIG_DIR_NAME, type ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { CONFIG_DIR_NAME, getAgentDir, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { isProjectTrusted } from "@siddr/pi-shared-qna/project-trust";
 import {
 	SUBAGENT_THINKING_LEVELS,
@@ -55,7 +55,7 @@ function requirePiCodingAgentModule(modulePath: string) {
 		const searchRoots = [
 			path.dirname(fileURLToPath(import.meta.url)),
 			process.cwd(),
-			resolveLaunchReviewAgentDir(),
+			getAgentDir(),
 		];
 		for (const searchRoot of searchRoots) {
 			const packageDir = findPackageDir(searchRoot, path.join("@earendil-works", "pi-coding-agent"));
@@ -285,20 +285,6 @@ function getSelectedThinkingValue(
 	return task?.thinkingOverride ?? task?.defaultThinking ?? currentThinkingLevel;
 }
 
-function resolveLaunchReviewAgentDir(env: NodeJS.ProcessEnv = process.env): string {
-	const value = env.PI_CODING_AGENT_DIR?.trim();
-	if (!value) {
-		return path.join(os.homedir(), ".pi", "agent");
-	}
-	if (value === "~") {
-		return os.homedir();
-	}
-	if (value.startsWith("~/")) {
-		return path.join(os.homedir(), value.slice(2));
-	}
-	return value;
-}
-
 async function readSettingsFile(filePath: string): Promise<Record<string, unknown> | null> {
 	try {
 		const contents = await readFile(filePath, "utf8");
@@ -326,7 +312,7 @@ async function getScopedModelPatterns(ctx: ExtensionContext): Promise<string[] |
 	}
 
 	const [globalSettings, projectSettings] = await Promise.all([
-		readSettingsFile(path.join(resolveLaunchReviewAgentDir(), "settings.json")),
+		readSettingsFile(path.join(getAgentDir(), "settings.json")),
 		isProjectTrusted(ctx)
 			? readSettingsFile(path.join(ctx.cwd, CONFIG_DIR_NAME, "settings.json"))
 			: Promise.resolve(null),

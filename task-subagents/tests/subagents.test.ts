@@ -9,7 +9,6 @@ import {
 	normalizeSubagentTasks,
 	reconstructSubagentRunsFromEntries,
 	registerSubagentTools,
-	resolveSubagentDir,
 } from "../subagents";
 import {
 	clearRememberedSessionEditorComponentFactory,
@@ -74,15 +73,6 @@ describe("resolveSubagentContextMode", () => {
 		expect(resolveSubagentContextMode(undefined)).toBe("fresh");
 		expect(resolveSubagentContextMode("fork")).toBe("fork");
 		expect(resolveSubagentContextMode("other")).toBeNull();
-	});
-});
-
-describe("resolveSubagentDir", () => {
-	test("expands the configured agent dir and falls back to the default path", () => {
-		expect(resolveSubagentDir({ PI_CODING_AGENT_DIR: "~/custom-agent" })).toBe(
-			path.join(os.homedir(), "custom-agent"),
-		);
-		expect(resolveSubagentDir({})).toBe(path.join(os.homedir(), ".pi", "agent"));
 	});
 });
 
