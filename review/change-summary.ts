@@ -1,4 +1,4 @@
-import { completeSimple, type Api, type AssistantMessage, type Model, type UserMessage } from "@earendil-works/pi-ai";
+import { completeSimple, type Api, type AssistantMessage, type Model, type UserMessage } from "@earendil-works/pi-ai/compat";
 import {
 	buildSessionContext,
 	convertToLlm,

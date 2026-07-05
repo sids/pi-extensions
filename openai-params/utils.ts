@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import type { Api, Model } from "@earendil-works/pi-ai";
+import { CONFIG_DIR_NAME } from "@earendil-works/pi-coding-agent";
 
 export const OPENAI_PARAMS_COMMAND = "openai-params";
 export const OPENAI_PARAMS_CONFIG_BASENAME = "openai-params.json";
@@ -93,8 +94,8 @@ export function getConfigPaths(
 	globalConfigPath: string;
 } {
 	return {
-		projectConfigPath: join(cwd, ".pi", "extensions", OPENAI_PARAMS_CONFIG_BASENAME),
-		globalConfigPath: join(homeDir, ".pi", "agent", OPENAI_PARAMS_CONFIG_BASENAME),
+		projectConfigPath: join(cwd, CONFIG_DIR_NAME, "extensions", OPENAI_PARAMS_CONFIG_BASENAME),
+		globalConfigPath: join(homeDir, CONFIG_DIR_NAME, "agent", OPENAI_PARAMS_CONFIG_BASENAME),
 	};
 }
 
@@ -199,21 +200,33 @@ export function writeConfigFile(filePath: string, config: OpenAIParamsConfigFile
 	}
 }
 
-export function ensureDefaultConfigFile(projectConfigPath: string, globalConfigPath: string): void {
-	if (existsSync(projectConfigPath) || existsSync(globalConfigPath)) {
+export function ensureDefaultConfigFile(
+	projectConfigPath: string,
+	globalConfigPath: string,
+	options: { projectTrusted?: boolean } = {},
+): void {
+	if (options.projectTrusted !== false && existsSync(projectConfigPath)) {
+		return;
+	}
+	if (existsSync(globalConfigPath)) {
 		return;
 	}
 
 	writeConfigFile(globalConfigPath, DEFAULT_CONFIG_FILE);
 }
 
-export function resolveConfig(cwd: string, homeDir: string = homedir()): ResolvedOpenAIParamsConfig {
+export function resolveConfig(
+	cwd: string,
+	homeDir: string = homedir(),
+	options: { projectTrusted?: boolean } = {},
+): ResolvedOpenAIParamsConfig {
 	const { projectConfigPath, globalConfigPath } = getConfigPaths(cwd, homeDir);
-	ensureDefaultConfigFile(projectConfigPath, globalConfigPath);
+	const projectTrusted = options.projectTrusted !== false;
+	ensureDefaultConfigFile(projectConfigPath, globalConfigPath, { projectTrusted });
 
 	const globalConfig = readConfigFile(globalConfigPath) ?? {};
-	const projectConfig = readConfigFile(projectConfigPath) ?? {};
-	const selectedConfigPath = existsSync(projectConfigPath) ? projectConfigPath : globalConfigPath;
+	const projectConfig = projectTrusted ? readConfigFile(projectConfigPath) ?? {} : {};
+	const selectedConfigPath = projectTrusted && existsSync(projectConfigPath) ? projectConfigPath : globalConfigPath;
 	const merged = { ...globalConfig, ...projectConfig };
 	const supportedModels =
 		parseSupportedModels(merged.supportedModels) ?? parseSupportedModels(DEFAULT_SUPPORTED_MODEL_KEYS) ?? [];

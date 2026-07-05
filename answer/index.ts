@@ -10,9 +10,10 @@
  * 4. Submits the compiled answers when done
  */
 
-import { complete, type Model, type Api, type UserMessage } from "@earendil-works/pi-ai";
+import { complete, type Model, type Api, type UserMessage } from "@earendil-works/pi-ai/compat";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { BorderedLoader, getAgentDir } from "@earendil-works/pi-coding-agent";
+import { BorderedLoader, CONFIG_DIR_NAME, getAgentDir } from "@earendil-works/pi-coding-agent";
+import { isProjectTrusted } from "@siddr/pi-shared-qna/project-trust";
 import fs from "node:fs/promises";
 import path from "node:path";
 import {
@@ -83,16 +84,16 @@ async function readSettingsFile(
 export function getAnswerSettingsPaths(cwd: string): { globalPath: string; projectPath: string } {
 	return {
 		globalPath: path.join(getAgentDir(), "settings.json"),
-		projectPath: path.join(cwd, ".pi", "settings.json"),
+		projectPath: path.join(cwd, CONFIG_DIR_NAME, "settings.json"),
 	};
 }
 
-async function loadAnswerSettings(ctx: ExtensionContext): Promise<AnswerSettings> {
+export async function loadAnswerSettings(ctx: ExtensionContext): Promise<AnswerSettings> {
 	const { globalPath, projectPath } = getAnswerSettingsPaths(ctx.cwd);
 
 	const [globalSettings, projectSettings] = await Promise.all([
 		readSettingsFile(globalPath, ctx),
-		readSettingsFile(projectPath, ctx),
+		isProjectTrusted(ctx) ? readSettingsFile(projectPath, ctx) : Promise.resolve(null),
 	]);
 
 	const merged = mergeAnswerSettings(

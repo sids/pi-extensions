@@ -1,4 +1,5 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { isProjectTrusted } from "@siddr/pi-shared-qna/project-trust";
 import { OpenAIParamsScreen } from "./settings-screen";
 import {
 	applyConfiguredParams,
@@ -31,7 +32,7 @@ export default function openAIParams(pi: ExtensionAPI): void {
 	};
 
 	function refreshConfig(ctx: ExtensionContext) {
-		config = resolveConfig(getConfigCwd(ctx));
+		config = resolveConfig(getConfigCwd(ctx), undefined, { projectTrusted: isProjectTrusted(ctx) });
 		state = {
 			fast: config.fast,
 			verbosity: config.verbosity,

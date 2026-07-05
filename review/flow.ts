@@ -1,5 +1,6 @@
 import path from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { isProjectTrusted } from "@siddr/pi-shared-qna/project-trust";
 import { summarizeChangesFromSessionHistory } from "./change-summary";
 import { getReviewCommentsForRun } from "./comments";
 import { isGitRepository } from "./git";
@@ -56,7 +57,7 @@ type ReviewFlowDependencies = {
 	isGitRepository: (pi: ExtensionAPI, cwd: string) => Promise<boolean>;
 	resolveTarget: (pi: ExtensionAPI, ctx: ExtensionContext, args: string) => Promise<ReviewTarget | null>;
 	checkoutTarget: (pi: ExtensionAPI, ctx: ExtensionContext, target: ReviewTarget) => Promise<boolean>;
-	buildInstructionsPrompt: (cwd: string) => Promise<string>;
+	buildInstructionsPrompt: (cwd: string, options?: { projectTrusted?: boolean }) => Promise<string>;
 	buildEditorPrompt: (pi: ExtensionAPI, cwd: string, target: ReviewTarget) => Promise<string>;
 	describeTarget: (target: ReviewTarget) => string;
 	summarizeChangesFromSessionHistory: (ctx: ExtensionContext, sourceLeafId: string | undefined) => Promise<string | null>;
@@ -377,7 +378,9 @@ export async function startReviewMode(
 			);
 		}
 	}
-	const reviewInstructionsPrompt = await dependencies.buildInstructionsPrompt(ctx.cwd);
+	const reviewInstructionsPrompt = await dependencies.buildInstructionsPrompt(ctx.cwd, {
+		projectTrusted: isProjectTrusted(ctx),
+	});
 	const targetEditorPrompt = await dependencies.buildEditorPrompt(pi, ctx.cwd, target);
 	const editorPrompt = addActivePlanStatement(targetEditorPrompt, useFreshBranch ? activePlanFilePath : undefined);
 

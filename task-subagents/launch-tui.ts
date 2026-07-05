@@ -4,7 +4,8 @@ import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { CONFIG_DIR_NAME, type ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { isProjectTrusted } from "@siddr/pi-shared-qna/project-trust";
 import {
 	SUBAGENT_THINKING_LEVELS,
 	type NormalizedSubagentTask,
@@ -326,7 +327,9 @@ async function getScopedModelPatterns(ctx: ExtensionContext): Promise<string[] |
 
 	const [globalSettings, projectSettings] = await Promise.all([
 		readSettingsFile(path.join(resolveLaunchReviewAgentDir(), "settings.json")),
-		readSettingsFile(path.join(ctx.cwd, ".pi", "settings.json")),
+		isProjectTrusted(ctx)
+			? readSettingsFile(path.join(ctx.cwd, CONFIG_DIR_NAME, "settings.json"))
+			: Promise.resolve(null),
 	]);
 	return resolveConfiguredSubagentModelPatterns(globalSettings, projectSettings);
 }

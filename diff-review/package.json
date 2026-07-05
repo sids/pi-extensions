@@ -22,7 +22,7 @@
     ]
   },
   "peerDependencies": {
-    "@earendil-works/pi-coding-agent": ">=0.74.0"
+    "@earendil-works/pi-coding-agent": ">=0.80.3"
   },
   "dependencies": {
     "@pierre/diffs": "^1.1.22",

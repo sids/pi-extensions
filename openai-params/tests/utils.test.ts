@@ -121,6 +121,35 @@ describe("resolveConfig", () => {
 
 		rmSync(baseDir, { recursive: true, force: true });
 	});
+
+	test("ignores project config when the project is not trusted", () => {
+		const baseDir = mkdtempSync(join(tmpdir(), "openai-params-"));
+		const cwd = join(baseDir, "repo");
+		const homeDir = join(baseDir, "home");
+		const { projectConfigPath, globalConfigPath } = getConfigPaths(cwd, homeDir);
+
+		mkdirSync(dirname(projectConfigPath), { recursive: true });
+		writeFileSync(
+			projectConfigPath,
+			JSON.stringify({
+				fast: true,
+				verbosity: "high",
+				supportedModels: ["openai-codex/gpt-5.4"],
+			}),
+		);
+
+		const resolved = resolveConfig(cwd, homeDir, { projectTrusted: false });
+		expect(resolved.configPath).toBe(globalConfigPath);
+		expect(resolved.fast).toBe(false);
+		expect(resolved.verbosity).toBeUndefined();
+		expect(resolved.supportedModels).toEqual([
+			{ provider: "openai", id: "gpt-5.4" },
+			{ provider: "openai-codex", id: "gpt-5.4" },
+		]);
+		expect(readFileSync(globalConfigPath, "utf8")).toContain('"fast": false');
+
+		rmSync(baseDir, { recursive: true, force: true });
+	});
 });
 
 describe("applyConfiguredParams", () => {

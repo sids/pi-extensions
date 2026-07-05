@@ -1,6 +1,6 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { CONFIG_DIR_NAME, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { getMergeBase } from "./git";
 import type { ReviewTarget } from "./types";
 import { getReviewTargetHint } from "./utils";
@@ -95,11 +95,18 @@ Collect findings using the add_review_comment tool:
 6. If no findings qualify, state that the code looks good and do not call add_review_comment.
 `;
 
-export async function loadProjectReviewGuidelines(cwd: string): Promise<string | null> {
+export async function loadProjectReviewGuidelines(
+	cwd: string,
+	options: { projectTrusted?: boolean } = {},
+): Promise<string | null> {
+	if (options.projectTrusted === false) {
+		return null;
+	}
+
 	let currentDir = path.resolve(cwd);
 
 	while (true) {
-		const piDir = path.join(currentDir, ".pi");
+		const piDir = path.join(currentDir, CONFIG_DIR_NAME);
 		const guidelinesPath = path.join(currentDir, "REVIEW_GUIDELINES.md");
 
 		const piStats = await fs.stat(piDir).catch(() => null);
@@ -174,8 +181,11 @@ function buildReviewImportantLines(): string[] {
 	];
 }
 
-export async function buildReviewInstructionsPrompt(cwd: string): Promise<string> {
-	const projectGuidelines = await loadProjectReviewGuidelines(cwd);
+export async function buildReviewInstructionsPrompt(
+	cwd: string,
+	options: { projectTrusted?: boolean } = {},
+): Promise<string> {
+	const projectGuidelines = await loadProjectReviewGuidelines(cwd, options);
 	const lines = [REVIEW_RUBRIC, "", ...buildReviewImportantLines()];
 
 	if (projectGuidelines) {
@@ -193,8 +203,13 @@ export async function buildReviewEditorPrompt(pi: ExtensionAPI, cwd: string, tar
 	return ["Please perform a code review with the following focus:", "", targetPrompt].join("\n");
 }
 
-export async function buildReviewUserPrompt(pi: ExtensionAPI, cwd: string, target: ReviewTarget): Promise<string> {
-	const instructionsPrompt = await buildReviewInstructionsPrompt(cwd);
+export async function buildReviewUserPrompt(
+	pi: ExtensionAPI,
+	cwd: string,
+	target: ReviewTarget,
+	options: { projectTrusted?: boolean } = {},
+): Promise<string> {
+	const instructionsPrompt = await buildReviewInstructionsPrompt(cwd, options);
 	const editorPrompt = await buildReviewEditorPrompt(pi, cwd, target);
 	return [instructionsPrompt, "", "---", "", editorPrompt].join("\n");
 }

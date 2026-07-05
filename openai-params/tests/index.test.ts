@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "vitest";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { CONFIG_DIR_NAME } from "@earendil-works/pi-coding-agent";
 import openAIParamsExtension from "../index";
 import {
 	OPENAI_PARAMS_COMMAND,
@@ -23,7 +24,7 @@ function createProjectConfig(options?: { fast?: boolean; verbosity?: Verbosity |
 	const baseDir = mkdtempSync(join(tmpdir(), "openai-params-index-"));
 	cleanupPaths.push(baseDir);
 	const cwd = join(baseDir, "repo");
-	const configPath = join(cwd, ".pi", "extensions", "openai-params.json");
+	const configPath = join(cwd, CONFIG_DIR_NAME, "extensions", "openai-params.json");
 	mkdirSync(dirname(configPath), { recursive: true });
 	writeFileSync(
 		configPath,

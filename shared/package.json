@@ -7,11 +7,13 @@
   "main": "./qna-tui.ts",
   "exports": {
     ".": "./qna-tui.ts",
-    "./session-editor-component": "./session-editor-component.ts"
+    "./session-editor-component": "./session-editor-component.ts",
+    "./project-trust": "./project-trust.ts"
   },
   "files": [
     "qna-tui.ts",
     "session-editor-component.ts",
+    "project-trust.ts",
     "README.md",
     "CHANGELOG.md"
   ],
@@ -25,7 +27,7 @@
   },
   "homepage": "https://github.com/sids/pi-extensions/tree/main/shared#readme",
   "peerDependencies": {
-    "@earendil-works/pi-tui": ">=0.74.0"
+    "@earendil-works/pi-tui": ">=0.80.3"
   },
   "publishConfig": {
     "registry": "https://registry.npmjs.org/",
