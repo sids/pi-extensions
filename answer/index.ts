@@ -13,6 +13,7 @@
 import { complete, type Model, type Api, type UserMessage } from "@earendil-works/pi-ai/compat";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { BorderedLoader, CONFIG_DIR_NAME, getAgentDir } from "@earendil-works/pi-coding-agent";
+import { isTuiMode } from "@siddr/pi-shared-qna/extension-mode";
 import { isProjectTrusted } from "@siddr/pi-shared-qna/project-trust";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -106,8 +107,10 @@ export async function loadAnswerSettings(ctx: ExtensionContext): Promise<AnswerS
 
 export default function (pi: ExtensionAPI) {
 	const answerHandler = async (ctx: ExtensionContext) => {
-		if (!ctx.hasUI) {
-			ctx.ui.notify("answer requires interactive mode", "error");
+		if (!isTuiMode(ctx)) {
+			if (ctx.hasUI) {
+				ctx.ui.notify("answer requires TUI mode", "error");
+			}
 			return;
 		}
 

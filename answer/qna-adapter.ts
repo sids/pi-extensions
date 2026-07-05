@@ -1,4 +1,5 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { isTuiMode } from "@siddr/pi-shared-qna/extension-mode";
 import {
 	cloneResponses,
 	deriveAnswersFromResponses,
@@ -183,6 +184,10 @@ export async function collectAnswers(
 		onDraftChange: (responses: QnAResponse[]) => void;
 	},
 ): Promise<QnAResult | null> {
+	if (!isTuiMode(ctx)) {
+		return null;
+	}
+
 	return await ctx.ui.custom<QnAResult | null>((tui, theme, _kb, done) => {
 		return new QnATuiComponent(questions, tui, done, {
 			templates: options.templates,

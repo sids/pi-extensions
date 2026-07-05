@@ -1,4 +1,5 @@
 import { copyToClipboard, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { isTuiMode } from "@siddr/pi-shared-qna/extension-mode";
 import { PromptSavePicker } from "./picker";
 import {
 	MUTATION_ENTRY_TYPE,
@@ -41,18 +42,29 @@ export default function promptSave(pi: ExtensionAPI) {
 	const copyText = async (ctx: ExtensionContext, text: string, message: string, options?: { clearEditor?: boolean }) => {
 		try {
 			await copyToClipboard(text);
-			if (options?.clearEditor) {
+			if (options?.clearEditor && isTuiMode(ctx)) {
 				ctx.ui.setEditorText("");
 			}
-			ctx.ui.notify(message, "info");
+			if (ctx.hasUI) {
+				ctx.ui.notify(message, "info");
+			}
 			return true;
 		} catch {
-			ctx.ui.notify("Clipboard copy failed", "error");
+			if (ctx.hasUI) {
+				ctx.ui.notify("Clipboard copy failed", "error");
+			}
 			return false;
 		}
 	};
 
 	const saveEditorText = (ctx: ExtensionContext) => {
+		if (!isTuiMode(ctx)) {
+			if (ctx.hasUI) {
+				ctx.ui.notify("Saving editor text requires TUI mode", "error");
+			}
+			return;
+		}
+
 		const editorText = ctx.ui.getEditorText();
 		if (!hasMeaningfulText(editorText)) {
 			return;
@@ -66,6 +78,13 @@ export default function promptSave(pi: ExtensionAPI) {
 	};
 
 	const copyEditorText = async (ctx: ExtensionContext) => {
+		if (!isTuiMode(ctx)) {
+			if (ctx.hasUI) {
+				ctx.ui.notify("Copying editor text requires TUI mode", "error");
+			}
+			return;
+		}
+
 		const editorText = ctx.ui.getEditorText();
 		if (!hasMeaningfulText(editorText)) {
 			ctx.ui.notify("Editor is empty", "info");
@@ -76,6 +95,13 @@ export default function promptSave(pi: ExtensionAPI) {
 	};
 
 	const insertSavedPrompt = (ctx: ExtensionContext, item: SavedPromptItem) => {
+		if (!isTuiMode(ctx)) {
+			if (ctx.hasUI) {
+				ctx.ui.notify("Inserting saved prompts requires TUI mode", "error");
+			}
+			return;
+		}
+
 		ctx.ui.setEditorText(appendPromptToEditor(ctx.ui.getEditorText(), item.text));
 		ctx.ui.notify("Inserted saved prompt", "info");
 	};
@@ -84,7 +110,7 @@ export default function promptSave(pi: ExtensionAPI) {
 		removeTerminalInputListener?.();
 		removeTerminalInputListener = undefined;
 
-		if (!ctx.hasUI) {
+		if (!isTuiMode(ctx)) {
 			return;
 		}
 
@@ -113,7 +139,10 @@ export default function promptSave(pi: ExtensionAPI) {
 		  };
 
 	const openPromptPicker = async (ctx: ExtensionContext) => {
-		if (!ctx.hasUI) {
+		if (!isTuiMode(ctx)) {
+			if (ctx.hasUI) {
+				ctx.ui.notify("Saved prompt picker requires TUI mode", "error");
+			}
 			return;
 		}
 

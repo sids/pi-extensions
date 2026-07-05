@@ -4,6 +4,7 @@ import path from "node:path";
 import type { AgentToolResult } from "@earendil-works/pi-agent-core";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { QnATuiComponent, type QnAResponse, type QnAResult } from "@siddr/pi-shared-qna";
+import { isTuiMode } from "@siddr/pi-shared-qna/extension-mode";
 import type {
 	NormalizedRequestUserInputQuestion,
 	PlanModeState,
@@ -125,6 +126,10 @@ async function collectRequestUserInputAnswers(
 	ctx: ExtensionContext,
 	questions: NormalizedRequestUserInputQuestion[],
 ): Promise<RequestUserInputResponse | null> {
+	if (!isTuiMode(ctx)) {
+		return null;
+	}
+
 	const result = await ctx.ui.custom<QnAResult | null>((tui, theme, _kb, done) => {
 		return new QnATuiComponent(questions, tui, done, {
 			title: "Questions",
@@ -196,8 +201,8 @@ export function registerRequestUserInputTool(
 				throw new Error("request_user_input is unavailable when plan mode is inactive");
 			}
 
-			if (!ctx.hasUI) {
-				throw new Error("request_user_input requires interactive mode");
+			if (!isTuiMode(ctx)) {
+				throw new Error("request_user_input requires TUI mode");
 			}
 
 			const normalized = normalizeRequestUserInputQuestions(params.questions as RequestUserInputQuestion[]);

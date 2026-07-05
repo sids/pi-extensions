@@ -190,6 +190,47 @@ describe("registerRequestUserInputTool", () => {
 		]);
 	});
 
+	test("throws in non-TUI mode", async () => {
+		let execute:
+			| ((toolCallId: string, params: any, signal?: AbortSignal, onUpdate?: unknown, ctx?: any) => Promise<any>)
+			| undefined;
+
+		registerRequestUserInputTool(
+			{
+				registerTool: (tool: { execute: NonNullable<typeof execute> }) => {
+					execute = tool.execute;
+				},
+				events: {
+					emit() {},
+				},
+			} as any,
+			{
+				getState: () => ({ active: true }),
+				requestUserInputSchema: {},
+			},
+		);
+
+		if (!execute) {
+			throw new Error("request_user_input tool was not registered");
+		}
+
+		let error: unknown;
+		try {
+			await execute(
+				"call-1",
+				{ questions: [{ id: "runtime", question: "Which runtime?" }] },
+				undefined,
+				undefined,
+				{ hasUI: true, mode: "rpc", ui: { custom: async () => undefined } },
+			);
+		} catch (caught) {
+			error = caught;
+		}
+
+		expect(error).toBeInstanceOf(Error);
+		expect((error as Error).message).toContain("TUI mode");
+	});
+
 	test("throws when plan mode is inactive", async () => {
 		let execute:
 			| ((toolCallId: string, params: any, signal?: AbortSignal, onUpdate?: unknown, ctx?: any) => Promise<any>)

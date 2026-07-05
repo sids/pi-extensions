@@ -1,4 +1,5 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { isTuiMode } from "@siddr/pi-shared-qna/extension-mode";
 import { isProjectTrusted } from "@siddr/pi-shared-qna/project-trust";
 import { OpenAIParamsScreen } from "./settings-screen";
 import {
@@ -53,7 +54,10 @@ export default function openAIParams(pi: ExtensionAPI): void {
 		handler: async (_args, ctx) => {
 			refreshConfig(ctx);
 
-			if (!ctx.hasUI) {
+			if (!isTuiMode(ctx)) {
+				if (ctx.hasUI) {
+					ctx.ui.notify("OpenAI params settings require TUI mode", "error");
+				}
 				return;
 			}
 

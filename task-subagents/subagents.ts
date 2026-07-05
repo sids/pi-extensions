@@ -19,6 +19,7 @@ import {
 	getRememberedSessionEditorComponentFactory,
 	setRememberedSessionEditorComponent,
 } from "@siddr/pi-shared-qna/session-editor-component";
+import { isTuiMode } from "@siddr/pi-shared-qna/extension-mode";
 import type {
 	NormalizedSubagentTask,
 	ReviewedSubagentTask,
@@ -1893,6 +1894,13 @@ export function registerSubagentTools(
 	pi.registerShortcut("ctrl+shift+o", {
 		description: "Inspect the latest active subagent run in the main tool result view",
 		handler: async (ctx) => {
+			if (!isTuiMode(ctx)) {
+				if (ctx.hasUI) {
+					ctx.ui.notify("Subagent inspector requires TUI mode.", "error");
+				}
+				return;
+			}
+
 			const sessionKey = buildSubagentSessionKey(ctx);
 			if (activeInspector?.sessionKey === sessionKey) {
 				closeSubagentInspector();
@@ -2091,7 +2099,7 @@ export function registerSubagentTools(
 				defaultThinking: params.thinking_level === undefined ? undefined : defaultThinkingLevel ?? undefined,
 				launchContext: requestedContext,
 			});
-			if (ctx.hasUI) {
+			if (isTuiMode(ctx)) {
 				emitWaitingForUserInput(toolCallId, true);
 				try {
 					const reviewResult = await enqueueMergedLaunchReview({

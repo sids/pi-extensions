@@ -466,6 +466,89 @@ describe("/review inactive", () => {
 		expect(notifications).toContainEqual({ message: "Review cancelled.", level: "info" });
 	});
 
+	test("notifies and exits in non-TUI mode on start", async () => {
+		const startCalls: any[] = [];
+		const resolveCalls: string[] = [];
+		const notifications: Array<{ message: string; level: string }> = [];
+		const { handler } = createRegisteredReviewHandler({
+			stateManager: {
+				getState: () => ({ version: 1, active: false }),
+				setState: () => {},
+				startReviewMode: (_ctx, options) => startCalls.push(options),
+			},
+			flow: {
+				isGitRepository: async () => true,
+				resolveTarget: async () => {
+					resolveCalls.push("resolve");
+					return { type: "uncommitted" };
+				},
+			},
+		});
+
+		await handler("", {
+			hasUI: true,
+			mode: "rpc",
+			cwd: "/tmp/project",
+			waitForIdle: async () => {},
+			sessionManager: {
+				getLeafId: () => "leaf-2",
+				getEntries: () => [
+					{ id: "user-1", type: "message", message: { role: "user" } },
+					{ id: "leaf-2", type: "message", message: { role: "assistant" } },
+				],
+			},
+			ui: {
+				notify: (message: string, level: string) => notifications.push({ message, level }),
+			},
+		});
+
+		expect(resolveCalls).toEqual([]);
+		expect(startCalls).toEqual([]);
+		expect(notifications).toContainEqual({
+			message: "Review mode requires TUI mode.",
+			level: "error",
+		});
+	});
+
+	test("notifies and exits in non-TUI mode on end", async () => {
+		const notifications: Array<{ message: string; level: string }> = [];
+		const { handler } = createRegisteredReviewHandler({
+			stateManager: {
+				getState: () => ({
+					version: 1,
+					active: true,
+					runId: "run-1",
+					targetHint: "current changes",
+					originLeafId: undefined,
+				}),
+				setState: () => {},
+				startReviewMode: () => {},
+			},
+		});
+
+		await handler("", {
+			hasUI: true,
+			mode: "rpc",
+			cwd: "/tmp/project",
+			waitForIdle: async () => {},
+			sessionManager: {
+				getLeafId: () => "leaf-2",
+				getEntries: () => [
+					{ id: "user-1", type: "message", message: { role: "user" } },
+					{ id: "leaf-2", type: "message", message: { role: "assistant" } },
+				],
+			},
+			ui: {
+				notify: (message: string, level: string) => notifications.push({ message, level }),
+			},
+		});
+
+		expect(notifications).toContainEqual({
+			message: "Ending review mode requires TUI mode.",
+			level: "error",
+		});
+	});
+
 	test("skips start-location prompt when there is no prior history", async () => {
 		const startCalls: any[] = [];
 		const resolveCalls: string[] = [];

@@ -347,6 +347,102 @@ describe("/plan-md continue planning", () => {
 		]);
 	});
 
+	test("notifies and exits early in non-TUI mode (active plan)", async () => {
+		const tmpDir = await mkdtemp(path.join(os.tmpdir(), "plan-md-flow-"));
+		tempDirs.push(tmpDir);
+		const planFilePath = path.join(tmpDir, "session-1.plan.md");
+		await writeFile(planFilePath, "# Existing plan\n", "utf8");
+		let state = {
+			version: 1,
+			active: true,
+			originLeafId: null,
+			planFilePath,
+			lastPlanLeafId: undefined,
+		};
+		const setStateCalls: any[] = [];
+		const notifications: Array<{ message: string; level: string }> = [];
+		let currentLeafId: string | null = "planning-leaf";
+		const handler = createRegisteredHandler({
+			getState: () => state,
+			setState: (_ctx, nextState) => {
+				setStateCalls.push(nextState);
+				state = nextState;
+			},
+			startPlanMode: () => {},
+		});
+
+		await handler("", {
+			cwd: tmpDir,
+			hasUI: true,
+			mode: "rpc",
+			waitForIdle: async () => {},
+			navigateTree: async () => ({ cancelled: false }),
+			ui: {
+				select: async () => "Exit",
+				notify: (message: string, level: string) => {
+					notifications.push({ message, level });
+				},
+				setEditorText: () => {},
+				getEditorText: () => "",
+			},
+			sessionManager: {
+				getLeafId: () => currentLeafId,
+				getEntries: () => [],
+				getSessionFile: () => undefined,
+				getSessionDir: () => tmpDir,
+				getSessionId: () => "session-1",
+			},
+		});
+
+		expect(notifications).toContainEqual({
+			message: "Exiting plan mode requires TUI mode.",
+			level: "error",
+		});
+		expect(setStateCalls).toEqual([]);
+	});
+
+	test("notifies and exits early in non-TUI mode (inactive plan)", async () => {
+		const tmpDir = await mkdtemp(path.join(os.tmpdir(), "plan-md-flow-"));
+		tempDirs.push(tmpDir);
+		const planFilePath = path.join(tmpDir, "session-1.plan.md");
+		const notifications: Array<{ message: string; level: string }> = [];
+		let state = {
+			version: 1,
+			active: false,
+			planFilePath,
+			lastPlanLeafId: undefined,
+		};
+		const handler = createRegisteredHandler({
+			getState: () => state,
+			setState: () => {},
+			startPlanMode: () => {},
+		});
+
+		await handler("", {
+			cwd: tmpDir,
+			hasUI: true,
+			mode: "json",
+			waitForIdle: async () => {},
+			ui: {
+				select: async () => "Continue planning",
+				notify: (message: string, level: string) => {
+					notifications.push({ message, level });
+				},
+			},
+			sessionManager: {
+				getLeafId: () => "current-leaf",
+				getEntries: () => [
+					{ id: "user-1", type: "message", message: { role: "user" } },
+				],
+				getSessionFile: () => undefined,
+				getSessionDir: () => tmpDir,
+				getSessionId: () => "session-1",
+			},
+		});
+
+		expect(notifications).toEqual([]);
+	});
+
 	test("falls back to current leaf when saved planning leaf is unavailable", async () => {
 		const tmpDir = await mkdtemp(path.join(os.tmpdir(), "plan-md-flow-"));
 		tempDirs.push(tmpDir);

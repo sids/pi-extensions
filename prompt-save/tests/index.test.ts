@@ -23,6 +23,7 @@ type Handler = (event: any, ctx: any) => any;
 type HarnessOptions = {
 	entries?: any[];
 	editorText?: string;
+	mode?: string;
 };
 
 function createTheme() {
@@ -52,6 +53,7 @@ function createHarness(options: HarnessOptions = {}) {
 
 	const ctx = {
 		hasUI: true,
+		...(options.mode ? { mode: options.mode } : {}),
 		ui: {
 			getEditorText: () => editorText,
 			setEditorText: (text: string) => {
@@ -382,6 +384,38 @@ describe("prompt-save extension", () => {
 		await openPromise;
 		expect(harness.getEditorText()).toBe("first");
 		expect(harness.getRenderRequests()).toBeGreaterThan(0);
+	});
+
+	test("skips save and notifies when editor text is set in non-TUI mode", async () => {
+		const harness = createHarness({ editorText: "saved prompt", mode: "rpc" });
+		await harness.emit("session_start");
+
+		await harness.runShortcut(SAVE_SHORTCUT);
+
+		expect(harness.getEditorText()).toBe("saved prompt");
+		expect(harness.getEntries()).toHaveLength(0);
+		expect(harness.getNotifications()).toContainEqual({ message: "Saving editor text requires TUI mode", type: "error" });
+	});
+
+	test("skips copy and notifies in non-TUI mode", async () => {
+		const harness = createHarness({ editorText: "copy me", mode: "rpc" });
+		await harness.emit("session_start");
+
+		await harness.runShortcut(COPY_SHORTCUT);
+
+		expect(harness.getEditorText()).toBe("copy me");
+		expect(clipboardCalls).toEqual([]);
+		expect(harness.getNotifications()).toContainEqual({ message: "Copying editor text requires TUI mode", type: "error" });
+	});
+
+	test("skips picker and notifies in non-TUI mode", async () => {
+		const harness = createHarness({ mode: "rpc" });
+		await harness.emit("session_start");
+
+		await harness.runShortcut(OPEN_PICKER_SHORTCUT);
+
+		expect(harness.getPickerComponent()).toBeUndefined();
+		expect(harness.getNotifications()).toContainEqual({ message: "Saved prompt picker requires TUI mode", type: "error" });
 	});
 
 	test("Delete does not delete the selected saved prompt", async () => {

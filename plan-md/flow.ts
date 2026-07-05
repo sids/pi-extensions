@@ -1,5 +1,6 @@
 import path from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { isTuiMode } from "@siddr/pi-shared-qna/extension-mode";
 import { loadPlanModePrompt } from "./prompts";
 import { buildImplementationPrefill, PLAN_MODE_END_OPTIONS, PLAN_MODE_START_OPTIONS } from "./utils";
 import {
@@ -85,7 +86,7 @@ async function navigateToFreshPlanningBranch(
 		return false;
 	}
 
-	if (ctx.hasUI) {
+	if (isTuiMode(ctx)) {
 		ctx.ui.setEditorText("");
 	}
 	return true;
@@ -305,11 +306,13 @@ async function confirmMoveOverwriteIfNeeded(
 		return true;
 	}
 
-	if (!ctx.hasUI) {
-		ctx.ui.notify(
-			`Refusing to overwrite existing plan file without interactive confirmation: ${targetPath}`,
-			"error",
-		);
+	if (!isTuiMode(ctx)) {
+		if (ctx.hasUI) {
+			ctx.ui.notify(
+				`Refusing to overwrite existing plan file without TUI confirmation: ${targetPath}`,
+				"error",
+			);
+		}
 		return false;
 	}
 
@@ -394,8 +397,10 @@ async function exitPlanMode(
 		ctx.ui.notify("Plan mode is not active.", "info");
 		return false;
 	}
-	if (!ctx.hasUI) {
-		ctx.ui.notify("Exiting plan mode requires interactive mode.", "error");
+	if (!isTuiMode(ctx)) {
+		if (ctx.hasUI) {
+			ctx.ui.notify("Exiting plan mode requires TUI mode.", "error");
+		}
 		return false;
 	}
 
@@ -438,8 +443,10 @@ async function endPlanMode(
 		ctx.ui.notify("Plan mode is not active.", "info");
 		return;
 	}
-	if (!ctx.hasUI) {
-		ctx.ui.notify("Exiting plan mode requires interactive mode.", "error");
+	if (!isTuiMode(ctx)) {
+		if (ctx.hasUI) {
+			ctx.ui.notify("Exiting plan mode requires TUI mode.", "error");
+		}
 		return;
 	}
 
@@ -519,7 +526,7 @@ export function registerPlanModeCommand(
 		type StartIntent = "continue" | "empty-branch" | "current-branch";
 		let startIntent: StartIntent = existingSessionPlanText ? "continue" : "current-branch";
 
-		if (ctx.hasUI) {
+		if (isTuiMode(ctx)) {
 			if (existingSessionPlanText) {
 				const continueOption = "Continue planning";
 				const startFreshOption = "Start fresh";
@@ -628,11 +635,13 @@ export function registerPlanModeCommand(
 				}
 
 				if (requestedPathExists) {
-					if (!ctx.hasUI) {
-						ctx.ui.notify(
-							`Refusing to overwrite existing plan file without interactive confirmation: ${planFilePath}`,
-							"error",
-						);
+					if (!isTuiMode(ctx)) {
+						if (ctx.hasUI) {
+							ctx.ui.notify(
+								`Refusing to overwrite existing plan file without TUI confirmation: ${planFilePath}`,
+								"error",
+							);
+						}
 						return;
 					}
 

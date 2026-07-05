@@ -47,6 +47,7 @@ function createHarness(initialCustomResult: OpenAIParamsState | null = null) {
 	const emittedEvents: ExtensionEvent[] = [];
 	const notifications: Array<{ message: string; level?: string }> = [];
 	let customResult = initialCustomResult;
+	let customCalls = 0;
 	let commandHandler: ((args: string, ctx: any) => Promise<void>) | undefined;
 
 	const pi = {
@@ -72,12 +73,16 @@ function createHarness(initialCustomResult: OpenAIParamsState | null = null) {
 
 	openAIParamsExtension(pi);
 
-	const createCtx = (cwd: string, hasUI = false) => ({
+	const createCtx = (cwd: string, hasUI = false, mode?: string) => ({
 		cwd,
 		hasUI,
+		...(mode ? { mode } : {}),
 		model: { provider: "openai", id: "gpt-5.4", api: "openai-responses" },
 		ui: {
-			custom: async () => customResult,
+			custom: async () => {
+				customCalls++;
+				return customResult;
+			},
 			notify: (message: string, level?: string) => notifications.push({ message, level }),
 		},
 	});
@@ -97,6 +102,9 @@ function createHarness(initialCustomResult: OpenAIParamsState | null = null) {
 		createCtx,
 		emittedEvents,
 		notifications,
+		getCustomCalls() {
+			return customCalls;
+		},
 		setCustomResult(nextResult: OpenAIParamsState | null) {
 			customResult = nextResult;
 		},
@@ -139,6 +147,23 @@ describe("openai-params extension", () => {
 					fast: false,
 					verbosity: "high",
 				},
+			},
+		]);
+	});
+
+	test("skips the settings screen outside TUI mode", async () => {
+		const project = createProjectConfig({ fast: false, verbosity: null });
+		const harness = createHarness({ fast: true, verbosity: "low" });
+		const ctx = harness.createCtx(project.cwd, true, "rpc");
+
+		await harness.runCommand(ctx);
+
+		expect(harness.getCustomCalls()).toBe(0);
+		expect(harness.emittedEvents).toEqual([]);
+		expect(harness.notifications).toEqual([
+			{
+				message: "OpenAI params settings require TUI mode",
+				level: "error",
 			},
 		]);
 	});

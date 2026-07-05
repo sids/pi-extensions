@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { createDraftStore, getLatestDraft, type AnswerDraft } from "../qna-adapter";
+import { collectAnswers, createDraftStore, getLatestDraft, type AnswerDraft } from "../qna-adapter";
 
 const QUESTIONS = [
 	{
@@ -60,7 +60,65 @@ describe("getLatestDraft", () => {
 	});
 });
 
-describe("createDraftStore", () => {
+describe("collectAnswers", () => {
+	test("skips custom TUI and returns null in non-TUI mode", async () => {
+		let customCalled = false;
+
+		const result = await collectAnswers(
+			{
+				hasUI: true,
+				mode: "rpc",
+				ui: {
+					custom: async () => {
+						customCalled = true;
+						return { responses: [] };
+					},
+				},
+			} as any,
+			QUESTIONS,
+			{
+				templates: [],
+				initialResponses: [
+					{ selectedOptionIndex: 0, customText: "", selectionTouched: false, committed: false },
+				],
+				onDraftChange: () => {},
+			},
+		);
+
+		expect(result).toBeNull();
+		expect(customCalled).toBe(false);
+	});
+
+	test("returns null in print mode", async () => {
+		let customCalled = false;
+
+		const result = await collectAnswers(
+			{
+				hasUI: false,
+				mode: "print",
+				ui: {
+					custom: async () => {
+						customCalled = true;
+						return { responses: [] };
+					},
+				},
+			} as any,
+			QUESTIONS,
+			{
+				templates: [],
+				initialResponses: [
+					{ selectedOptionIndex: 0, customText: "", selectionTouched: false, committed: false },
+				],
+				onDraftChange: () => {},
+			},
+		);
+
+		expect(result).toBeNull();
+		expect(customCalled).toBe(false);
+	});
+});
+
+ describe("createDraftStore", () => {
 	test("saves and clears draft entries", () => {
 		const entries: Array<{ type: string; payload: unknown }> = [];
 		const pi = {

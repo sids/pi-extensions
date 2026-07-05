@@ -1,5 +1,6 @@
 import path from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { isTuiMode } from "@siddr/pi-shared-qna/extension-mode";
 import { isProjectTrusted } from "@siddr/pi-shared-qna/project-trust";
 import { summarizeChangesFromSessionHistory } from "./change-summary";
 import { getReviewCommentsForRun } from "./comments";
@@ -176,7 +177,7 @@ async function navigateToFreshReviewBranch(ctx: ExtensionContext, cancelMessage:
 		return false;
 	}
 
-	if (ctx.hasUI) {
+	if (isTuiMode(ctx)) {
 		ctx.ui.setEditorText("");
 	}
 	return true;
@@ -285,8 +286,10 @@ export async function startReviewMode(
 	stateManager: ReviewModeStateManager,
 	dependencies: ReviewFlowDependencies,
 ): Promise<void> {
-	if (!ctx.hasUI) {
-		ctx.ui.notify("Review mode requires interactive mode.", "error");
+	if (!isTuiMode(ctx)) {
+		if (ctx.hasUI) {
+			ctx.ui.notify("Review mode requires TUI mode.", "error");
+		}
 		return;
 	}
 
@@ -430,8 +433,10 @@ export async function endReviewMode(
 	dependencies: ReviewFlowDependencies,
 	onReviewEnded?: (summary: ReviewEndSummary) => void,
 ): Promise<void> {
-	if (!ctx.hasUI) {
-		ctx.ui.notify("Ending review mode requires interactive mode.", "error");
+	if (!isTuiMode(ctx)) {
+		if (ctx.hasUI) {
+			ctx.ui.notify("Ending review mode requires TUI mode.", "error");
+		}
 		return;
 	}
 

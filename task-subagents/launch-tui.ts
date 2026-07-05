@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { CONFIG_DIR_NAME, getAgentDir, type ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { isTuiMode } from "@siddr/pi-shared-qna/extension-mode";
 import { isProjectTrusted } from "@siddr/pi-shared-qna/project-trust";
 import {
 	SUBAGENT_THINKING_LEVELS,
@@ -974,7 +975,7 @@ export async function runSubagentLaunchReview(
 		timing?: SubagentLaunchReviewTimingOptions;
 	},
 ): Promise<ReviewedSubagentTask[] | null> {
-	if (!ctx.hasUI) {
+	if (!isTuiMode(ctx)) {
 		return null;
 	}
 

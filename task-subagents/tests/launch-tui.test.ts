@@ -32,9 +32,10 @@ function createReviewedTask(overrides: Partial<ReviewedSubagentTask> = {}): Revi
 	};
 }
 
-function createLaunchReviewContext(customHandler: (render: any) => Promise<any>) {
+function createLaunchReviewContext(customHandler: (render: any) => Promise<any>, mode?: string) {
 	return {
 		hasUI: true,
+		...(mode ? { mode } : {}),
 		cwd: "/tmp/project",
 		modelRegistry: {
 			getAvailable: () => [],
@@ -275,6 +276,20 @@ describe("buildSubagentLaunchReviewResult", () => {
 });
 
 describe("runSubagentLaunchReview", () => {
+	test("skips custom launch review outside TUI mode", async () => {
+		let customCalled = false;
+		const result = await runSubagentLaunchReview(
+			createLaunchReviewContext(async () => {
+				customCalled = true;
+				return [];
+			}, "rpc"),
+			[createReviewedTask()],
+		);
+
+		expect(result).toBeNull();
+		expect(customCalled).toBe(false);
+	});
+
 	test("cycles thinking from the currently selected effective value", async () => {
 		const result = await runInteractiveLaunchReview({
 			drive: (component) => {

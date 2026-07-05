@@ -8,12 +8,14 @@
   "exports": {
     ".": "./qna-tui.ts",
     "./session-editor-component": "./session-editor-component.ts",
-    "./project-trust": "./project-trust.ts"
+    "./project-trust": "./project-trust.ts",
+    "./extension-mode": "./extension-mode.ts"
   },
   "files": [
     "qna-tui.ts",
     "session-editor-component.ts",
     "project-trust.ts",
+    "extension-mode.ts",
     "README.md",
     "CHANGELOG.md"
   ],

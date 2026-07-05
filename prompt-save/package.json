@@ -25,6 +25,9 @@
     "@earendil-works/pi-coding-agent": ">=0.80.3",
     "@earendil-works/pi-tui": ">=0.80.3"
   },
+  "dependencies": {
+    "@siddr/pi-shared-qna": "workspace:^"
+  },
   "publishConfig": {
     "registry": "https://registry.npmjs.org/",
     "access": "public"

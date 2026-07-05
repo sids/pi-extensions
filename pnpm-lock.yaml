@@ -158,6 +158,9 @@ importers:
       '@earendil-works/pi-tui':
         specifier: '>=0.80.3'
         version: 0.80.3
+      '@siddr/pi-shared-qna':
+        specifier: workspace:^
+        version: link:../shared
 
   prompt-thinking:
     dependencies:

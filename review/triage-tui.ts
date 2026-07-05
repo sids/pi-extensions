@@ -2,6 +2,7 @@ import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { isTuiMode } from "@siddr/pi-shared-qna/extension-mode";
 import type { ReviewComment, ReviewPriority, ReviewTriageResult, TriagedReviewComment } from "./types";
 import { toTriagedReviewComment } from "./utils";
 
@@ -506,7 +507,7 @@ export async function runReviewTriage(
 	comments: ReviewComment[],
 	targetHint?: string,
 ): Promise<ReviewTriageResult | null> {
-	if (!ctx.hasUI) {
+	if (!isTuiMode(ctx)) {
 		return null;
 	}
 
