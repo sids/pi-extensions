@@ -9,13 +9,15 @@
     ".": "./qna-tui.ts",
     "./session-editor-component": "./session-editor-component.ts",
     "./project-trust": "./project-trust.ts",
-    "./extension-mode": "./extension-mode.ts"
+    "./extension-mode": "./extension-mode.ts",
+    "./system-prompt-diagnostic": "./system-prompt-diagnostic.ts"
   },
   "files": [
     "qna-tui.ts",
     "session-editor-component.ts",
     "project-trust.ts",
     "extension-mode.ts",
+    "system-prompt-diagnostic.ts",
     "README.md",
     "CHANGELOG.md"
   ],

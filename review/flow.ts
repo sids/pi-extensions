@@ -2,6 +2,7 @@ import path from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { isTuiMode } from "@siddr/pi-shared-qna/extension-mode";
 import { isProjectTrusted } from "@siddr/pi-shared-qna/project-trust";
+import { summarizeLoadedContext } from "@siddr/pi-shared-qna/system-prompt-diagnostic";
 import { summarizeChangesFromSessionHistory } from "./change-summary";
 import { getReviewCommentsForRun } from "./comments";
 import { isGitRepository } from "./git";
@@ -423,7 +424,9 @@ export async function startReviewMode(
 			} satisfies ReviewChangeSummaryDetails,
 		});
 	}
-	ctx.ui.notify(`Review mode ready: ${targetHint}${modeSuffix}. Edit and send when ready.`, "info");
+	const contextSummary = summarizeLoadedContext(ctx);
+	const contextNote = contextSummary ? ` (${contextSummary})` : "";
+	ctx.ui.notify(`Review mode ready: ${targetHint}${modeSuffix}${contextNote}. Edit and send when ready.`, "info");
 }
 
 export async function endReviewMode(

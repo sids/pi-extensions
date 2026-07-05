@@ -8,3 +8,4 @@ Shared helpers used by siddr pi extensions.
 - `@siddr/pi-shared-qna/session-editor-component`: session-scoped editor component helpers shared by UI extensions.
 - `@siddr/pi-shared-qna/project-trust`: helper for consistently checking Pi project trust.
 - `@siddr/pi-shared-qna/extension-mode`: helper for consistently detecting real TUI mode.
+- `@siddr/pi-shared-qna/system-prompt-diagnostic`: helper to summarize loaded context files and skills from `ctx.getSystemPromptOptions()`.

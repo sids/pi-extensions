@@ -1,6 +1,7 @@
 import path from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { isTuiMode } from "@siddr/pi-shared-qna/extension-mode";
+import { summarizeLoadedContext } from "@siddr/pi-shared-qna/system-prompt-diagnostic";
 import { loadPlanModePrompt } from "./prompts";
 import { buildImplementationPrefill, PLAN_MODE_END_OPTIONS, PLAN_MODE_START_OPTIONS } from "./utils";
 import {
@@ -679,6 +680,12 @@ export function registerPlanModeCommand(
 			planFilePath,
 		});
 		await sendPlanModePromptMessage(pi, dependencies.stateManager.getState().activationId);
+
+		if (isTuiMode(ctx)) {
+			const summary = summarizeLoadedContext(ctx);
+			const contextNote = summary ? ` Loaded: ${summary}.` : "";
+			ctx.ui.notify(`Plan mode activated. Plan file: ${planFilePath}.${contextNote}`, "info");
+		}
 	};
 
 	pi.registerCommand("plan-md", {
