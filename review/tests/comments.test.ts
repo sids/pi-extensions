@@ -72,6 +72,7 @@ describe("registerAddReviewCommentTool", () => {
 			| {
 					execute: (toolCallId: string, params: any, signal: AbortSignal | undefined, onUpdate: any, ctx: any) => Promise<any>;
 					promptSnippet?: string;
+					promptGuidelines?: string[];
 			  }
 			| undefined;
 		const appended: Array<{ type: string; data: any }> = [];
@@ -96,6 +97,9 @@ describe("registerAddReviewCommentTool", () => {
 		expect(registeredTool.promptSnippet).toBe(
 			"Record one review finding with priority and optional file/line references.",
 		);
+		expect(registeredTool.promptGuidelines).toEqual([
+			"Use add_review_comment in Review mode to record each concrete finding instead of only listing it in assistant text.",
+		]);
 
 		const result = await registeredTool.execute(
 			"call-1",

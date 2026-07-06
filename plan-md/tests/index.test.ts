@@ -89,6 +89,9 @@ describe("plan-md prompt injection", () => {
 		expect(toolByName.get("request_user_input")?.promptSnippet).toBe(
 			"Ask the user one or more short questions and wait for answers.",
 		);
+		expect(toolByName.get("request_user_input")?.promptGuidelines).toEqual([
+			"Use request_user_input in Plan mode when a short answer from the user is required before writing or revising the plan.",
+		]);
 	});
 
 	test("set_plan throws when plan mode is inactive", async () => {

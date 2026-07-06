@@ -135,6 +135,7 @@ type RegisteredTool = {
 	name: string;
 	description?: string;
 	promptSnippet?: string;
+	promptGuidelines?: string[];
 	execute: (
 		toolCallId: string,
 		params: any,
@@ -418,9 +419,15 @@ describe("subagents tool", () => {
 		expect(tools.subagents.promptSnippet).toBe(
 			"Launch one or more isolated research subagents when explicitly asked.",
 		);
+		expect(tools.subagents.promptGuidelines).toEqual([
+			"Use subagents only when the user explicitly asks to use subagents or asks for parallel delegated research.",
+		]);
 		expect(tools.steer_subagent.promptSnippet).toBe(
 			"Rerun a previous subagent task with additional steering.",
 		);
+		expect(tools.steer_subagent.promptGuidelines).toEqual([
+			"Use steer_subagent only after a subagents run exists and the user asks to refine or rerun one of its tasks.",
+		]);
 		expect([...shortcuts.keys()]).toEqual(["ctrl+shift+o"]);
 	});
 

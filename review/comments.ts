@@ -149,6 +149,9 @@ export function registerAddReviewCommentTool(
 		description:
 			"Record one review finding with priority and optional file/line references. This tool is only available while review mode is active.",
 		promptSnippet: "Record one review finding with priority and optional file/line references.",
+		promptGuidelines: [
+			"Use add_review_comment in Review mode to record each concrete finding instead of only listing it in assistant text.",
+		],
 		parameters: dependencies.addReviewCommentSchema,
 		renderCall(args, theme) {
 			const priority = normalizeReviewPriority(args.priority) ?? "P?";

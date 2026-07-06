@@ -40,6 +40,7 @@ type StatusPayload = {
 	turnTotalMinutesLabel: string;
 	sessionMinutesLabel: string;
 	pullRequestLabel: string | null;
+	activeToolReasonLabel: string | null;
 };
 
 type WidgetUpdateOptions = {
@@ -72,6 +73,10 @@ const createStatusWidget = (payload: StatusPayload) => (_tui: unknown, theme: { 
 				? `${prPrefix} ${theme.fg("accent", prMatch[1])}${prMatch[2] ? theme.fg("muted", prMatch[2]) : ""}`
 				: `${prPrefix} ${theme.fg("accent", prContent)}`;
 			lines.push(padLine(truncateToWidth(prLine, Math.max(0, width - 2)), width, 1));
+		}
+		if (payload.activeToolReasonLabel) {
+			const toolLine = `${theme.fg("muted", "Tools:")} ${payload.activeToolReasonLabel}`;
+			lines.push(padLine(truncateToWidth(toolLine, Math.max(0, width - 2)), width, 1));
 		}
 		return lines;
 	},
@@ -142,6 +147,35 @@ function padLine(line: string, width: number, padding: number): string {
 	const innerWidth = Math.max(0, width - pad * 2);
 	const trimmed = truncateToWidth(line, innerWidth);
 	return " ".repeat(pad) + trimmed + " ".repeat(Math.max(0, width - pad - visibleWidth(trimmed)));
+}
+
+const BUILTIN_TOOL_NAMES = new Set(["read", "write", "edit", "bash", "grep", "find", "ls"]);
+const PLAN_MODE_TOOL_NAMES = ["set_plan", "request_user_input"];
+const REVIEW_MODE_TOOL_NAMES = ["add_review_comment"];
+
+function getActiveModeTools(activeToolNames: Set<string>, names: string[]): string[] {
+	return names.filter((name) => activeToolNames.has(name));
+}
+
+function buildActiveToolReasonLabel(pi: ExtensionAPI): string | null {
+	const activeToolNames = new Set(pi.getActiveTools());
+	const allToolNames = new Set(
+		pi.getAllTools()
+			.filter((tool) => tool.sourceInfo?.source !== "builtin" && tool.sourceInfo?.source !== "sdk" && !BUILTIN_TOOL_NAMES.has(tool.name))
+			.map((tool) => tool.name),
+	);
+	const entries: string[] = [];
+	const activePlanTools = getActiveModeTools(activeToolNames, PLAN_MODE_TOOL_NAMES).filter((name) => allToolNames.has(name));
+	const activeReviewTools = getActiveModeTools(activeToolNames, REVIEW_MODE_TOOL_NAMES).filter((name) => allToolNames.has(name));
+
+	if (activePlanTools.length > 0) {
+		entries.push(`plan mode: ${activePlanTools.join(", ")}`);
+	}
+	if (activeReviewTools.length > 0) {
+		entries.push(`review mode: ${activeReviewTools.join(", ")}`);
+	}
+
+	return entries.length > 0 ? entries.join(" · ") : null;
 }
 
 async function resolveGitBranch(pi: ExtensionAPI, cwd: string): Promise<string | null> {
@@ -306,6 +340,7 @@ export default function (pi: ExtensionAPI) {
 	let updateToken = 0;
 	let typingTimer: ReturnType<typeof setInterval> | null = null;
 	let lastThinkingLevel = "";
+	let lastActiveToolReasonLabel = "";
 	let enabled = true;
 	let sessionStartedAt: number | null = Date.now();
 	let activeAgentStartedAt: number | null = null;
@@ -432,6 +467,15 @@ export default function (pi: ExtensionAPI) {
 		void requestWidgetUpdate(ctx);
 	};
 
+	const updateActiveToolReasons = (ctx: ExtensionContext) => {
+		const current = buildActiveToolReasonLabel(pi) ?? "";
+		if (current === lastActiveToolReasonLabel) {
+			return;
+		}
+		lastActiveToolReasonLabel = current;
+		void requestWidgetUpdate(ctx, { skipPullRequestLookup: true });
+	};
+
 	const startTypingWatcher = (ctx: ExtensionContext) => {
 		if (!ctx.hasUI || !enabled) {
 			return;
@@ -444,10 +488,12 @@ export default function (pi: ExtensionAPI) {
 				return;
 			}
 			updateThinkingLevel(ctx);
+			updateActiveToolReasons(ctx);
 			updateTimingMetrics(ctx);
 			maybeRefreshPullRequest(ctx);
 		}, STATUS_POLL_INTERVAL_MS);
 		updateThinkingLevel(ctx);
+		updateActiveToolReasons(ctx);
 		updateTimingMetrics(ctx);
 		maybeRefreshPullRequest(ctx);
 	};
@@ -505,6 +551,8 @@ export default function (pi: ExtensionAPI) {
 		const timings = getTimingMinutes();
 		const openAIParamsLabel = formatOpenAIParamsLabel(openAIParamsByCwd.get(ctx.cwd) ?? null);
 		const sessionName = pi.getSessionName()?.trim() || null;
+		const activeToolReasonLabel = buildActiveToolReasonLabel(pi);
+		lastActiveToolReasonLabel = activeToolReasonLabel ?? "";
 		const payload: StatusPayload = {
 			modelLabel: formatModelLabel(ctx.model),
 			thinkingLevel: formatThinkingLevel(pi.getThinkingLevel()),
@@ -517,6 +565,7 @@ export default function (pi: ExtensionAPI) {
 			turnTotalMinutesLabel: formatElapsedMinutes(timings.turnTotal),
 			sessionMinutesLabel: formatElapsedMinutes(timings.session),
 			pullRequestLabel: formatPullRequestLabel(pullRequest),
+			activeToolReasonLabel,
 		};
 
 		const signature = JSON.stringify(payload);
@@ -586,6 +635,7 @@ export default function (pi: ExtensionAPI) {
 			lastSignature = "";
 			lastTimingSignature = "";
 			lastThinkingLevel = formatThinkingLevel(pi.getThinkingLevel());
+			lastActiveToolReasonLabel = buildActiveToolReasonLabel(pi) ?? "";
 			remoteRepoCache = new Map<string, RemoteRepoCacheEntry>();
 			remoteRepoRequestsInFlight = new Map<string, Promise<GitRemoteRepo | null>>();
 			prCache = new Map<string, PullRequestCacheEntry>();
@@ -610,6 +660,7 @@ export default function (pi: ExtensionAPI) {
 			lastSignature = "";
 			lastTimingSignature = "";
 			lastThinkingLevel = "";
+			lastActiveToolReasonLabel = "";
 		}
 	};
 

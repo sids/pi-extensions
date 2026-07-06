@@ -29,6 +29,9 @@ function renderComponent(component: { render: (width: number) => string[] } | un
 async function loadTools(activeTools = ["read", "bash", "edit", "write"]) {
 	const tools: Array<any> = [];
 	const setActiveToolsCalls: string[][] = [];
+	const toolPromptGuidelines = new Map(
+		["read", "bash", "edit", "write", "grep", "find", "ls"].map((name) => [name, [`Use ${name} for ${name} operations.`]]),
+	);
 	let sessionStartHandler: ((event: any, ctx: any) => unknown) | undefined;
 
 	toolDisplayExtension(
@@ -43,6 +46,12 @@ async function loadTools(activeTools = ["read", "bash", "edit", "write"]) {
 			},
 			getActiveTools() {
 				return [...activeTools];
+			},
+			getAllTools() {
+				return Array.from(toolPromptGuidelines, ([name, promptGuidelines]) => ({
+					name,
+					promptGuidelines,
+				}));
 			},
 			setActiveTools(nextTools: string[]) {
 				setActiveToolsCalls.push([...nextTools]);
@@ -65,6 +74,15 @@ describe("tool-display extension", () => {
 		const { tools, setActiveToolsCalls } = await loadTools(activeTools);
 
 		expect(tools.map((tool) => tool.name)).toEqual(["read", "write", "bash", "edit", "grep", "find", "ls"]);
+		expect(tools.map((tool) => [tool.name, tool.promptGuidelines])).toEqual([
+			["read", ["Use read for read operations."]],
+			["write", ["Use write for write operations."]],
+			["bash", ["Use bash for bash operations."]],
+			["edit", ["Use edit for edit operations."]],
+			["grep", ["Use grep for grep operations."]],
+			["find", ["Use find for find operations."]],
+			["ls", ["Use ls for ls operations."]],
+		]);
 		expect(setActiveToolsCalls).toEqual([activeTools]);
 	});
 

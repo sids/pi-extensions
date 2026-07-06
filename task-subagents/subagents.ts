@@ -1921,6 +1921,7 @@ export function registerSubagentTools(
 		description:
 			"Launch one or more isolated subagents with activity traces, interactive pre-launch review in UI mode, and run IDs for follow-up steering. Use this only when asked to use subagents.",
 		promptSnippet: "Launch one or more isolated research subagents when explicitly asked.",
+		promptGuidelines: ["Use subagents only when the user explicitly asks to use subagents or asks for parallel delegated research."],
 		parameters: dependencies.subagentsSchema,
 		renderCall(args, theme) {
 			const tasks = (args.tasks as SubagentTask[] | undefined) ?? [];
@@ -2277,6 +2278,7 @@ export function registerSubagentTools(
 		description:
 			"Rerun one task from a previous subagents run using runId/taskId and an extra steering instruction.",
 		promptSnippet: "Rerun a previous subagent task with additional steering.",
+		promptGuidelines: ["Use steer_subagent only after a subagents run exists and the user asks to refine or rerun one of its tasks."],
 		parameters: dependencies.steerSubagentSchema,
 		renderCall(args, theme) {
 			const instruction = summarizeSnippet(args.instruction ?? "", 90);

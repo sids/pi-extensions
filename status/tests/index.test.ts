@@ -27,6 +27,11 @@ function createHarness() {
 	const execCalls: Array<{ command: string; args: string[]; options?: { cwd?: string; timeout?: number } }> = [];
 	let thinkingLevel = "high";
 	let sessionName: string | undefined;
+	let activeTools = ["read", "bash"];
+	let allTools = [
+		{ name: "read", promptGuidelines: ["Use read to inspect files."], sourceInfo: { source: "builtin" } },
+		{ name: "bash", promptGuidelines: ["Use bash to run shell commands."], sourceInfo: { source: "builtin" } },
+	];
 
 	const pi = {
 		on(name: string, handler: Handler) {
@@ -40,6 +45,12 @@ function createHarness() {
 		},
 		getSessionName() {
 			return sessionName;
+		},
+		getActiveTools() {
+			return [...activeTools];
+		},
+		getAllTools() {
+			return [...allTools];
 		},
 		events: {
 			on(channel: string, handler: (data: unknown) => void) {
@@ -112,6 +123,10 @@ function createHarness() {
 		},
 		setSessionName(value: string | undefined) {
 			sessionName = value;
+		},
+		setTools(nextActiveTools: string[], nextAllTools = allTools) {
+			activeTools = nextActiveTools;
+			allTools = nextAllTools;
 		},
 		renderLatestWidget(width = 200, fg: (name: string, text: string) => string = (_name, text) => text) {
 			const latest = [...setWidgetCalls].reverse().find((call) => call.key === "status" && typeof call.factory === "function");
@@ -241,6 +256,47 @@ describe("status extension", () => {
 			expect(line).toContain("<thinkingHigh>high</thinkingHigh>");
 			expect(line).toContain("<muted>/fast 🗣️low</muted>");
 			expect(line).not.toContain("<thinkingHigh>/fast 🗣️low</thinkingHigh>");
+		} finally {
+			await harness.emit("session_shutdown", {}, ctx);
+		}
+	});
+
+	test("shows concise active mode tool reasons", async () => {
+		const harness = createHarness();
+		harness.setTools(
+			["read", "fetch_url", "subagents", "set_plan", "request_user_input", "extension_without_reason"],
+			[
+				{ name: "read", promptGuidelines: ["Use read to inspect files."], sourceInfo: { source: "tool-display" } },
+				{ name: "fetch_url", promptGuidelines: ["Use fetch_url when web content is needed."], sourceInfo: { source: "fetch-url" } },
+				{ name: "subagents", promptGuidelines: ["Use subagents only when the user asks."], sourceInfo: { source: "task-subagents" } },
+				{
+					name: "set_plan",
+					promptGuidelines: ["Use set_plan only to persist a concrete plan or revision, not for discussion-only replies."],
+					sourceInfo: { source: "plan-md" },
+				},
+				{
+					name: "request_user_input",
+					promptGuidelines: ["Use request_user_input in Plan mode when a short answer from the user is required before writing or revising the plan."],
+					sourceInfo: { source: "plan-md" },
+				},
+				{
+					name: "extension_without_reason",
+					sourceInfo: { source: "other" },
+				},
+			],
+		);
+		const ctx = harness.createCtx("/tmp/status-project");
+
+		try {
+			await harness.emit("session_start", {}, ctx);
+			const lines = harness.renderLatestWidget(500).map(normalizeLine);
+			const toolLine = lines.find((line) => line.startsWith("Tools:"));
+
+			expect(toolLine).toBe("Tools: plan mode: set_plan, request_user_input");
+			expect(toolLine).not.toContain("extension_without_reason");
+			expect(toolLine).not.toContain("fetch_url");
+			expect(toolLine).not.toContain("subagents");
+			expect(toolLine).not.toContain("read");
 		} finally {
 			await harness.emit("session_shutdown", {}, ctx);
 		}

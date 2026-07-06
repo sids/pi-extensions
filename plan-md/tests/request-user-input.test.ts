@@ -117,6 +117,7 @@ describe("registerRequestUserInputTool", () => {
 			| {
 					execute: (toolCallId: string, params: any, signal?: AbortSignal, onUpdate?: unknown, ctx?: any) => Promise<any>;
 					promptSnippet?: string;
+					promptGuidelines?: string[];
 			  }
 			| undefined;
 
@@ -144,6 +145,9 @@ describe("registerRequestUserInputTool", () => {
 		expect(registeredTool.promptSnippet).toBe(
 			"Ask the user one or more short questions and wait for answers.",
 		);
+		expect(registeredTool.promptGuidelines).toEqual([
+			"Use request_user_input in Plan mode when a short answer from the user is required before writing or revising the plan.",
+		]);
 
 		const result = await registeredTool.execute(
 			"call-1",

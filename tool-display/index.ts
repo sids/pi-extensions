@@ -31,6 +31,10 @@ type ToolDisplayDetails = {
 	content?: string;
 };
 
+type ToolPromptMetadata = {
+	promptGuidelines?: string[];
+};
+
 const bashPreviewLines = 10;
 
 const toolCache = new Map<string, BuiltInTools>();
@@ -198,6 +202,13 @@ function getEditPrepareArguments(tool: unknown): ((args: unknown) => unknown) | 
 	return typeof prepareArguments === "function" ? prepareArguments : undefined;
 }
 
+function getToolPromptMetadata(pi: ExtensionAPI, toolName: string): ToolPromptMetadata {
+	const tool = pi.getAllTools().find((candidate) => candidate.name === toolName);
+	return {
+		...(tool?.promptGuidelines ? { promptGuidelines: tool.promptGuidelines } : {}),
+	};
+}
+
 function registerOverrides(pi: ExtensionAPI, cwd: string) {
 	const referenceTools = getBuiltInTools(cwd);
 	const editPrepareArguments = getEditPrepareArguments(referenceTools.edit);
@@ -206,6 +217,7 @@ function registerOverrides(pi: ExtensionAPI, cwd: string) {
 		name: "read",
 		label: "read",
 		description: referenceTools.read.description,
+		...getToolPromptMetadata(pi, "read"),
 		parameters: referenceTools.read.parameters,
 		async execute(toolCallId, params, signal, onUpdate, ctx) {
 			const result = await getBuiltInTools(ctx.cwd).read.execute(toolCallId, params, signal, onUpdate);
@@ -251,6 +263,7 @@ function registerOverrides(pi: ExtensionAPI, cwd: string) {
 		name: "write",
 		label: "write",
 		description: referenceTools.write.description,
+		...getToolPromptMetadata(pi, "write"),
 		parameters: referenceTools.write.parameters,
 		async execute(toolCallId, params, signal, onUpdate, ctx) {
 			const result = await getBuiltInTools(ctx.cwd).write.execute(toolCallId, params, signal, onUpdate);
@@ -285,6 +298,7 @@ function registerOverrides(pi: ExtensionAPI, cwd: string) {
 		name: "bash",
 		label: "bash",
 		description: referenceTools.bash.description,
+		...getToolPromptMetadata(pi, "bash"),
 		parameters: referenceTools.bash.parameters,
 		async execute(toolCallId, params, signal, onUpdate, ctx) {
 			return getBuiltInTools(ctx.cwd).bash.execute(toolCallId, params, signal, onUpdate);
@@ -305,6 +319,7 @@ function registerOverrides(pi: ExtensionAPI, cwd: string) {
 		name: "edit",
 		label: "edit",
 		description: referenceTools.edit.description,
+		...getToolPromptMetadata(pi, "edit"),
 		parameters: referenceTools.edit.parameters,
 		...(editPrepareArguments ? { prepareArguments: editPrepareArguments } : {}),
 		async execute(toolCallId, params, signal, onUpdate, ctx) {
@@ -342,6 +357,7 @@ function registerOverrides(pi: ExtensionAPI, cwd: string) {
 		name: "grep",
 		label: "grep",
 		description: referenceTools.grep.description,
+		...getToolPromptMetadata(pi, "grep"),
 		parameters: referenceTools.grep.parameters,
 		async execute(toolCallId, params, signal, onUpdate, ctx) {
 			return getBuiltInTools(ctx.cwd).grep.execute(toolCallId, params, signal, onUpdate);
@@ -379,6 +395,7 @@ function registerOverrides(pi: ExtensionAPI, cwd: string) {
 		name: "find",
 		label: "find",
 		description: referenceTools.find.description,
+		...getToolPromptMetadata(pi, "find"),
 		parameters: referenceTools.find.parameters,
 		async execute(toolCallId, params, signal, onUpdate, ctx) {
 			return getBuiltInTools(ctx.cwd).find.execute(toolCallId, params, signal, onUpdate);
@@ -416,6 +433,7 @@ function registerOverrides(pi: ExtensionAPI, cwd: string) {
 		name: "ls",
 		label: "ls",
 		description: referenceTools.ls.description,
+		...getToolPromptMetadata(pi, "ls"),
 		parameters: referenceTools.ls.parameters,
 		async execute(toolCallId, params, signal, onUpdate, ctx) {
 			return getBuiltInTools(ctx.cwd).ls.execute(toolCallId, params, signal, onUpdate);
