@@ -264,6 +264,21 @@ describe("createMentionAutocompleteProvider", () => {
 		return createMentionAutocompleteProvider(baseProvider, () => skillItems);
 	}
 
+	describe("triggerCharacters", () => {
+		test("naturally triggers on dollar mentions", () => {
+			const provider = makeProvider();
+			expect(provider.triggerCharacters).toEqual(["$"]);
+		});
+
+		test("preserves base trigger characters", () => {
+			const provider = createMentionAutocompleteProvider(
+				{ ...baseProvider, triggerCharacters: ["#"] },
+				() => skillItems,
+			);
+			expect(provider.triggerCharacters).toEqual(["#", "$"]);
+		});
+	});
+
 	describe("getSuggestions", () => {
 		test("returns all skills for bare $", () => {
 			const provider = makeProvider();

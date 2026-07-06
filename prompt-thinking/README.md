@@ -11,7 +11,7 @@ pi install npm:@siddr/pi-prompt-thinking
 ## Usage
 
 1. Type `^` anywhere in the prompt where whitespace-delimited tokens are allowed.
-2. Press **Tab** to open the thinking-level autocomplete.
+2. The thinking-level autocomplete opens automatically. On pi versions without natural autocomplete triggers, press **Tab** after `^`.
 3. Pick a level from autocomplete.
 4. Send the prompt normally.
 5. pi temporarily applies that thinking level for the prompt, then restores the previous session level after the response finishes.
@@ -44,7 +44,7 @@ Please answer briefly
 
 ## Autocomplete behavior
 
-- After typing `^`, press **Tab** to open the thinking-level picker in the interactive TUI.
+- Typing `^` opens the thinking-level picker automatically in pi versions that support natural autocomplete triggers. Press **Tab** if your pi version requires manual autocomplete or if you need to reopen it.
 - The current thinking level is read when the picker opens and preselected when it is available for the active model.
 - Up/down arrows move through lower/higher thinking levels because suggestions stay in natural order.
 - Available levels depend on the current model:

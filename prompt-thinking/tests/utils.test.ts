@@ -219,6 +219,21 @@ describe("createThinkingAutocompleteProvider", () => {
 		return createThinkingAutocompleteProvider(baseProvider, () => thinkingItems);
 	}
 
+	describe("triggerCharacters", () => {
+		test("naturally triggers on caret tokens", () => {
+			const provider = makeProvider();
+			expect(provider.triggerCharacters).toEqual(["^"]);
+		});
+
+		test("preserves base trigger characters", () => {
+			const provider = createThinkingAutocompleteProvider(
+				{ ...baseProvider, triggerCharacters: ["#"] },
+				() => thinkingItems,
+			);
+			expect(provider.triggerCharacters).toEqual(["#", "^"]);
+		});
+	});
+
 	describe("getSuggestions", () => {
 		test("returns all levels for bare caret with the current level first", () => {
 			const provider = makeProvider();

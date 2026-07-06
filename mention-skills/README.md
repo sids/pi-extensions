@@ -10,9 +10,9 @@ pi install npm:pi-mention-skills
 
 ## Usage
 
-1. Type `$` in the editor, then press **Tab** to open discovered skills.
+1. Type `$` in the editor to open discovered skills. On pi versions without natural autocomplete triggers, press **Tab** after `$`.
 2. Continue typing to filter (for example, `$com` matches `$commit`).
-3. Press **Tab** again if needed, then select a suggestion to insert the `$skill-name` token.
+3. Press **Tab** if needed, then select a suggestion to insert the `$skill-name` token.
 4. On submit, each known `$skill-name` is replaced with its full `SKILL.md` path.
 
 ### Example

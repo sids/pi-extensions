@@ -179,6 +179,9 @@ export function buildThinkingAutocompleteItems(
 	}));
 }
 
+/** Characters that should naturally open thinking-level autocomplete. */
+const THINKING_TRIGGER_CHARACTERS = ["^"];
+
 type AutocompleteRequestOptions = {
 	signal?: AbortSignal;
 	force?: boolean;
@@ -204,6 +207,8 @@ export function createThinkingAutocompleteProvider(
 ): AutocompleteProvider {
 	const base = baseProvider as CompatibleAutocompleteProvider;
 	const provider = {
+		triggerCharacters: [...new Set([...(baseProvider.triggerCharacters ?? []), ...THINKING_TRIGGER_CHARACTERS])],
+
 		getSuggestions(lines: string[], cursorLine: number, cursorCol: number, options?: AutocompleteRequestOptions) {
 			const line = lines[cursorLine] || "";
 			const thinkingToken = findThinkingTokenAtCursor(line, cursorCol);

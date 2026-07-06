@@ -10,6 +10,9 @@ const MENTION_TOKEN_PATTERN = /(?:^|\s)\$([a-zA-Z0-9\-_]*)$/;
 /** Regex matching $mention tokens anywhere in text. */
 const MENTION_GLOBAL_PATTERN = /(?:^|(?<=\s))\$([a-zA-Z][a-zA-Z0-9\-_]*)/g;
 
+/** Characters that should naturally open skill mention autocomplete. */
+const MENTION_TRIGGER_CHARACTERS = ["$"];
+
 /**
  * Extract discovered skills from slash command metadata.
  * Returns a map of normalized skill name → SKILL.md path.
@@ -102,6 +105,8 @@ export function createMentionAutocompleteProvider(
 ): AutocompleteProvider {
 	const base = baseProvider as CompatibleAutocompleteProvider;
 	const provider = {
+		triggerCharacters: [...new Set([...(baseProvider.triggerCharacters ?? []), ...MENTION_TRIGGER_CHARACTERS])],
+
 		getSuggestions(lines: string[], cursorLine: number, cursorCol: number, options?: AutocompleteRequestOptions) {
 			const line = lines[cursorLine] || "";
 			const mention = findMentionTokenAtCursor(line, cursorCol);
