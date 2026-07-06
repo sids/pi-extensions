@@ -35,6 +35,7 @@ type StatusPayload = {
 	contextLabel: string;
 	contextUsage: number | null;
 	repoLabel: string;
+	sessionName: string | null;
 	agentMinutesLabel: string;
 	turnTotalMinutesLabel: string;
 	sessionMinutesLabel: string;
@@ -59,8 +60,10 @@ const createStatusWidget = (payload: StatusPayload) => (_tui: unknown, theme: { 
 			`· ${payload.agentMinutesLabel} agent · ${payload.turnTotalMinutesLabel} turn total · ${payload.sessionMinutesLabel} session`,
 		);
 		const repoLabel = theme.fg("muted", payload.repoLabel);
+		const sessionLabel = payload.sessionName ? `${theme.fg("accent", payload.sessionName)} ${theme.fg("muted", "·")} ` : "";
+		const left = `${sessionLabel}${repoLabel}`;
 		const right = [modelLabel, thinkingLabel, contextLabel, timingLabel].join(" ");
-		const lines = [renderAlignedLine(repoLabel, right, width, 1)];
+		const lines = [renderAlignedLine(left, right, width, 1)];
 		if (payload.pullRequestLabel) {
 			const prContent = payload.pullRequestLabel.replace(/^PR:\s*/, "").trim();
 			const prMatch = prContent.match(/^(\S+)(.*)$/);
@@ -501,6 +504,7 @@ export default function (pi: ExtensionAPI) {
 		const usage = ctx.getContextUsage();
 		const timings = getTimingMinutes();
 		const openAIParamsLabel = formatOpenAIParamsLabel(openAIParamsByCwd.get(ctx.cwd) ?? null);
+		const sessionName = pi.getSessionName()?.trim() || null;
 		const payload: StatusPayload = {
 			modelLabel: formatModelLabel(ctx.model),
 			thinkingLevel: formatThinkingLevel(pi.getThinkingLevel()),
@@ -508,6 +512,7 @@ export default function (pi: ExtensionAPI) {
 			contextLabel: formatContextLabel(usage),
 			contextUsage: usage?.percent ?? null,
 			repoLabel: formatRepoLabel(ctx.cwd, branch),
+			sessionName,
 			agentMinutesLabel: formatElapsedMinutes(timings.agent),
 			turnTotalMinutesLabel: formatElapsedMinutes(timings.turnTotal),
 			sessionMinutesLabel: formatElapsedMinutes(timings.session),
@@ -611,6 +616,11 @@ export default function (pi: ExtensionAPI) {
 	pi.on("session_start", async (_event, ctx) => {
 		resetTimingState();
 		await applyEnabledState(ctx);
+	});
+
+	pi.on("session_info_changed", async (_event, ctx) => {
+		lastSignature = "";
+		await requestWidgetUpdate(ctx, { skipPullRequestLookup: true });
 	});
 
 	pi.on("model_select", async (_event, ctx) => {

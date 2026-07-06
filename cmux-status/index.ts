@@ -285,6 +285,11 @@ export function createCmuxStatusExtension(createTransport: (options: CreateCmuxT
 			await updateCmuxStatus(ctx);
 		});
 
+		pi.on("session_info_changed", async (_event, ctx) => {
+			rememberCtx(ctx);
+			await updateCmuxStatus(ctx);
+		});
+
 		pi.on("input", async (_event, ctx) => {
 			rememberCtx(ctx);
 			if (!hasError) {

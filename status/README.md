@@ -5,6 +5,7 @@ Shows a status widget below the input editor with session context (plus an optio
 - Current provider/model
 - Current thinking level
 - Current OpenAI fast/verbosity indicators from `openai-params` when non-default, shown inside the thinking parentheses (`/fast`, `🗣️low`, `🗣️medium`, `🗣️high`)
+- Current session name, when set
 - Current working directory
 - Current Git branch
 - Context usage percent plus used token count

@@ -26,6 +26,7 @@ function createHarness() {
 	const setFooterCalls: unknown[] = [];
 	const execCalls: Array<{ command: string; args: string[]; options?: { cwd?: string; timeout?: number } }> = [];
 	let thinkingLevel = "high";
+	let sessionName: string | undefined;
 
 	const pi = {
 		on(name: string, handler: Handler) {
@@ -36,6 +37,9 @@ function createHarness() {
 		registerCommand() {},
 		getThinkingLevel() {
 			return thinkingLevel;
+		},
+		getSessionName() {
+			return sessionName;
 		},
 		events: {
 			on(channel: string, handler: (data: unknown) => void) {
@@ -105,6 +109,9 @@ function createHarness() {
 		execCalls,
 		setThinkingLevel(level: string) {
 			thinkingLevel = level;
+		},
+		setSessionName(value: string | undefined) {
+			sessionName = value;
 		},
 		renderLatestWidget(width = 200, fg: (name: string, text: string) => string = (_name, text) => text) {
 			const latest = [...setWidgetCalls].reverse().find((call) => call.key === "status" && typeof call.factory === "function");
@@ -191,6 +198,27 @@ describe("status extension", () => {
 			const updatedLine = normalizeLine(harness.renderLatestWidget()[0] ?? "");
 			expect(harness.setWidgetCalls.length).toBeGreaterThan(initialWidgetCount);
 			expect(updatedLine).toContain("openai/gpt-5.4 (high /fast 🗣️low) 43% (54k)");
+		} finally {
+			await harness.emit("session_shutdown", {}, ctx);
+		}
+	});
+
+	test("refreshes the widget when session info changes", async () => {
+		const harness = createHarness();
+		const ctx = harness.createCtx("/tmp/status-project");
+
+		try {
+			await harness.emit("session_start", {}, ctx);
+			const initialWidgetCount = harness.setWidgetCalls.length;
+			const initialLine = normalizeLine(harness.renderLatestWidget()[0] ?? "");
+
+			harness.setSessionName("build");
+			await harness.emit("session_info_changed", { name: "build" }, ctx);
+
+			const updatedLine = normalizeLine(harness.renderLatestWidget()[0] ?? "");
+			expect(harness.setWidgetCalls.length).toBeGreaterThan(initialWidgetCount);
+			expect(updatedLine).not.toBe(initialLine);
+			expect(updatedLine).toContain("build ·");
 		} finally {
 			await harness.emit("session_shutdown", {}, ctx);
 		}

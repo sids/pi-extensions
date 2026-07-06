@@ -326,6 +326,9 @@ function createHarness(options?: { initialStatuses?: Record<string, string>; ses
 		getWorkspaceStatusText(key: string) {
 			return statuses.get(key) ?? null;
 		},
+		setSessionName(value: string | undefined) {
+			sessionName = value;
+		},
 		releaseNextBlockedSetStatus() {
 			const resolve = blockedSetStatusResolvers.shift();
 			if (resolve) {
@@ -429,6 +432,32 @@ describe("cmux-status extension", () => {
 		await harness.emit("session_start");
 
 		expect(harness.getWorkspaceStatusText(statusKey)).toBe("π - Ready");
+	});
+
+	test("updates the sidebar status when the session name changes", async () => {
+		process.env.CMUX_WORKSPACE_ID = "workspace:1";
+		process.env.CMUX_SURFACE_ID = "surface:1";
+		process.env.CMUX_PANEL_ID = "panel:1";
+		const statusKey = buildStatusKey();
+		const harness = createHarness({ sessionName: "build" });
+
+		await harness.emit("session_start");
+		harness.setSessionName("deploy");
+		await harness.emit("session_info_changed", { name: "deploy" });
+
+		expect(harness.getWorkspaceStatusText(statusKey)).toBe("π deploy: Ready");
+		expect(harness.execCalls.filter((call) => call.command === "cmux" && call.args[0] === "set-status")).toEqual([
+			{
+				command: "cmux",
+				args: buildSetStatusArgs(statusKey, "build", "Ready"),
+				options: { cwd: "/tmp/project", timeout: 1500 },
+			},
+			{
+				command: "cmux",
+				args: buildSetStatusArgs(statusKey, "deploy", "Ready"),
+				options: { cwd: "/tmp/project", timeout: 1500 },
+			},
+		]);
 	});
 
 	test("uses the socket transport for status updates when available", async () => {
