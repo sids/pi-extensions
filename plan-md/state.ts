@@ -32,6 +32,18 @@ export const CONTEXT_ENTRY_TYPE = "plan-md:context";
 const BANNER_WIDGET_KEY = "plan-md-banner";
 const PLAN_MODE_TOOL_NAMES = ["request_user_input", "set_plan"] as const;
 const PLAN_MODE_TOOL_NAME_SET = new Set<string>(PLAN_MODE_TOOL_NAMES);
+const PLAN_MODE_ALLOWED_TOOL_NAMES = new Set<string>([
+	"read",
+	"bash",
+	"grep",
+	"find",
+	"ls",
+	"fetch_url",
+	"web_search",
+	"subagents",
+	"steer_subagent",
+	...PLAN_MODE_TOOL_NAMES,
+]);
 
 export function getLatestState(ctx: ExtensionContext): PlanModeState {
 	const entries = ctx.sessionManager.getEntries();
@@ -87,14 +99,22 @@ export function createPlanModeStateManager(pi: ExtensionAPI) {
 		return true;
 	};
 
-	const syncPlanModeTools = () => {
+	let activeToolsBeforePlanMode: string[] | undefined;
+
+	const withPlanModeTools = (baseTools: string[]) => [
+		...baseTools.filter((toolName) => PLAN_MODE_ALLOWED_TOOL_NAMES.has(toolName)),
+		...PLAN_MODE_TOOL_NAMES.filter((toolName) => !baseTools.includes(toolName)),
+	];
+
+	const syncPlanModeTools = (previousState?: PlanModeState) => {
 		const activeTools = pi.getActiveTools();
 		const nextTools = state.active
-			? [
-				...activeTools,
-				...PLAN_MODE_TOOL_NAMES.filter((toolName) => !activeTools.includes(toolName)),
-			]
-			: activeTools.filter((toolName) => !PLAN_MODE_TOOL_NAME_SET.has(toolName));
+			? withPlanModeTools(state.activeToolsBeforePlanMode ?? activeToolsBeforePlanMode ?? activeTools)
+			: activeToolsBeforePlanMode ?? previousState?.activeToolsBeforePlanMode ?? activeTools.filter((toolName) => !PLAN_MODE_TOOL_NAME_SET.has(toolName));
+
+		if (!state.active) {
+			activeToolsBeforePlanMode = undefined;
+		}
 
 		if (areSameToolLists(activeTools, nextTools)) {
 			return;
@@ -136,9 +156,18 @@ export function createPlanModeStateManager(pi: ExtensionAPI) {
 	};
 
 	const setState = (ctx: ExtensionContext, nextState: PlanModeState) => {
-		state = nextState;
+		const previousState = state;
+		if (nextState.active) {
+			activeToolsBeforePlanMode = nextState.activeToolsBeforePlanMode ?? activeToolsBeforePlanMode ?? pi.getActiveTools();
+			state = {
+				...nextState,
+				activeToolsBeforePlanMode,
+			};
+		} else {
+			state = nextState;
+		}
 		persistState();
-		syncPlanModeTools();
+		syncPlanModeTools(previousState);
 		applyBanner(ctx);
 	};
 
@@ -162,6 +191,9 @@ export function createPlanModeStateManager(pi: ExtensionAPI) {
 
 	const refresh = (ctx: ExtensionContext) => {
 		state = getLatestState(ctx);
+		if (state.active && state.activeToolsBeforePlanMode) {
+			activeToolsBeforePlanMode = state.activeToolsBeforePlanMode;
+		}
 		syncPlanModeTools();
 		applyBanner(ctx);
 	};

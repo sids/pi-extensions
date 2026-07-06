@@ -56,11 +56,11 @@ When review mode ends, the extension opens triage for recorded comments (keep/di
 
 ## Review-mode tool
 
-While review mode is active, the extension enables one tool:
+While review mode is active, the extension temporarily restricts active tools to review-safe tools and enables one review-only tool:
 
 - `add_review_comment`
 
-When review mode exits, the tool is removed from active tools.
+When review mode exits, the previously active tool list is restored.
 
 ### `add_review_comment` schema
 

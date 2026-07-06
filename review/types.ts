@@ -27,6 +27,7 @@ export type ReviewModeState = {
 	originModelProvider?: string;
 	originModelId?: string;
 	originThinkingLevel?: string;
+	activeToolsBeforeReviewMode?: string[];
 };
 
 export type PersistedReviewComment = {

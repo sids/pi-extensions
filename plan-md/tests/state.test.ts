@@ -79,7 +79,7 @@ describe("createPlanModeStateManager tool visibility", () => {
 		} as any;
 	}
 
-	test("adds plan mode tools when plan mode starts", () => {
+	test("restricts to planning-safe tools when plan mode starts", () => {
 		let activeTools = ["read", "bash", "edit", "write"];
 		const setActiveToolsCalls: string[][] = [];
 
@@ -97,7 +97,7 @@ describe("createPlanModeStateManager tool visibility", () => {
 		});
 
 		expect(setActiveToolsCalls).toEqual([
-			["read", "bash", "edit", "write", "request_user_input", "set_plan"],
+			["read", "bash", "request_user_input", "set_plan"],
 		]);
 	});
 
@@ -125,5 +125,34 @@ describe("createPlanModeStateManager tool visibility", () => {
 		);
 
 		expect(setActiveToolsCalls).toEqual([["read", "bash"]]);
+	});
+
+	test("restores tools that were active before plan mode", () => {
+		let activeTools = ["read", "bash", "edit", "write"];
+		const setActiveToolsCalls: string[][] = [];
+
+		const manager = createPlanModeStateManager({
+			appendEntry: () => {},
+			getActiveTools: () => activeTools,
+			setActiveTools: (nextTools: string[]) => {
+				setActiveToolsCalls.push(nextTools);
+				activeTools = nextTools;
+			},
+		} as any);
+		const ctx = createContext();
+
+		manager.startPlanMode(ctx, {
+			planFilePath: "/tmp/session.plan.md",
+		});
+		manager.setState(ctx, {
+			version: 1,
+			active: false,
+			planFilePath: "/tmp/session.plan.md",
+		});
+
+		expect(setActiveToolsCalls).toEqual([
+			["read", "bash", "request_user_input", "set_plan"],
+			["read", "bash", "edit", "write"],
+		]);
 	});
 });

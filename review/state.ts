@@ -31,6 +31,16 @@ export const CONTEXT_ENTRY_TYPE = "review-mode:context";
 const BANNER_WIDGET_KEY = "review-mode-banner";
 const REVIEW_ONLY_TOOL_NAMES = ["add_review_comment"] as const;
 const REVIEW_ONLY_TOOL_NAME_SET = new Set<string>(REVIEW_ONLY_TOOL_NAMES);
+const REVIEW_MODE_ALLOWED_TOOL_NAMES = new Set<string>([
+	"read",
+	"bash",
+	"grep",
+	"find",
+	"ls",
+	"fetch_url",
+	"web_search",
+	...REVIEW_ONLY_TOOL_NAMES,
+]);
 
 export function getLatestState(ctx: ExtensionContext): ReviewModeState {
 	const entries = ctx.sessionManager.getEntries();
@@ -86,11 +96,22 @@ export function createReviewModeStateManager(pi: ExtensionAPI) {
 		return true;
 	};
 
-	const syncReviewTools = () => {
+	let activeToolsBeforeReviewMode: string[] | undefined;
+
+	const withReviewModeTools = (baseTools: string[]) => [
+		...baseTools.filter((toolName) => REVIEW_MODE_ALLOWED_TOOL_NAMES.has(toolName)),
+		...REVIEW_ONLY_TOOL_NAMES.filter((toolName) => !baseTools.includes(toolName)),
+	];
+
+	const syncReviewTools = (previousState?: ReviewModeState) => {
 		const activeTools = pi.getActiveTools();
 		const nextTools = state.active
-			? [...activeTools, ...REVIEW_ONLY_TOOL_NAMES.filter((tool) => !activeTools.includes(tool))]
-			: activeTools.filter((tool) => !REVIEW_ONLY_TOOL_NAME_SET.has(tool));
+			? withReviewModeTools(state.activeToolsBeforeReviewMode ?? activeToolsBeforeReviewMode ?? activeTools)
+			: activeToolsBeforeReviewMode ?? previousState?.activeToolsBeforeReviewMode ?? activeTools.filter((tool) => !REVIEW_ONLY_TOOL_NAME_SET.has(tool));
+
+		if (!state.active) {
+			activeToolsBeforeReviewMode = undefined;
+		}
 
 		if (areSameToolLists(activeTools, nextTools)) {
 			return;
@@ -128,9 +149,18 @@ export function createReviewModeStateManager(pi: ExtensionAPI) {
 	};
 
 	const setState = (ctx: ExtensionContext, nextState: ReviewModeState) => {
-		state = nextState;
+		const previousState = state;
+		if (nextState.active) {
+			activeToolsBeforeReviewMode = nextState.activeToolsBeforeReviewMode ?? activeToolsBeforeReviewMode ?? pi.getActiveTools();
+			state = {
+				...nextState,
+				activeToolsBeforeReviewMode,
+			};
+		} else {
+			state = nextState;
+		}
 		persistState();
-		syncReviewTools();
+		syncReviewTools(previousState);
 		applyBanner(ctx);
 	};
 
@@ -166,6 +196,9 @@ export function createReviewModeStateManager(pi: ExtensionAPI) {
 
 	const refresh = (ctx: ExtensionContext) => {
 		state = getLatestState(ctx);
+		if (state.active && state.activeToolsBeforeReviewMode) {
+			activeToolsBeforeReviewMode = state.activeToolsBeforeReviewMode;
+		}
 		syncReviewTools();
 		applyBanner(ctx);
 	};

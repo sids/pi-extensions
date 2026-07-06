@@ -40,12 +40,12 @@ pi install npm:pi-plan-md
 
 ## Built-in tools in plan mode
 
-Plan mode adds these tools only while active:
+Plan mode temporarily restricts active tools to planning-safe tools while active, adds:
 
 - `request_user_input` — ask clarifying questions with optional choices and optional freeform answers
 - `set_plan` — overwrite the active plan file with the complete latest plan text
 
-When plan mode ends, these tools are removed again.
+When plan mode ends, the previously active tool list is restored.
 
 ## Optional companion extension
 
@@ -55,7 +55,7 @@ If you also want delegated research tools, install `pi-task-subagents` separatel
 pi install npm:pi-task-subagents
 ```
 
-That adds `subagents` and `steer_subagent` everywhere, including during plan mode, but `pi-plan-md` does not require it.
+That adds `subagents` and `steer_subagent` everywhere, including during plan mode when they were active before entering plan mode, but `pi-plan-md` does not require it.
 
 ## Notes
 
