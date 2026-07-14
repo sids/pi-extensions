@@ -31,7 +31,10 @@ function createRegisteredReviewHandler(options: {
 
 	registerReviewCommand(pi, {
 		stateManager: options.stateManager,
-		flow: options.flow as any,
+		flow: {
+			runPromptCountdown: async () => "edit",
+			...(options.flow as any),
+		},
 		onReviewEnded: options.onReviewEnded,
 	});
 
@@ -137,8 +140,45 @@ describe("/review inactive", () => {
 		});
 	});
 
-	test("summarizes uncommitted changes after review instructions for empty branch reviews", async () => {
+	test("submits the start prompt after the countdown", async () => {
+		const editorPrefills: string[] = [];
+		const { handler, sentUserMessages } = createRegisteredReviewHandler({
+			stateManager: {
+				getState: () => ({ version: 1, active: false }),
+				setState: () => {},
+				startReviewMode: () => {},
+			},
+			flow: {
+				isGitRepository: async () => true,
+				resolveTarget: async () => ({ type: "uncommitted" }),
+				buildInstructionsPrompt: async () => "review instructions",
+				buildEditorPrompt: async () => "review target prompt",
+				describeTarget: () => "current changes",
+				runPromptCountdown: async () => "submit",
+			},
+		});
+
+		await handler("", {
+			hasUI: true,
+			cwd: "/tmp/project",
+			waitForIdle: async () => {},
+			sessionManager: {
+				getLeafId: () => "leaf-1",
+				getEntries: () => [{ id: "leaf-1", type: "message", message: { role: "user" } }],
+			},
+			ui: {
+				notify: () => {},
+				setEditorText: (text: string) => editorPrefills.push(text),
+			},
+		});
+
+		expect(sentUserMessages).toEqual(["review target prompt"]);
+		expect(editorPrefills).toEqual([]);
+	});
+
+	test("includes the uncommitted change summary in the editable start prompt", async () => {
 		const summarizeCalls: any[] = [];
+		const editorPrefills: string[] = [];
 		const { handler, sentMessages } = createRegisteredReviewHandler({
 			stateManager: {
 				getState: () => ({ version: 1, active: false }),
@@ -173,7 +213,7 @@ describe("/review inactive", () => {
 			ui: {
 				select: async () => "Empty branch",
 				notify: () => {},
-				setEditorText: () => {},
+				setEditorText: (text: string) => editorPrefills.push(text),
 			},
 		});
 
@@ -189,16 +229,10 @@ describe("/review inactive", () => {
 					instructionsPrompt: "review instructions",
 				},
 			},
-			{
-				customType: "review-mode:change-summary",
-				content: "## Change summary\n\nUpdates review startup.",
-				display: true,
-				details: {
-					runId: expect.any(String),
-					targetHint: "current changes",
-				},
-			},
 		]);
+		expect(editorPrefills.at(-1)).toBe(
+			"review target prompt\n\n## Change summary\n\nUpdates review startup.",
+		);
 	});
 
 	test("does not summarize uncommitted changes for current branch reviews", async () => {
@@ -988,6 +1022,69 @@ describe("/review active", () => {
 			"Address the review comment\n\nPay attention to the user notes in response to the review comments",
 		]);
 		expect(notifications.length).toBe(0);
+	});
+
+	test("submits the end prompt after the countdown", async () => {
+		let state = {
+			version: 1,
+			active: true,
+			runId: "run-1",
+		};
+		const editorPrefills: string[] = [];
+		const { handler, sentUserMessages } = createRegisteredReviewHandler({
+			stateManager: {
+				getState: () => state,
+				setState: (_ctx, next) => {
+					state = next;
+				},
+				startReviewMode: () => {},
+			},
+			flow: {
+				getCommentsForRun: () => [
+					{
+						version: 1,
+						id: "c1",
+						runId: "run-1",
+						priority: "P1",
+						comment: "kept finding",
+						references: [],
+						createdAt: 1,
+					},
+				],
+				runTriage: async () => ({
+					comments: [
+						{
+							id: "c1",
+							keep: true,
+							priority: "P1",
+							comment: "kept finding",
+							references: [],
+							originalPriority: "P1",
+						},
+					],
+					keptCount: 1,
+					discardedCount: 0,
+				}),
+				runPromptCountdown: async () => "submit",
+			},
+		});
+
+		await handler("", {
+			hasUI: true,
+			cwd: "/tmp/project",
+			waitForIdle: async () => {},
+			sessionManager: {
+				getLeafId: () => "review-leaf",
+				getEntries: () => [],
+			},
+			ui: {
+				notify: () => {},
+				setEditorText: (text: string) => editorPrefills.push(text),
+			},
+		});
+
+		expect(sentUserMessages).toEqual(["Address the review comment"]);
+		expect(editorPrefills).toEqual([]);
 	});
 
 	test("prefills PR inline-comment instruction when ending a PR review", async () => {

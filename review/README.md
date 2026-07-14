@@ -46,13 +46,13 @@ Pull-request reviews require the GitHub CLI (`gh`) to be installed and authentic
 
 ## Start and end flow
 
-When review mode starts, the extension asks where to start (`Empty branch` or `Current branch`) only when the session has branchable history. It then resolves the target, enables review mode, and prefills the editor with the selected review focus before you send the first review prompt.
+When review mode starts, the extension asks where to start (`Empty branch` or `Current branch`) only when the session has branchable history. It then resolves the target, enables review mode, and previews the selected review prompt with a 10-second countdown. The prompt is submitted automatically when the countdown ends; press `Esc` to edit it or `Ctrl+C` to stop auto-submit. In either case, the prompt moves into the editor.
 
-For `Empty branch` reviews of uncommitted changes, the extension also posts a visible AI-generated summary after the review instructions message. The summary is generated from the source branch's session history, focuses on goal/motivation, and is shown as a short preview that can be expanded with the standard expand keybinding.
+For `Empty branch` reviews of uncommitted changes, the extension also generates a change summary from the source branch's session history. The summary focuses on goal and motivation and is included in the startup prompt, so pressing `Esc` or `Ctrl+C` during the countdown moves both the review request and summary into the editor for adjustment.
 
 When review mode starts and ends, summaries and triage context use target-specific labels such as `current changes`, `changes against 'main'`, `commit abc1234: title`, `PR #42: title`, or `folders: src, docs`.
 
-When review mode ends, the extension opens triage for recorded comments (keep/discard, priority, optional note). If triage is confirmed, it exits review mode, restores model/thinking values captured at start, and posts a summary containing kept comments only. If no comments are kept, it exits cleanly without posting a summary.
+When review mode ends, the extension opens triage for recorded comments (keep/discard, priority, optional note). If triage is confirmed, it exits review mode, restores model/thinking values captured at start, and posts a summary containing kept comments only. The follow-up prompt is shown with the same 10-second auto-submit countdown; press `Esc` to edit it or `Ctrl+C` to stop auto-submit. If no comments are kept, review mode exits cleanly without posting a summary or follow-up prompt.
 
 ## Review-mode tool
 

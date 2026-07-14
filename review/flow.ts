@@ -7,6 +7,7 @@ import { summarizeChangesFromSessionHistory } from "./change-summary";
 import { getReviewCommentsForRun } from "./comments";
 import { isGitRepository } from "./git";
 import { buildReviewEditorPrompt, buildReviewInstructionsPrompt, describeReviewTarget } from "./prompts";
+import { runReviewPromptCountdown, type ReviewPromptCountdownDecision } from "./prompt-tui";
 import { hasEntryInSession, getFirstUserMessageId } from "./state";
 import { checkoutPullRequestTarget, resolveReviewTarget } from "./target-selector";
 import { runReviewTriage } from "./triage-tui";
@@ -70,6 +71,11 @@ type ReviewFlowDependencies = {
 		keptCount: number;
 		discardedCount: number;
 	} | null>;
+	runPromptCountdown: (
+		ctx: ExtensionContext,
+		prompt: string,
+		title: string,
+	) => Promise<ReviewPromptCountdownDecision>;
 	formatSummary: (options: {
 		targetHint?: string;
 		kept: TriagedReviewComment[];
@@ -140,6 +146,14 @@ function addActivePlanStatement(editorPrompt: string, planFilePath: string | und
 	].join("\n");
 }
 
+function addChangeSummary(editorPrompt: string, changeSummary: string | null): string {
+	if (!changeSummary?.trim()) {
+		return editorPrompt;
+	}
+
+	return [editorPrompt, "", changeSummary.trim()].join("\n");
+}
+
 const defaultDependencies: ReviewFlowDependencies = {
 	isGitRepository,
 	resolveTarget: resolveReviewTarget,
@@ -151,6 +165,7 @@ const defaultDependencies: ReviewFlowDependencies = {
 	getActivePlanFilePath,
 	getCommentsForRun: getReviewCommentsForRun,
 	runTriage: runReviewTriage,
+	runPromptCountdown: runReviewPromptCountdown,
 	formatSummary: formatReviewSummaryMessage,
 };
 
@@ -386,7 +401,10 @@ export async function startReviewMode(
 		projectTrusted: isProjectTrusted(ctx),
 	});
 	const targetEditorPrompt = await dependencies.buildEditorPrompt(pi, ctx.cwd, target);
-	const editorPrompt = addActivePlanStatement(targetEditorPrompt, useFreshBranch ? activePlanFilePath : undefined);
+	const editorPrompt = addChangeSummary(
+		addActivePlanStatement(targetEditorPrompt, useFreshBranch ? activePlanFilePath : undefined),
+		changeSummary,
+	);
 
 	stateManager.startReviewMode(ctx, {
 		originLeafId,
@@ -402,7 +420,6 @@ export async function startReviewMode(
 	});
 
 	const modeSuffix = useFreshBranch ? " (empty branch)" : "";
-	ctx.ui.setEditorText(editorPrompt);
 	pi.sendMessage({
 		customType: REVIEW_PROMPT_ENTRY_TYPE,
 		content: "Review instructions",
@@ -413,19 +430,20 @@ export async function startReviewMode(
 			instructionsPrompt: reviewInstructionsPrompt,
 		} satisfies ReviewPromptDetails,
 	});
-	if (changeSummary) {
-		pi.sendMessage({
-			customType: REVIEW_CHANGE_SUMMARY_ENTRY_TYPE,
-			content: changeSummary,
-			display: true,
-			details: {
-				runId,
-				targetHint,
-			} satisfies ReviewChangeSummaryDetails,
-		});
-	}
 	const contextSummary = summarizeLoadedContext(ctx);
 	const contextNote = contextSummary ? ` (${contextSummary})` : "";
+	const promptDecision = await dependencies.runPromptCountdown(
+		ctx,
+		editorPrompt,
+		`Start review · ${targetHint}`,
+	);
+	if (promptDecision === "submit") {
+		ctx.ui.notify(`Review mode started: ${targetHint}${modeSuffix}${contextNote}.`, "info");
+		pi.sendUserMessage(editorPrompt);
+		return;
+	}
+
+	ctx.ui.setEditorText(editorPrompt);
 	ctx.ui.notify(`Review mode ready: ${targetHint}${modeSuffix}${contextNote}. Edit and send when ready.`, "info");
 }
 
@@ -507,8 +525,9 @@ export async function endReviewMode(
 	});
 
 	const reviewPrReference = getReviewPrReference(state);
+	let followUpPrompt: string;
 	if (reviewPrReference) {
-		ctx.ui.setEditorText(`Use the gh cli to add these as inline comments on PR ${reviewPrReference}.`);
+		followUpPrompt = `Use the gh cli to add these as inline comments on PR ${reviewPrReference}.`;
 	} else {
 		const prefillLines = [
 			summary.kept.length === 1 ? "Address the review comment" : "Address the review comments",
@@ -516,7 +535,7 @@ export async function endReviewMode(
 		if (summary.kept.some((comment) => comment.note?.trim())) {
 			prefillLines.push("", "Pay attention to the user notes in response to the review comments");
 		}
-		ctx.ui.setEditorText(prefillLines.join("\n"));
+		followUpPrompt = prefillLines.join("\n");
 	}
 
 	pi.sendMessage({
@@ -526,6 +545,17 @@ export async function endReviewMode(
 		details: summary,
 	});
 	onReviewEnded?.(summary);
+
+	const promptDecision = await dependencies.runPromptCountdown(
+		ctx,
+		followUpPrompt,
+		"Continue after review",
+	);
+	if (promptDecision === "submit") {
+		pi.sendUserMessage(followUpPrompt);
+		return;
+	}
+	ctx.ui.setEditorText(followUpPrompt);
 }
 
 export function registerReviewCommand(
