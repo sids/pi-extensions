@@ -357,6 +357,7 @@ function createExecuteContext(
 		editorText?: string;
 		onSetEditorComponent?: (factory: any) => void;
 		branchEntries?: any[];
+		onSetWidget?: (key: string, widget: unknown, options?: unknown) => void;
 	},
 ) {
 	const availableModels = options?.availableModels ?? [];
@@ -390,6 +391,9 @@ function createExecuteContext(
 			},
 			setEditorComponent: (factory: any) => {
 				options?.onSetEditorComponent?.(factory);
+			},
+			setWidget: (key: string, widget: unknown, widgetOptions?: unknown) => {
+				options?.onSetWidget?.(key, widget, widgetOptions);
 			},
 		},
 	};
@@ -429,6 +433,79 @@ describe("subagents tool", () => {
 			"Use steer_subagent only after a subagents run exists and the user asks to refine or rerun one of its tasks.",
 		]);
 		expect([...shortcuts.keys()]).toEqual(["ctrl+shift+o"]);
+	});
+
+	test("shows and clears a subagent progress widget in UI mode", async () => {
+		const tempDir = await mkdtemp(path.join(os.tmpdir(), "task-subagents-widget-"));
+		const { binDir, sourceAgentDir, spawnLogPath } = await setupStubPi(tempDir);
+		const tools = registerTools();
+		const widgetCalls: Array<{ key: string; widget: any; options?: any }> = [];
+		let previousAgentDir: string | undefined;
+		let previousPath: string | undefined;
+		let previousSpawnLogPath: string | undefined;
+
+		try {
+			previousAgentDir = process.env.PI_CODING_AGENT_DIR;
+			previousPath = process.env.PATH;
+			previousSpawnLogPath = process.env.SUBAGENT_LOG_PATH;
+			process.env.PI_CODING_AGENT_DIR = sourceAgentDir;
+			process.env.PATH = [binDir, previousPath].filter(Boolean).join(path.delimiter);
+			process.env.SUBAGENT_LOG_PATH = spawnLogPath;
+
+			await tools.subagents.execute(
+				"call-1",
+				{
+					tasks: [{ id: "task-a", prompt: "Inspect A", cwd: tempDir }],
+					concurrency: 1,
+				},
+				undefined,
+				undefined,
+				createExecuteContext(tempDir, {
+					hasUI: true,
+					reviewResult: [
+						{
+							taskId: "task-a",
+							prompt: "Inspect A",
+							cwd: tempDir,
+							launchContext: "fresh",
+							launchStatus: "ready",
+						},
+					],
+					onSetWidget: (key, widget, options) => widgetCalls.push({ key, widget, options }),
+				}),
+			);
+
+			const activeCall = widgetCalls.find((call) => call.key === "task-subagents-progress" && call.widget);
+			expect(activeCall?.options).toEqual({ placement: "aboveEditor" });
+			const component = activeCall?.widget(null, {
+				fg: (_name: string, text: string) => text,
+				bold: (text: string) => text,
+			});
+			expect(component.render(120)[0]).toContain("Subagents run-");
+			expect(component.render(120).join("\n")).toContain("task-a");
+			expect(widgetCalls[widgetCalls.length - 1]).toMatchObject({
+				key: "task-subagents-progress",
+				widget: undefined,
+				options: { placement: "aboveEditor" },
+			});
+		} finally {
+			if (previousAgentDir === undefined) {
+				delete process.env.PI_CODING_AGENT_DIR;
+			} else {
+				process.env.PI_CODING_AGENT_DIR = previousAgentDir;
+			}
+			if (previousPath === undefined) {
+				delete process.env.PATH;
+			} else {
+				process.env.PATH = previousPath;
+			}
+			if (previousSpawnLogPath === undefined) {
+				delete process.env.SUBAGENT_LOG_PATH;
+			} else {
+				process.env.SUBAGENT_LOG_PATH = previousSpawnLogPath;
+			}
+			await rm(tempDir, { recursive: true, force: true });
+		}
 	});
 
 	test("steer_subagent throws when required arguments are missing", async () => {
@@ -1016,6 +1093,7 @@ describe("subagents tool", () => {
 		const subagentsTool = tools.subagents;
 		const steerSubagentTool = tools.steer_subagent;
 		const sessionFile = path.join(tempDir, "main-session.jsonl");
+		const widgetCalls: Array<{ key: string; widget: any; options?: any }> = [];
 		let previousAgentDir: string | undefined;
 		let previousPath: string | undefined;
 		let previousSpawnLogPath: string | undefined;
@@ -1051,13 +1129,24 @@ describe("subagents tool", () => {
 				},
 				undefined,
 				undefined,
-				createExecuteContext(tempDir),
+				createExecuteContext(tempDir, {
+					hasUI: true,
+					sessionFile,
+					onSetWidget: (key, widget, options) => widgetCalls.push({ key, widget, options }),
+				}),
 			);
 
 			expect(rerunResult.isError).toBeUndefined();
 			expect(rerunResult.details?.tasks[0]).toMatchObject({
 				launchContext: "fork",
 				forkSessionFile: sessionFile,
+			});
+			const activeWidgetCall = widgetCalls.find((call) => call.key === "task-subagents-progress" && call.widget);
+			expect(activeWidgetCall?.options).toEqual({ placement: "aboveEditor" });
+			expect(widgetCalls[widgetCalls.length - 1]).toMatchObject({
+				key: "task-subagents-progress",
+				widget: undefined,
+				options: { placement: "aboveEditor" },
 			});
 
 			const logLines = await readSpawnLog(spawnLogPath);

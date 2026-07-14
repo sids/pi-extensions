@@ -65,7 +65,44 @@ function createText(text: string) {
 	return new Text(text, 0, 0);
 }
 
+function createSubagentProgressWidget(run: SubagentDashboardRunState) {
+	return (_tui: unknown, theme: { fg: (name: string, text: string) => string; bold?: (text: string) => string }) => ({
+		render: (width: number) => {
+			const { truncateToWidth } = requirePiTui() as {
+				truncateToWidth: (text: string, width: number) => string;
+			};
+			const safeWidth = Math.max(1, width);
+			const resolvedCount = run.tasks.filter((task) => task.status !== "queued" && task.status !== "running").length;
+			const runningCount = run.tasks.filter((task) => task.status === "running").length;
+			const title = theme.bold?.(" Subagents") ?? " Subagents";
+			const lines = [
+				truncateToWidth(
+					`${theme.fg("warning", title)} ${theme.fg("accent", run.runId)} ${theme.fg("muted", `${resolvedCount}/${run.tasks.length} resolved · ${runningCount} running · Ctrl+Shift+O inspect`)}`,
+					safeWidth,
+				),
+			];
+			for (const task of run.tasks.slice(0, SUBAGENT_WIDGET_TASK_LIMIT)) {
+				const icon = theme.fg(progressStatusColor(task.status), statusIcon(task.status));
+				const latest = task.latestActivity ? ` — ${summarizeSnippet(task.latestActivity, 80)}` : "";
+				lines.push(
+					truncateToWidth(
+						` ${icon} ${theme.fg("accent", task.taskId)} ${theme.fg("muted", task.status)}${theme.fg("dim", latest)}`,
+						safeWidth,
+					),
+				);
+			}
+			if (run.tasks.length > SUBAGENT_WIDGET_TASK_LIMIT) {
+				lines.push(truncateToWidth(theme.fg("muted", ` … +${run.tasks.length - SUBAGENT_WIDGET_TASK_LIMIT} more tasks`), safeWidth));
+			}
+			return lines;
+		},
+		invalidate: () => {},
+	});
+}
+
 const SUBAGENT_PREVIEW_LIMIT = 4;
+const SUBAGENT_WIDGET_TASK_LIMIT = 3;
+const SUBAGENT_PROGRESS_WIDGET_KEY = "task-subagents-progress";
 const USER_INPUT_WAIT_EVENT = "pi:waiting-for-user-input";
 const SUBAGENT_LAUNCH_CANCELLED_MESSAGE = "Subagent launch cancelled before starting. No child processes were started.";
 // Each subagent gets its own agent dir copy for auth/settings/models so concurrent
@@ -1320,6 +1357,7 @@ export function registerSubagentTools(
 	const liveSubagentRuns = new Map<string, SubagentDashboardRunState>();
 	const runScopes = new Map<string, SubagentRunScope>();
 	const runListeners = new Set<() => void>();
+	let subagentWidgetCtx: ({ hasUI?: boolean; cwd: string; sessionManager?: { getSessionFile?: () => string | undefined; getSessionId?: () => string | undefined }; ui?: { setWidget?: (key: string, widget: unknown, options?: { placement: string }) => void } }) | undefined;
 
 	const notifyRunListeners = () => {
 		for (const listener of runListeners) {
@@ -1332,6 +1370,25 @@ export function registerSubagentTools(
 		return () => {
 			runListeners.delete(listener);
 		};
+	};
+
+	const applySubagentProgressWidget = (ctx: typeof subagentWidgetCtx) => {
+		if (!ctx?.hasUI || !ctx.ui?.setWidget) {
+			return;
+		}
+		const run = getLatestDashboardRun(ctx);
+		if (!run?.active) {
+			ctx.ui.setWidget(SUBAGENT_PROGRESS_WIDGET_KEY, undefined, { placement: "aboveEditor" });
+			return;
+		}
+		ctx.ui.setWidget(SUBAGENT_PROGRESS_WIDGET_KEY, createSubagentProgressWidget(run), { placement: "aboveEditor" });
+	};
+
+	const requestSubagentProgressWidgetUpdate = (ctx?: typeof subagentWidgetCtx) => {
+		if (ctx) {
+			subagentWidgetCtx = ctx;
+		}
+		applySubagentProgressWidget(subagentWidgetCtx);
 	};
 
 	const emitWaitingForUserInput = (id: string, waiting: boolean) => {
@@ -1362,9 +1419,11 @@ export function registerSubagentTools(
 		}
 		if (activeInspector?.runId === normalizedRun.runId) {
 			closeSubagentInspector();
+			requestSubagentProgressWidgetUpdate();
 			return;
 		}
 		notifyRunListeners();
+		requestSubagentProgressWidgetUpdate();
 	};
 
 	const setLiveSubagentRun = (run: SubagentDashboardRunState, scope: SubagentRunScope) => {
@@ -1379,6 +1438,7 @@ export function registerSubagentTools(
 		});
 		runScopes.set(run.runId, scope);
 		notifyRunListeners();
+		requestSubagentProgressWidgetUpdate();
 	};
 
 	const updateLiveSubagentRun = (
@@ -1392,6 +1452,7 @@ export function registerSubagentTools(
 		updater(run);
 		run.updatedAt = Date.now();
 		notifyRunListeners();
+		requestSubagentProgressWidgetUpdate();
 	};
 
 	const hydrateSubagentRunsFromBranch = (ctx: { cwd: string; sessionManager?: { getBranch?: () => SessionEntry[]; getSessionFile?: () => string | undefined; getSessionId?: () => string | undefined } }) => {
@@ -1826,6 +1887,7 @@ export function registerSubagentTools(
 			finishedAt: null,
 			steeringNotes,
 		};
+		subagentWidgetCtx = options.ctx;
 		setLiveSubagentRun(liveRun, { sessionKey: run.sessionKey });
 		emitDashboardProgressUpdate(run.runId, liveRun.tasks, options.onUpdate);
 
@@ -2160,6 +2222,7 @@ export function registerSubagentTools(
 				active: true,
 				tasks: preparedTasks.map((task) => createQueuedDashboardTaskState(task)),
 			};
+			subagentWidgetCtx = ctx;
 			setLiveSubagentRun(liveRunState, sessionScope);
 			emitProgress();
 

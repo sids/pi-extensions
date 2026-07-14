@@ -26,7 +26,7 @@ In interactive UI mode, `subagents` opens a pre-launch review screen before any 
 
 Run results now report launched, succeeded, failed, and cancelled counts, and `steer_subagent` reuses any reviewed model/thinking overrides and fork context when it reruns a task.
 
-After a run starts, press `Ctrl+Shift+O` to enable an inline inspector for the latest active run. The selected task's expanded-style details render directly in the main tool result, while the input editor becomes a per-task steering editor with task tabs above it. Enter submits steering for the current tab and Shift+Enter inserts a newline. The inspector closes when the run finishes.
+After a run starts, pi shows a compact subagent progress widget above the editor with per-task status and latest activity. Press `Ctrl+Shift+O` to enable an inline inspector for the latest active run. The selected task's expanded-style details render directly in the main tool result, while the input editor becomes a per-task steering editor with task tabs above it. Enter submits steering for the current tab and Shift+Enter inserts a newline. The widget and inspector close when the run finishes.
 
 ## Notes
 
