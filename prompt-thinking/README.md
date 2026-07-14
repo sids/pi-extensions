@@ -51,6 +51,7 @@ Please answer briefly
   - non-reasoning models: `^off`
   - reasoning models: `^off`, `^minimal`, `^low`, `^medium`, `^high`
   - xhigh-capable models: also `^xhigh`
+  - max-capable models: also `^max`
 
 ## Token rules
 

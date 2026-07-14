@@ -186,6 +186,7 @@ describe("buildSubagentThinkingOptions", () => {
 			"medium",
 			"high",
 			"xhigh",
+			"max",
 		]);
 	});
 

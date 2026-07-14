@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Switched the preferred question extraction model to GPT-5.6 Luna.
+- Raised the minimum Pi peer version to 0.80.6.
+
 ## 0.1.6 - 2026-05-15
 
 - Updated package metadata for the pnpm workspace migration.

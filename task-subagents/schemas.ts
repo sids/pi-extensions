@@ -4,7 +4,7 @@ import { SUBAGENT_CONTEXT_MODES, SUBAGENT_TOOL_THINKING_LEVELS } from "./types";
 
 const SubagentToolThinkingLevelSchema = StringEnum(SUBAGENT_TOOL_THINKING_LEVELS, {
 	description:
-		"Optional default thinking level for launched subagents. Must be one of off, minimal, low, medium, high, or xhigh. Defaults to the current thinking level.",
+		"Optional default thinking level for launched subagents. Must be one of off, minimal, low, medium, high, xhigh, or max. Defaults to the current thinking level.",
 });
 
 const SubagentContextSchema = StringEnum(SUBAGENT_CONTEXT_MODES, {

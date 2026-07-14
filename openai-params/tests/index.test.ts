@@ -32,7 +32,6 @@ function createProjectConfig(options?: { fast?: boolean; verbosity?: Verbosity |
 			{
 				fast: options?.fast ?? false,
 				verbosity: options?.verbosity ?? null,
-				supportedModels: ["openai/gpt-5.4", "openai-codex/gpt-5.4"],
 			},
 			null,
 			2,
@@ -77,7 +76,7 @@ function createHarness(initialCustomResult: OpenAIParamsState | null = null) {
 		cwd,
 		hasUI,
 		...(mode ? { mode } : {}),
-		model: { provider: "openai", id: "gpt-5.4", api: "openai-responses" },
+		model: { provider: "openai", id: "gpt-5.6-sol", api: "openai-responses" },
 		ui: {
 			custom: async () => {
 				customCalls++;

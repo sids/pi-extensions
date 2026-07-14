@@ -475,7 +475,13 @@ type SubagentRunScope = {
 	sessionKey: string;
 };
 
-const SUBAGENT_THINKING_LEVEL_ORDER: SubagentThinkingLevel[] = ["off", "minimal", "low", "medium", "high", "xhigh"];
+const SUBAGENT_THINKING_LEVEL_ORDER: SubagentThinkingLevel[] = ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
+type SubagentModel = {
+	id: string;
+	api?: string;
+	reasoning?: boolean;
+	thinkingLevelMap?: Partial<Record<SubagentThinkingLevel, string | null>>;
+};
 const MAX_SUBAGENT_TRANSCRIPT_ENTRIES = 120;
 const MAX_SUBAGENT_TRANSCRIPT_STRING_LENGTH = 4000;
 const MAX_SUBAGENT_TRANSCRIPT_ARRAY_ITEMS = 20;
@@ -608,7 +614,7 @@ function parseSubagentModelId(modelId: string | undefined): { provider: string; 
 	};
 }
 
-function getAvailableSubagentThinkingLevels(model: { id: string; api?: string; reasoning?: boolean } | undefined): SubagentThinkingLevel[] {
+function getAvailableSubagentThinkingLevels(model: SubagentModel | undefined): SubagentThinkingLevel[] {
 	if (!model?.reasoning) {
 		return ["off"];
 	}
@@ -645,7 +651,7 @@ function clampSubagentThinkingLevel(
 }
 
 function resolvePreparedSubagentThinking(
-	modelRegistry: { find: (provider: string, modelId: string) => { id: string; api?: string; reasoning?: boolean } | undefined },
+	modelRegistry: { find: (provider: string, modelId: string) => SubagentModel | undefined },
 	launchModel: string | undefined,
 	requestedThinking: SubagentThinkingLevel | undefined,
 ): SubagentThinkingLevel | undefined {
@@ -670,7 +676,7 @@ function prepareSubagentTasks(
 		thinking?: SubagentThinkingLevel;
 		forkSessionFile?: string;
 	},
-	modelRegistry: { find: (provider: string, modelId: string) => { id: string; api?: string; reasoning?: boolean } | undefined },
+	modelRegistry: { find: (provider: string, modelId: string) => SubagentModel | undefined },
 ): PreparedSubagentTask[] {
 	return tasks.map((task) => {
 		const launchModel = task.modelOverride ?? defaults.model;
@@ -2145,7 +2151,7 @@ export function registerSubagentTools(
 			const currentThinkingLevel = resolveSubagentThinkingLevel(pi.getThinkingLevel());
 			const defaultThinkingLevel = resolveSubagentToolThinkingLevel(params.thinking_level, currentThinkingLevel);
 			if (defaultThinkingLevel === null) {
-				throw new Error('thinking_level must be one of: off, minimal, low, medium, high, xhigh.');
+				throw new Error('thinking_level must be one of: off, minimal, low, medium, high, xhigh, max.');
 			}
 
 			const requestedContext = resolveSubagentContextMode(params.context);

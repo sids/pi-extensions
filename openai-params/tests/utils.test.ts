@@ -88,14 +88,12 @@ describe("resolveConfig", () => {
 			JSON.stringify({
 				fast: true,
 				verbosity: "medium",
-				supportedModels: ["openai/gpt-5.4"],
 			}),
 		);
 		writeFileSync(
 			projectConfigPath,
 			JSON.stringify({
 				verbosity: "high",
-				supportedModels: ["openai-codex/gpt-5.4"],
 			}),
 		);
 
@@ -103,7 +101,6 @@ describe("resolveConfig", () => {
 		expect(resolved.configPath).toBe(projectConfigPath);
 		expect(resolved.fast).toBe(true);
 		expect(resolved.verbosity).toBe("high");
-		expect(resolved.supportedModels).toEqual([{ provider: "openai-codex", id: "gpt-5.4" }]);
 
 		rmSync(baseDir, { recursive: true, force: true });
 	});
@@ -134,7 +131,6 @@ describe("resolveConfig", () => {
 			JSON.stringify({
 				fast: true,
 				verbosity: "high",
-				supportedModels: ["openai-codex/gpt-5.4"],
 			}),
 		);
 
@@ -142,10 +138,6 @@ describe("resolveConfig", () => {
 		expect(resolved.configPath).toBe(globalConfigPath);
 		expect(resolved.fast).toBe(false);
 		expect(resolved.verbosity).toBeUndefined();
-		expect(resolved.supportedModels).toEqual([
-			{ provider: "openai", id: "gpt-5.4" },
-			{ provider: "openai-codex", id: "gpt-5.4" },
-		]);
 		expect(readFileSync(globalConfigPath, "utf8")).toContain('"fast": false');
 
 		rmSync(baseDir, { recursive: true, force: true });
@@ -157,15 +149,13 @@ describe("applyConfiguredParams", () => {
 		configPath: "/tmp/openai-params.json",
 		fast: true,
 		verbosity: "low",
-		supportedModels: [{ provider: "openai-codex", id: "gpt-5.4" }],
 	};
 
-	test("applies both priority service tier and text verbosity when supported", () => {
+	test("applies both priority service tier and text verbosity to GPT models on Responses APIs", () => {
 		const result = applyConfiguredParams(
 			{ input: "hi" },
-			{ provider: "openai-codex", id: "gpt-5.4", api: "openai-codex-responses" },
+			{ provider: "openai-codex", id: "gpt-5.6-luna", api: "openai-codex-responses" },
 			config,
-			config.supportedModels,
 		);
 
 		expect(result.changed).toBe(true);
@@ -178,15 +168,47 @@ describe("applyConfiguredParams", () => {
 		});
 	});
 
-	test("leaves unsupported models unchanged", () => {
+	test("applies priority service tier to GPT models on Chat Completions APIs", () => {
+		const result = applyConfiguredParams(
+			{ messages: [] },
+			{ provider: "openai", id: "gpt-4o", api: "openai-completions" },
+			{ ...config, verbosity: undefined },
+		);
+
+		expect(result.changed).toBe(true);
+		expect(result.payload).toEqual({ messages: [], service_tier: "priority" });
+	});
+
+	test("does not apply fast mode to non-GPT models", () => {
 		const result = applyConfiguredParams(
 			{ input: "hi" },
 			{ provider: "anthropic", id: "claude", api: "anthropic-messages" },
 			config,
-			config.supportedModels,
 		);
 
 		expect(result.changed).toBe(false);
 		expect(result.payload).toEqual({ input: "hi" });
+	});
+
+	test("does not apply fast mode to GitHub Copilot GPT models that share an OpenAI API serializer", () => {
+		const result = applyConfiguredParams(
+			{ input: "hi" },
+			{ provider: "github-copilot", id: "gpt-5.4-mini", api: "openai-responses" },
+			{ ...config, verbosity: undefined },
+		);
+
+		expect(result.changed).toBe(false);
+		expect(result.payload).toEqual({ input: "hi" });
+	});
+
+	test("does not apply fast mode to custom GPT routes that share an OpenAI API serializer", () => {
+		const result = applyConfiguredParams(
+			{ messages: [] },
+			{ provider: "local-proxy", id: "gpt-local", api: "openai-completions" },
+			{ ...config, verbosity: undefined },
+		);
+
+		expect(result.changed).toBe(false);
+		expect(result.payload).toEqual({ messages: [] });
 	});
 });

@@ -55,6 +55,7 @@ describe("resolveSubagentThinkingLevel", () => {
 	test("accepts supported thinking levels", () => {
 		expect(resolveSubagentThinkingLevel("low")).toBe("low");
 		expect(resolveSubagentThinkingLevel(" xhigh ")).toBe("xhigh");
+		expect(resolveSubagentThinkingLevel(" MAX ")).toBe("max");
 		expect(resolveSubagentThinkingLevel("unknown")).toBeUndefined();
 	});
 });
@@ -65,6 +66,7 @@ describe("resolveSubagentToolThinkingLevel", () => {
 		expect(resolveSubagentToolThinkingLevel("high", "low")).toBe("high");
 		expect(resolveSubagentToolThinkingLevel("off", "low")).toBe("off");
 		expect(resolveSubagentToolThinkingLevel("minimal", "low")).toBe("minimal");
+		expect(resolveSubagentToolThinkingLevel("max", "low")).toBe("max");
 	});
 });
 
@@ -347,7 +349,14 @@ function createExecuteContext(
 	options?: {
 		hasUI?: boolean;
 		reviewResult?: any;
-		availableModels?: Array<{ provider: string; id: string; name?: string; reasoning?: boolean; api?: string }>;
+		availableModels?: Array<{
+			provider: string;
+			id: string;
+			name?: string;
+			reasoning?: boolean;
+			api?: string;
+			thinkingLevelMap?: Partial<Record<"off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max", string | null>>;
+		}>;
 		model?: { provider: string; id: string };
 		sessionFile?: string;
 		sessionId?: string;
@@ -2024,7 +2033,7 @@ describe("subagents tool", () => {
 	test("inherits the current model and thinking level by default and reuses them for steering", async () => {
 		const tempDir = await mkdtemp(path.join(os.tmpdir(), "task-subagents-default-inheritance-"));
 		const { binDir, sourceAgentDir, spawnLogPath } = await setupStubPi(tempDir);
-		const tools = registerTools({ thinkingLevel: "low" });
+		const tools = registerTools({ thinkingLevel: "max" });
 		const subagentsTool = tools.subagents;
 		const steerSubagentTool = tools.steer_subagent;
 		let previousAgentDir: string | undefined;
@@ -2049,7 +2058,16 @@ describe("subagents tool", () => {
 				undefined,
 				createExecuteContext(tempDir, {
 					hasUI: true,
-					model: { provider: "openai", id: "gpt-5" },
+					model: { provider: "openai", id: "gpt-5.6-luna" },
+					availableModels: [
+						{
+							provider: "openai",
+							id: "gpt-5.6-luna",
+							name: "GPT-5.6 Luna",
+							reasoning: true,
+							thinkingLevelMap: { max: "max" },
+						},
+					],
 					reviewResult: [
 						{
 							taskId: "task-a",
@@ -2067,8 +2085,8 @@ describe("subagents tool", () => {
 			expect(initialResult.details?.tasks[0]).toMatchObject({
 				modelOverride: undefined,
 				thinkingOverride: undefined,
-				launchModel: "openai/gpt-5",
-				launchThinking: "low",
+				launchModel: "openai/gpt-5.6-luna",
+				launchThinking: "max",
 			});
 
 			const rerunResult = await steerSubagentTool.execute(
@@ -2087,18 +2105,18 @@ describe("subagents tool", () => {
 			expect(rerunResult.details?.tasks[0]).toMatchObject({
 				modelOverride: undefined,
 				thinkingOverride: undefined,
-				launchModel: "openai/gpt-5",
-				launchThinking: "low",
+				launchModel: "openai/gpt-5.6-luna",
+				launchThinking: "max",
 				steeringNotes: ["Focus on config files."],
 			});
 
 			const logLines = await readSpawnLog(spawnLogPath);
 			expect(logLines).toHaveLength(2);
-			expect(logLines[0]?.model).toBe("openai/gpt-5");
-			expect(logLines[0]?.thinking).toBe("low");
+			expect(logLines[0]?.model).toBe("openai/gpt-5.6-luna");
+			expect(logLines[0]?.thinking).toBe("max");
 			expect(logLines[1]?.steered).toBe(true);
-			expect(logLines[1]?.model).toBe("openai/gpt-5");
-			expect(logLines[1]?.thinking).toBe("low");
+			expect(logLines[1]?.model).toBe("openai/gpt-5.6-luna");
+			expect(logLines[1]?.thinking).toBe("max");
 		} finally {
 			if (previousAgentDir === undefined) {
 				delete process.env.PI_CODING_AGENT_DIR;

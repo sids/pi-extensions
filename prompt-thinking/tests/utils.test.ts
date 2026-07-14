@@ -22,6 +22,7 @@ describe("normalizeThinkingLevel", () => {
 	test("normalizes case-insensitively", () => {
 		expect(normalizeThinkingLevel("HIGH")).toBe("high");
 		expect(normalizeThinkingLevel(" xHiGh ")).toBe("xhigh");
+		expect(normalizeThinkingLevel(" MAX ")).toBe("max");
 	});
 
 	test("returns null for unknown values", () => {
@@ -58,11 +59,11 @@ describe("getAvailableThinkingLevels", () => {
 	test("uses thinkingLevelMap when present", () => {
 		expect(
 			getAvailableThinkingLevels({
-				id: "claude-opus-4-6-thinking",
+				id: "gpt-5.6-luna",
 				reasoning: true,
-				thinkingLevelMap: { minimal: null, low: null, medium: null, high: "high", xhigh: "max" },
+				thinkingLevelMap: { off: "none", xhigh: "xhigh", max: "max" },
 			}),
-		).toEqual(["off", "high", "xhigh"]);
+		).toEqual(["off", "minimal", "low", "medium", "high", "xhigh", "max"]);
 	});
 
 	test("hides off when thinkingLevelMap marks it unsupported", () => {
@@ -168,9 +169,9 @@ describe("stripThinkingLevelControlTokens", () => {
 	});
 
 	test("parses tokens case-insensitively", () => {
-		expect(stripThinkingLevelControlTokens("please ^HIGH summarize")).toEqual({
+		expect(stripThinkingLevelControlTokens("please ^MAX summarize")).toEqual({
 			text: "please summarize",
-			overrideLevel: "high",
+			overrideLevel: "max",
 			changed: true,
 		});
 	});
@@ -194,6 +195,7 @@ describe("createThinkingAutocompleteProvider", () => {
 		{ value: "medium", label: "medium" },
 		{ value: "high", label: "high", description: "current level" },
 		{ value: "xhigh", label: "xhigh" },
+		{ value: "max", label: "max" },
 	];
 
 	const baseProvider: AutocompleteProvider = {
@@ -246,6 +248,7 @@ describe("createThinkingAutocompleteProvider", () => {
 				{ value: "low", label: "low" },
 				{ value: "medium", label: "medium" },
 				{ value: "xhigh", label: "xhigh" },
+				{ value: "max", label: "max" },
 			]);
 			expect(result!.prefix).toBe("^");
 		});

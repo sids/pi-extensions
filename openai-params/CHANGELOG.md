@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Applied fast mode to any `gpt-` model on official OpenAI providers instead of maintaining a model allowlist.
+- Prevented GitHub Copilot, local servers, and custom proxies from receiving OpenAI Priority parameters based only on their serializer type.
+- Removed `supportedModels` from persisted configuration; older values are ignored.
+- Raised the minimum Pi peer version to 0.80.6.
+
 ## 0.1.5 - 2026-05-15
 
 - Updated package metadata for the pnpm workspace migration.

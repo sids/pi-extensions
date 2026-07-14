@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Added per-prompt `max` thinking overrides for models such as GPT-5.6.
+- Raised the minimum Pi peer version to 0.80.6.
+
 ## 0.1.8 - 2026-05-15
 
 - Updated package metadata for the pnpm workspace migration.

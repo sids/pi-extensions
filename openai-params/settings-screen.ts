@@ -192,7 +192,7 @@ export class OpenAIParamsScreen implements Component {
 		].join(separator);
 		const notes = [
 			this.options.modelLabel ? `Current model: ${this.options.modelLabel}` : undefined,
-			"Fast mode sends service_tier=priority on supported GPT-5.4 model routes.",
+			"Fast mode sends service_tier=priority for GPT models on official OpenAI providers.",
 			"Verbosity sets text.verbosity for OpenAI Responses-family models.",
 		]
 			.filter((line): line is string => Boolean(line));

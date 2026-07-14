@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Added `max` thinking-level inheritance, validation, model clamping, and launch controls.
+- Raised the minimum Pi peer version to 0.80.6.
+
 ## 0.1.7 - 2026-05-15
 
 - Updated package metadata for the pnpm workspace migration.

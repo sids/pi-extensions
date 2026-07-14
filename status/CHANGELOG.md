@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Added status coloring for the `max` thinking level.
+- Raised the minimum Pi peer version to 0.80.6.
+
 ## 0.1.8 - 2026-05-15
 
 - Updated package metadata for the pnpm workspace migration.

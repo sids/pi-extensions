@@ -8,7 +8,6 @@ export const OPENAI_PARAMS_COMMAND = "openai-params";
 export const OPENAI_PARAMS_CONFIG_BASENAME = "openai-params.json";
 export const OPENAI_PARAMS_EVENT_CHANNEL = "pi:openai-params";
 export const OPENAI_FAST_SERVICE_TIER = "priority";
-export const DEFAULT_SUPPORTED_MODEL_KEYS = ["openai/gpt-5.4", "openai-codex/gpt-5.4"] as const;
 
 export type Verbosity = "low" | "medium" | "high";
 
@@ -24,31 +23,33 @@ export interface OpenAIParamsEventPayload {
 	verbosity: Verbosity | null;
 }
 
-export interface SupportedModel {
-	provider: string;
-	id: string;
-}
-
 export interface OpenAIParamsConfigFile {
 	fast?: boolean;
 	verbosity?: Verbosity | null;
-	supportedModels?: string[];
 }
 
 export interface ResolvedOpenAIParamsConfig extends OpenAIParamsState {
 	configPath: string;
-	supportedModels: SupportedModel[];
 }
 
 type JsonObject = Record<string, unknown>;
+type SupportedFastProvider = "openai" | "openai-codex";
+type SupportedFastApi = "openai-completions" | "openai-responses" | "openai-codex-responses";
 type SupportedVerbosityApi = "openai-responses" | "openai-codex-responses" | "azure-openai-responses";
 type ModelLike = Pick<Model<Api>, "provider" | "id" | "api">;
 
 const DEFAULT_CONFIG_FILE: OpenAIParamsConfigFile = {
 	fast: false,
 	verbosity: null,
-	supportedModels: [...DEFAULT_SUPPORTED_MODEL_KEYS],
 };
+
+const SUPPORTED_FAST_PROVIDERS = new Set<SupportedFastProvider>(["openai", "openai-codex"]);
+
+const SUPPORTED_FAST_APIS = new Set<SupportedFastApi>([
+	"openai-completions",
+	"openai-responses",
+	"openai-codex-responses",
+]);
 
 const SUPPORTED_VERBOSITY_APIS = new Set<SupportedVerbosityApi>([
 	"openai-responses",
@@ -99,61 +100,6 @@ export function getConfigPaths(
 	};
 }
 
-export function parseSupportedModelKey(value: string): SupportedModel | undefined {
-	const trimmed = value.trim();
-	if (!trimmed) {
-		return undefined;
-	}
-
-	const slashIndex = trimmed.indexOf("/");
-	if (slashIndex <= 0 || slashIndex >= trimmed.length - 1) {
-		return undefined;
-	}
-
-	const provider = trimmed.slice(0, slashIndex).trim();
-	const id = trimmed.slice(slashIndex + 1).trim();
-	if (!provider || !id) {
-		return undefined;
-	}
-
-	return { provider, id };
-}
-
-export function normalizeSupportedModelKeys(value: unknown): string[] | undefined {
-	if (value === undefined) {
-		return undefined;
-	}
-	if (!Array.isArray(value)) {
-		return undefined;
-	}
-
-	const normalized: string[] = [];
-	for (const entry of value) {
-		if (typeof entry !== "string") {
-			continue;
-		}
-		const parsed = parseSupportedModelKey(entry);
-		if (!parsed) {
-			continue;
-		}
-		normalized.push(`${parsed.provider}/${parsed.id}`);
-	}
-	return normalized;
-}
-
-export function parseSupportedModels(value: readonly string[]): SupportedModel[];
-export function parseSupportedModels(value: unknown): SupportedModel[] | undefined;
-export function parseSupportedModels(value: unknown): SupportedModel[] | undefined {
-	const normalized = normalizeSupportedModelKeys(value);
-	if (normalized === undefined) {
-		return undefined;
-	}
-
-	return normalized
-		.map((entry) => parseSupportedModelKey(entry))
-		.filter((entry): entry is SupportedModel => entry !== undefined);
-}
-
 export function readConfigFile(filePath: string): OpenAIParamsConfigFile | null {
 	if (!existsSync(filePath)) {
 		return null;
@@ -177,10 +123,6 @@ export function readConfigFile(filePath: string): OpenAIParamsConfigFile | null 
 			if (verbosity) {
 				config.verbosity = verbosity;
 			}
-		}
-		const supportedModels = normalizeSupportedModelKeys(parsed.supportedModels);
-		if (supportedModels !== undefined) {
-			config.supportedModels = supportedModels;
 		}
 		return config;
 	} catch (error) {
@@ -228,22 +170,18 @@ export function resolveConfig(
 	const projectConfig = projectTrusted ? readConfigFile(projectConfigPath) ?? {} : {};
 	const selectedConfigPath = projectTrusted && existsSync(projectConfigPath) ? projectConfigPath : globalConfigPath;
 	const merged = { ...globalConfig, ...projectConfig };
-	const supportedModels =
-		parseSupportedModels(merged.supportedModels) ?? parseSupportedModels(DEFAULT_SUPPORTED_MODEL_KEYS) ?? [];
 
 	return {
 		configPath: selectedConfigPath,
 		fast: merged.fast ?? DEFAULT_CONFIG_FILE.fast ?? false,
 		verbosity: normalizeVerbosity(merged.verbosity),
-		supportedModels,
 	};
 }
 
-export function toConfigFile(config: ResolvedOpenAIParamsConfig | OpenAIParamsState, supportedModels: SupportedModel[]): OpenAIParamsConfigFile {
+export function toConfigFile(config: ResolvedOpenAIParamsConfig | OpenAIParamsState): OpenAIParamsConfigFile {
 	return {
 		fast: config.fast,
 		verbosity: config.verbosity ?? null,
-		supportedModels: supportedModels.map((model) => `${model.provider}/${model.id}`),
 	};
 }
 
@@ -257,7 +195,7 @@ export function toOpenAIParamsEventPayload(cwd: string, config: ResolvedOpenAIPa
 }
 
 export function persistConfig(config: ResolvedOpenAIParamsConfig): void {
-	writeConfigFile(config.configPath, toConfigFile(config, config.supportedModels));
+	writeConfigFile(config.configPath, toConfigFile(config));
 }
 
 export function getCurrentModelKey(model: Pick<Model<Api>, "provider" | "id"> | undefined): string | undefined {
@@ -275,15 +213,16 @@ export function supportsVerbosityControl(model: Pick<ModelLike, "api"> | undefin
 	return SUPPORTED_VERBOSITY_APIS.has(model.api as SupportedVerbosityApi);
 }
 
-export function isFastSupportedModel(
-	model: Pick<ModelLike, "provider" | "id"> | undefined,
-	supportedModels: SupportedModel[],
-): boolean {
+export function supportsFastMode(model: ModelLike | undefined): boolean {
 	if (!model) {
 		return false;
 	}
 
-	return supportedModels.some((supported) => supported.provider === model.provider && supported.id === model.id);
+	return (
+		SUPPORTED_FAST_PROVIDERS.has(model.provider as SupportedFastProvider) &&
+		/^gpt-/i.test(model.id) &&
+		SUPPORTED_FAST_APIS.has(model.api as SupportedFastApi)
+	);
 }
 
 export function applyFastServiceTier(payload: unknown): unknown {
@@ -316,12 +255,11 @@ export function applyConfiguredParams(
 	payload: unknown,
 	model: ModelLike | undefined,
 	config: ResolvedOpenAIParamsConfig | OpenAIParamsState,
-	supportedModels: SupportedModel[],
 ): { payload: unknown; changed: boolean } {
 	let nextPayload = payload;
 	let changed = false;
 
-	if (config.fast && isFastSupportedModel(model, supportedModels)) {
+	if (config.fast && supportsFastMode(model)) {
 		nextPayload = applyFastServiceTier(nextPayload);
 		changed = nextPayload !== payload || changed;
 	}
@@ -337,5 +275,7 @@ export function applyConfiguredParams(
 
 export const _test = {
 	DEFAULT_CONFIG_FILE,
+	SUPPORTED_FAST_PROVIDERS,
+	SUPPORTED_FAST_APIS,
 	SUPPORTED_VERBOSITY_APIS,
 };

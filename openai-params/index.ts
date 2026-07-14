@@ -4,11 +4,9 @@ import { isProjectTrusted } from "@siddr/pi-shared-qna/project-trust";
 import { OpenAIParamsScreen } from "./settings-screen";
 import {
 	applyConfiguredParams,
-	DEFAULT_SUPPORTED_MODEL_KEYS,
 	getCurrentModelKey,
 	OPENAI_PARAMS_COMMAND,
 	OPENAI_PARAMS_EVENT_CHANNEL,
-	parseSupportedModels,
 	persistConfig,
 	resolveConfig,
 	toOpenAIParamsEventPayload,
@@ -29,7 +27,6 @@ export default function openAIParams(pi: ExtensionAPI): void {
 		configPath: "",
 		fast: false,
 		verbosity: undefined,
-		supportedModels: parseSupportedModels(DEFAULT_SUPPORTED_MODEL_KEYS) ?? [],
 	};
 
 	function refreshConfig(ctx: ExtensionContext) {
@@ -89,7 +86,7 @@ export default function openAIParams(pi: ExtensionAPI): void {
 	});
 
 	pi.on("before_provider_request", (event, ctx) => {
-		const next = applyConfiguredParams(event.payload, ctx.model, state, config.supportedModels);
+		const next = applyConfiguredParams(event.payload, ctx.model, state);
 		if (!next.changed) {
 			return;
 		}

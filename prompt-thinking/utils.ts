@@ -1,7 +1,7 @@
 import type { AutocompleteItem, AutocompleteProvider } from "@earendil-works/pi-tui";
 
-export const THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh"] as const;
-export const THINKING_LEVELS_WITHOUT_XHIGH = THINKING_LEVELS.slice(0, -1) as Exclude<ThinkingLevel, "xhigh">[];
+export const THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
+export const STANDARD_THINKING_LEVELS = THINKING_LEVELS.slice(0, -2) as Exclude<ThinkingLevel, "xhigh" | "max">[];
 
 export type ThinkingLevel = (typeof THINKING_LEVELS)[number];
 export type ThinkingModel = {
@@ -80,13 +80,13 @@ export function getAvailableThinkingLevels(model: ThinkingModel | null | undefin
 			if (mapped === null) {
 				return false;
 			}
-			if (level === "xhigh") {
+			if (level === "xhigh" || level === "max") {
 				return mapped !== undefined;
 			}
 			return true;
 		});
 	}
-	return legacySupportsXhigh(model) ? [...THINKING_LEVELS] : [...THINKING_LEVELS_WITHOUT_XHIGH];
+	return legacySupportsXhigh(model) ? [...STANDARD_THINKING_LEVELS, "xhigh"] : [...STANDARD_THINKING_LEVELS];
 }
 
 /**

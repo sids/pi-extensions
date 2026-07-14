@@ -22,7 +22,7 @@
     ]
   },
   "peerDependencies": {
-    "@earendil-works/pi-coding-agent": ">=0.80.3"
+    "@earendil-works/pi-coding-agent": ">=0.80.6"
   },
   "dependencies": {
     "esbuild": "^0.28.0",

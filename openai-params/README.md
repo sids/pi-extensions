@@ -21,10 +21,11 @@ When enabled, it patches provider requests right before send:
 
 ## Behavior
 
-- Fast mode is only applied to configured supported models.
-- Default supported models are:
-  - `openai/gpt-5.4`
-  - `openai-codex/gpt-5.4`
+- Fast mode is applied to any model whose ID starts with `gpt-` on the official `openai` and `openai-codex` providers when they use a compatible API:
+  - `openai-completions`
+  - `openai-responses`
+  - `openai-codex-responses`
+- Models from GitHub Copilot, local servers, and custom proxies are not patched merely because they use an OpenAI-compatible serializer.
 - Verbosity is applied only to OpenAI Responses-family APIs:
   - `openai-responses`
   - `openai-codex-responses`
@@ -45,13 +46,11 @@ Default config:
 ```json
 {
   "fast": false,
-  "verbosity": null,
-  "supportedModels": [
-    "openai/gpt-5.4",
-    "openai-codex/gpt-5.4"
-  ]
+  "verbosity": null
 }
 ```
+
+Older `supportedModels` settings are ignored because fast-mode support is detected from the active model provider, ID, and API.
 
 ## Integration
 

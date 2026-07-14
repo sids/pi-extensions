@@ -12,7 +12,7 @@
         "react-dom": "^19.2.4",
       },
       "peerDependencies": {
-        "@earendil-works/pi-coding-agent": ">=0.80.3",
+        "@earendil-works/pi-coding-agent": ">=0.80.6",
       },
     },
   },

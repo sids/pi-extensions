@@ -239,6 +239,21 @@ describe("status extension", () => {
 		}
 	});
 
+	test("uses the max thinking color for max reasoning", async () => {
+		const harness = createHarness();
+		const ctx = harness.createCtx("/tmp/status-project");
+
+		try {
+			harness.setThinkingLevel("max");
+			await harness.emit("session_start", {}, ctx);
+
+			const line = harness.renderLatestWidget(200, (name, text) => `<${name}>${text}</${name}>`)[0] ?? "";
+			expect(line).toContain("<thinkingMax>max</thinkingMax>");
+		} finally {
+			await harness.emit("session_shutdown", {}, ctx);
+		}
+	});
+
 	test("applies the thinking color only to the thinking level text", async () => {
 		const harness = createHarness();
 		const ctx = harness.createCtx("/tmp/status-project");

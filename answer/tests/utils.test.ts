@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import {
 	applyTemplate,
+	DEFAULT_MODEL_PREFERENCES,
 	mergeAnswerSettings,
 	normalizeTemplates,
 	parseExtractionResult,
@@ -73,6 +74,12 @@ describe("normalizeTemplates", () => {
 			{ label: "Template 1", template: "Use bullet points" },
 			{ label: "Short", template: "Be brief" },
 		]);
+	});
+});
+
+describe("DEFAULT_MODEL_PREFERENCES", () => {
+	test("prefers GPT-5.6 Luna for question extraction", () => {
+		expect(DEFAULT_MODEL_PREFERENCES[0]).toEqual({ provider: "openai-codex", id: "gpt-5.6-luna" });
 	});
 });
 
