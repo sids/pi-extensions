@@ -63,6 +63,7 @@ That adds `subagents` and `steer_subagent` everywhere, including during plan mod
 - `/plan-md [location]` can override the plan file path.
 - Plan files are kept after exiting so planning can be resumed later.
 - Entering plan mode posts a visible `Plan mode instructions` message once and injects the hidden plan-mode prompt for the next agent turn.
+- Informational questions and discussion-only turns are answered without writing the plan file; `set_plan` is reserved for requests that call for creating or revising an implementation plan.
 - After session compaction, plan mode reposts the visible instructions and reinjects the hidden plan-mode prompt for the next agent turn.
 - The default plan-mode prompt is stored in `plan-md/prompts/PLAN.prompt.md`.
 - You can override that prompt globally by creating `~/.pi/agent/PLAN.prompt.md`.

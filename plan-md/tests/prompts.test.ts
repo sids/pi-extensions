@@ -71,15 +71,18 @@ describe("loadPlanModePrompt", () => {
 		expect(prompt).toContain("Include the goal at the top of the plan.");
 	});
 
-	test("bundled prompt tells the model to discuss before persisting a plan when asked", async () => {
+	test("bundled prompt tells the model not to persist informational answers or discussion", async () => {
 		const paths = await createPromptPaths();
 		const prompt = await loadPlanModePrompt({
 			agentDirPath: paths.agentDirPath,
 			bundledPromptPath: fileURLToPath(new URL("../prompts/PLAN.prompt.md", import.meta.url)),
 		});
 
-		expect(prompt).toContain("If the user asks a follow-up question or wants to discuss options, answer conversationally first.");
-		expect(prompt).toContain("If the user wants to discuss the approach before finalizing the plan, do that discussion first");
+		expect(prompt).toContain("Do not treat Plan mode itself as a request to create or revise a saved plan.");
+		expect(prompt).toContain(
+			"Treat informational questions, requests for explanation, and open-ended discussion as conversation. Answer them directly and do not call set_plan.",
+		);
+		expect(prompt).toContain("If it is unclear whether the user wants a saved plan, ask instead of calling set_plan.");
 	});
 
 	test("bundled prompt tells the model to summarize after saving the plan and not talk about exiting", async () => {

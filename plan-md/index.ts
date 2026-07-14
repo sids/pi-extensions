@@ -101,9 +101,12 @@ export default function (pi: ExtensionAPI) {
 	pi.registerTool({
 		name: "set_plan",
 		label: "set_plan",
-		description: "Overwrite the plan file with the full latest plan text.",
-		promptSnippet: "Overwrite the current plan file with the latest full plan text.",
-		promptGuidelines: ["Use set_plan only to persist a concrete plan or revision, not for discussion-only replies."],
+		description:
+			"Persist the full latest implementation plan only when the current request calls for creating or revising one.",
+		promptSnippet: "Persist a complete implementation plan when the current request calls for one.",
+		promptGuidelines: [
+			"Use set_plan only when the current request calls for creating or revising a concrete implementation plan; never use it for informational questions or discussion-only replies.",
+		],
 		parameters: SetPlanSchema,
 		renderCall(args, theme) {
 			const preview = summarizeSnippet(String(args.plan ?? ""), 90);
