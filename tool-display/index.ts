@@ -10,7 +10,7 @@ import {
 	getLanguageFromPath,
 	highlightCode,
 } from "@earendil-works/pi-coding-agent";
-import { Text } from "@earendil-works/pi-tui";
+import { Text, type Component } from "@earendil-works/pi-tui";
 import { renderStyledDiff } from "./diff-renderer";
 import {
 	buildPreview,
@@ -35,7 +35,7 @@ type ToolPromptMetadata = {
 	promptGuidelines?: string[];
 };
 
-const bashPreviewLines = 10;
+const bashPreviewLines = 5;
 
 const toolCache = new Map<string, BuiltInTools>();
 const toolDisplayDetailsKey = "toolDisplay";
@@ -81,8 +81,8 @@ function formatRemainingLinesHint(remainingLines: number, theme: any): string {
 	return `${theme.fg("muted", `... (${remainingLines} more ${pluralize(remainingLines, "line")}, `)}${formatEditorHint("to expand", theme)}${theme.fg("muted", ")")}`;
 }
 
-function formatFullOutputHint(remainingLines: number, theme: any): string {
-	return `${theme.fg("muted", `... (${remainingLines} more ${pluralize(remainingLines, "line")}). Press `)}${theme.fg("dim", "ctrl+o")}${theme.fg("muted", " to see the full output.")}`;
+function formatFullOutputHint(skippedLines: number, theme: any): string {
+	return `${theme.fg("muted", `... (${skippedLines} earlier ${pluralize(skippedLines, "visual line")}). Press `)}${theme.fg("dim", "ctrl+o")}${theme.fg("muted", " to see the full output.")}`;
 }
 
 function formatExpandHint(theme: any): string {
@@ -104,6 +104,36 @@ function renderRawText(text: string, theme: any, isError: boolean) {
 
 function renderDimmedText(text: string, theme: any): string {
 	return theme.fg("dim", text);
+}
+
+function renderVisualTail(
+	output: string,
+	prefix: string | undefined,
+	suffix: string | undefined,
+	theme: any,
+): Component {
+	return {
+		render(width: number): string[] {
+			const safeWidth = Math.max(width, 1);
+			const outputLines = new Text(output, 0, 0).render(safeWidth);
+			const skippedLines = Math.max(outputLines.length - bashPreviewLines, 0);
+			const lines: string[] = [];
+
+			if (prefix) {
+				lines.push(...new Text(prefix, 0, 0).render(safeWidth));
+			}
+			if (skippedLines > 0) {
+				lines.push(...new Text(formatFullOutputHint(skippedLines, theme), 0, 0).render(safeWidth));
+			}
+			lines.push(...outputLines.slice(-bashPreviewLines));
+			if (suffix) {
+				lines.push(...new Text(suffix, 0, 0).render(safeWidth));
+			}
+
+			return lines;
+		},
+		invalidate() {},
+	};
 }
 
 function withToolDisplayDetails<T extends { details?: unknown }>(result: T, toolDisplay: ToolDisplayDetails): T {
@@ -178,23 +208,26 @@ function renderBashResult(
 	const isError = isErrorResult(result, text);
 
 	if (isError) {
-		const preview = buildPreview(text, bashPreviewLines);
-		const body = expanded ? text : preview.previewText;
-		const output = body.length > 0 ? theme.fg("error", body) : undefined;
-		const hint = !expanded && preview.hasMore ? formatFullOutputHint(preview.remainingLines, theme) : undefined;
-		return getTextComponent(joinSections(theme.fg("error", "↳ command failed"), output, hint));
+		const output = text.trim();
+		const prefix = theme.fg("error", "↳ command failed");
+		if (!expanded && output.length > 0) {
+			return renderVisualTail(theme.fg("error", output), prefix, undefined, theme);
+		}
+		return getTextComponent(joinSections(prefix, output.length > 0 ? theme.fg("error", output) : undefined));
 	}
 
 	const { body, notice } = splitTrailingNoticeBlock(text);
-	const previewSource = body.length > 0 ? body : text;
-	const preview = buildPreview(previewSource, bashPreviewLines);
+	const previewSource = (body.length > 0 ? body : text).trim();
 	const status = isPartial ? theme.fg("warning", "running...") : undefined;
-	const output = expanded ? previewSource : preview.previewText;
-	const display = output.length > 0
-		? renderDimmedText(output, theme)
+	const warning = formatWarning(notice, theme);
+	if (!expanded && previewSource.length > 0) {
+		return renderVisualTail(renderDimmedText(previewSource, theme), status, warning, theme);
+	}
+
+	const display = previewSource.length > 0
+		? renderDimmedText(previewSource, theme)
 		: !isPartial ? theme.fg("muted", "↳ (no output)") : undefined;
-	const hint = !expanded && preview.hasMore ? formatFullOutputHint(preview.remainingLines, theme) : undefined;
-	return getTextComponent(joinSections(status, display, hint, formatWarning(notice, theme)));
+	return getTextComponent(joinSections(status, display, warning));
 }
 
 function getEditPrepareArguments(tool: unknown): ((args: unknown) => unknown) | undefined {
@@ -319,6 +352,7 @@ function registerOverrides(pi: ExtensionAPI, cwd: string) {
 		name: "edit",
 		label: "edit",
 		description: referenceTools.edit.description,
+		renderShell: "default",
 		...getToolPromptMetadata(pi, "edit"),
 		parameters: referenceTools.edit.parameters,
 		...(editPrepareArguments ? { prepareArguments: editPrepareArguments } : {}),

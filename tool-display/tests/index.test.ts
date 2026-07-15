@@ -19,11 +19,11 @@ const dimTheme = {
 	bold: (text: string) => text,
 } as any;
 
-function renderComponent(component: { render: (width: number) => string[] } | undefined): string {
+function renderComponent(component: { render: (width: number) => string[] } | undefined, width = 200): string {
 	if (!component) {
 		throw new Error("expected component to be defined");
 	}
-	return component.render(200).join("\n");
+	return component.render(width).join("\n");
 }
 
 async function loadTools(activeTools = ["read", "bash", "edit", "write"]) {
@@ -185,8 +185,10 @@ describe("tool-display extension", () => {
 				),
 			);
 			expect(bashRunning).toContain("running...");
-			expect(bashRunning).toContain("<dim>out 1");
-			expect(bashRunning).not.toContain("out 11");
+			expect(bashRunning).not.toContain("out 7");
+			expect(bashRunning).toContain("out 8");
+			expect(bashRunning).toContain("out 12");
+			expect(bashRunning).toContain("7 earlier visual lines");
 			expect(bashRunning).toContain("ctrl+o");
 			expect(bashRunning).toContain("see the full output");
 
@@ -201,10 +203,24 @@ describe("tool-display extension", () => {
 				),
 			);
 			expect(bashFailed).toContain("command failed");
-			expect(bashFailed).toContain("err 1");
-			expect(bashFailed).not.toContain("err 11");
+			expect(bashFailed).not.toContain("err 7");
+			expect(bashFailed).toContain("err 8");
+			expect(bashFailed).toContain("err 12");
+			expect(bashFailed).toContain("7 earlier visual lines");
 			expect(bashFailed).toContain("ctrl+o");
 			expect(bashFailed).toContain("see the full output");
+
+			const bashWrapped = renderComponent(
+				bashTool.renderResult(
+					{ content: [{ type: "text", text: "abcdefghij\nline2\nline3\nline4\nline5" }] },
+					{ expanded: false, isPartial: false },
+					theme,
+				),
+				5,
+			);
+			expect(bashWrapped).not.toContain("abcde");
+			expect(bashWrapped).toContain("fghij");
+			expect(bashWrapped).toContain("line5");
 
 			const editArgs = {
 				path: "edit-target.txt",
@@ -231,6 +247,7 @@ describe("tool-display extension", () => {
 				editTool.renderResult(editResult, { expanded: false, isPartial: false }, theme),
 			);
 
+			expect(editTool.renderShell).toBe("default");
 			expect(editCall).toContain("edit-target.txt");
 			expect(editCall).toContain("2 blocks");
 			expect(editRendered).toContain("diff");
