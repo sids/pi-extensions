@@ -2,7 +2,7 @@
 
 ## Project overview
 
-This repository contains the **answer**, **fetch-url**, **web-search**, **status**, **plan-md**, **task-subagents**, **review**, and **mention-skills** pi extensions.
+This repository contains the **answer**, **fetch-url**, **web-search**, **status**, **plan-md**, **task-subagents**, **review**, **side**, and **mention-skills** pi extensions.
 
 ## Key files
 
@@ -46,6 +46,13 @@ This repository contains the **answer**, **fetch-url**, **web-search**, **status
 - `review/utils.ts`: Shared parsing/normalization helpers
 - `review/README.md`: Usage docs
 - `review/tests/*.test.ts`: Unit tests
+- `side/index.ts`: Extension entry point and `/side` lifecycle
+- `side/summary.ts`: Frozen parent-session summary generation
+- `side/parent-session.ts`: Live parent-session bridge and tools
+- `side/side-session.ts`: In-memory child agent session
+- `side/side-tui.ts`: Floating side-chat overlay
+- `side/README.md`: Usage docs
+- `side/tests/*.test.ts`: Unit tests
 - `mention-skills/index.ts`: Extension entry point
 - `mention-skills/utils.ts`: Skill discovery, mention detection, replacement, and autocomplete provider helpers
 - `mention-skills/README.md`: Usage docs
@@ -86,6 +93,7 @@ This repository contains the **answer**, **fetch-url**, **web-search**, **status
   pnpm test -- review/tests/flow.test.ts
   pnpm test -- review/tests/triage-tui.test.ts
   pnpm test -- review/tests/target-selector.test.ts
+  pnpm test -- side/tests/*.test.ts
   pnpm test -- mention-skills/tests/utils.test.ts
   ```
 - To load an extension locally, symlink its directory into `~/.pi/agent/extensions/<name>` and run `/reload` in pi.

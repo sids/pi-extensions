@@ -11,6 +11,7 @@ A collection of pi extensions. Each extension lives in its own directory with it
 - [`diff-cmux/`](diff-cmux/) – cmux browser diff review with continuous changed-file streaming, grouped sidebar navigation, and send-to-editor comments
 - [`diff-review/`](diff-review/) – Browser diff review using Pierre diffs/trees with send-to-editor comments
 - [`review/`](review/) – Interactive review mode with target selection, structured findings capture, and triage
+- [`side/`](side/) – Ephemeral floating read-only side chat with summarized and live parent-session context
 - [`answer/`](answer/) – Interactive Q&A workflow for extracting questions and sending compiled answers
 - [`mention-skills/`](mention-skills/) – `$skill-name` autocomplete with submit-time expansion to `SKILL.md` paths
 - [`prompt-save/`](prompt-save/) – Session-wide saved prompt picker with save, restore, copy, and delete shortcuts
