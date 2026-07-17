@@ -5,21 +5,19 @@ Adds a `web_search` tool backed by the Brave Search API. Results include titles,
 ## Setup (recommended)
 
 1. Get an API key from https://api-dashboard.search.brave.com.
-2. In pi, run:
+2. In pi, run `/login brave-search` and paste the API key.
+3. Optional: run `/login brave-search-fallback` to add a fallback key used when the primary key hits rate limits.
 
+`/web-search-setup`, `/web-search-setup primary`, and `/web-search-setup fallback` prefill the corresponding `/login` command for convenience.
+
+## Advanced setup (environment or manual secrets)
+
+You can provide keys through environment variables:
+
+```bash
+export BRAVE_SEARCH_API_KEY="PRIMARY_KEY"
+export BRAVE_SEARCH_FALLBACK_API_KEY="FALLBACK_KEY"
 ```
-/web-search-setup
-```
-
-Paste your primary API key when prompted. You can optionally add a fallback key (used when the primary key hits rate limits).
-
-### Setup commands
-
-- `/web-search-setup` — prompts for primary key, then optional fallback
-- `/web-search-setup primary` — set/replace primary only
-- `/web-search-setup fallback` — set/replace fallback only
-
-## Advanced setup (manual secrets)
 
 You can also set keys directly in `~/.pi/agent/auth.json`:
 

@@ -276,42 +276,6 @@ async function writeTempOutput(content: string): Promise<string> {
 	return path;
 }
 
-async function promptAndSaveApiKey(
-	ctx: ExtensionCommandContext,
-	providerId: string,
-	label: string,
-) {
-	if (!ctx.hasUI) {
-		throw new Error("web-search-setup requires interactive mode");
-	}
-
-	const existing = ctx.modelRegistry.authStorage.get(providerId);
-	if (existing) {
-		const confirm = await ctx.ui.confirm(
-			`Overwrite ${label} Brave Search API key?`,
-			`An API key is already stored for ${providerId}. Replace it?`,
-		);
-		if (!confirm) {
-			return false;
-		}
-	}
-
-	const apiKey = await ctx.ui.input(`${label} Brave Search API key`, "BSA-... or sk-...");
-	if (!apiKey) {
-		return false;
-	}
-
-	const trimmed = apiKey.trim();
-	if (!trimmed) {
-		ctx.ui.notify("Brave Search API key not saved (empty input)", "warning");
-		return false;
-	}
-
-	ctx.modelRegistry.authStorage.set(providerId, { type: "api_key", key: trimmed });
-	ctx.ui.notify(`${label} Brave Search API key saved`, "info");
-	return true;
-}
-
 function resolveSetupMode(args: string | undefined) {
 	const normalized = (args ?? "").trim().toLowerCase();
 	const wantsFallback = normalized.includes("fallback");
@@ -329,34 +293,36 @@ function resolveSetupMode(args: string | undefined) {
 	return "both" as const;
 }
 
-async function runSetup(ctx: ExtensionCommandContext, args: string | undefined) {
+function runSetup(ctx: ExtensionCommandContext, args: string | undefined) {
+	if (!ctx.hasUI) {
+		throw new Error("web-search-setup requires interactive mode");
+	}
+
 	const mode = resolveSetupMode(args);
+	const providerId = mode === "fallback" ? BRAVE_FALLBACK_PROVIDER_ID : BRAVE_PROVIDER_ID;
+	ctx.ui.setEditorText(`/login ${providerId}`);
 
-	if (mode === "primary" || mode === "both") {
-		await promptAndSaveApiKey(ctx, BRAVE_PROVIDER_ID, "Primary");
-	}
-
-	if (mode === "fallback") {
-		await promptAndSaveApiKey(ctx, BRAVE_FALLBACK_PROVIDER_ID, "Fallback");
-		return;
-	}
-
-	if (mode === "both") {
-		const confirmFallback = await ctx.ui.confirm(
-			"Add fallback API key?",
-			"Optional: used when the primary Brave Search key hits rate limits.",
-		);
-		if (confirmFallback) {
-			await promptAndSaveApiKey(ctx, BRAVE_FALLBACK_PROVIDER_ID, "Fallback");
-		}
-	}
+	const fallbackHint =
+		mode === "both"
+			? ` Afterward, run /login ${BRAVE_FALLBACK_PROVIDER_ID} to configure an optional fallback key.`
+			: "";
+	ctx.ui.notify(`Press Enter to configure the Brave Search API key.${fallbackHint}`, "info");
 }
 
 export default function (pi: ExtensionAPI) {
+	pi.registerProvider(BRAVE_PROVIDER_ID, {
+		name: "Brave Search",
+		apiKey: "$BRAVE_SEARCH_API_KEY",
+	});
+	pi.registerProvider(BRAVE_FALLBACK_PROVIDER_ID, {
+		name: "Brave Search Fallback",
+		apiKey: "$BRAVE_SEARCH_FALLBACK_API_KEY",
+	});
+
 	pi.registerCommand("web-search-setup", {
 		description: "Configure Brave Search API keys for web_search (primary/fallback)",
 		handler: async (args, ctx) => {
-			await runSetup(ctx, args);
+			runSetup(ctx, args);
 		},
 	});
 	pi.registerTool({
