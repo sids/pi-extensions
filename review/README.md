@@ -48,7 +48,7 @@ Pull-request reviews require the GitHub CLI (`gh`) to be installed and authentic
 
 When review mode starts, the extension asks where to start (`Empty branch` or `Current branch`) only when the session has branchable history. It then resolves the target, enables review mode, and previews the selected review prompt with a 10-second countdown. The prompt is submitted automatically when the countdown ends; press `Esc` to edit it or `Ctrl+C` to stop auto-submit. In either case, the prompt moves into the editor.
 
-For `Empty branch` reviews of uncommitted changes, the extension also generates a change summary from the source branch's session history. The summary focuses on goal and motivation and is included in the startup prompt, so pressing `Esc` or `Ctrl+C` during the countdown moves both the review request and summary into the editor for adjustment.
+For `Empty branch` reviews of uncommitted changes, the extension also generates a change summary from the source branch's session history. Press `Esc` or `Ctrl+C` while the summary is being generated to cancel it and continue review startup without a summary. When generation completes, the summary focuses on goal and motivation and is included in the startup prompt, so pressing `Esc` or `Ctrl+C` during the countdown moves both the review request and summary into the editor for adjustment.
 
 When review mode starts and ends, summaries and triage context use target-specific labels such as `current changes`, `changes against 'main'`, `commit abc1234: title`, `PR #42: title`, or `folders: src, docs`.
 

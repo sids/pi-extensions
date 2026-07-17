@@ -1,5 +1,45 @@
+import { initTheme } from "@earendil-works/pi-coding-agent";
 import { describe, expect, test } from "vitest";
 import { registerReviewCommand } from "../flow";
+
+initTheme(undefined, false);
+
+function runCustomUi(factory: any, onReady?: (component: any) => void): Promise<any> {
+	return new Promise((resolve, reject) => {
+		let component: any;
+		let settled = false;
+		const done = (value: any) => {
+			if (settled) {
+				return;
+			}
+			settled = true;
+			component?.dispose?.();
+			resolve(value);
+		};
+
+		try {
+			const created = factory(
+				{ requestRender: () => {} },
+				{
+					fg: (_token: string, text: string) => text,
+					bold: (text: string) => text,
+				},
+				undefined,
+				done,
+			);
+			void Promise.resolve(created).then((resolved) => {
+				component = resolved;
+				if (settled) {
+					component?.dispose?.();
+					return;
+				}
+				onReady?.(component);
+			}, reject);
+		} catch (error) {
+			reject(error);
+		}
+	});
+}
 
 function createRegisteredReviewHandler(options: {
 	stateManager: {
@@ -41,8 +81,17 @@ function createRegisteredReviewHandler(options: {
 	if (!handler) {
 		throw new Error("Failed to register /review handler");
 	}
+	const registeredHandler = handler;
+	const wrappedHandler = (args: string, ctx: any) =>
+		registeredHandler(args, {
+			...ctx,
+			ui: {
+				custom: (factory: any) => runCustomUi(factory),
+				...ctx.ui,
+			},
+		});
 
-	return { handler, commandNames, sentUserMessages, sentMessages, pi };
+	return { handler: wrappedHandler, commandNames, sentUserMessages, sentMessages, pi };
 }
 
 describe("registerReviewCommand", () => {
@@ -188,8 +237,12 @@ describe("/review inactive", () => {
 			flow: {
 				isGitRepository: async () => true,
 				resolveTarget: async () => ({ type: "uncommitted" }),
-				summarizeChangesFromSessionHistory: async (_ctx: any, sourceLeafId: string | undefined) => {
-					summarizeCalls.push(sourceLeafId);
+				summarizeChangesFromSessionHistory: async (
+					_ctx: any,
+					sourceLeafId: string | undefined,
+					options?: { signal?: AbortSignal },
+				) => {
+					summarizeCalls.push({ sourceLeafId, signal: options?.signal });
 					return "## Change summary\n\nUpdates review startup.";
 				},
 				buildInstructionsPrompt: async () => "review instructions",
@@ -217,7 +270,10 @@ describe("/review inactive", () => {
 			},
 		});
 
-		expect(summarizeCalls).toEqual(["leaf-2"]);
+		expect(summarizeCalls).toHaveLength(1);
+		expect(summarizeCalls[0].sourceLeafId).toBe("leaf-2");
+		expect(summarizeCalls[0].signal).toBeInstanceOf(AbortSignal);
+		expect(summarizeCalls[0].signal.aborted).toBe(false);
 		expect(sentMessages).toEqual([
 			{
 				customType: "review-mode:prompt",
@@ -233,6 +289,76 @@ describe("/review inactive", () => {
 		expect(editorPrefills.at(-1)).toBe(
 			"review target prompt\n\n## Change summary\n\nUpdates review startup.",
 		);
+	});
+
+	test("cancels change summary generation with the loader signal", async () => {
+		const startCalls: any[] = [];
+		const editorPrefills: string[] = [];
+		const notifications: Array<{ message: string; level: string }> = [];
+		let summarySignal: AbortSignal | undefined;
+		const { handler } = createRegisteredReviewHandler({
+			stateManager: {
+				getState: () => ({ version: 1, active: false }),
+				setState: () => {},
+				startReviewMode: (_ctx, options) => startCalls.push(options),
+			},
+			flow: {
+				isGitRepository: async () => true,
+				resolveTarget: async () => ({ type: "uncommitted" }),
+				summarizeChangesFromSessionHistory: async (
+					_ctx: any,
+					_sourceLeafId: string | undefined,
+					options?: { signal?: AbortSignal },
+				) => {
+					const signal = options?.signal;
+					summarySignal = signal;
+					if (!signal) {
+						throw new Error("missing summary signal");
+					}
+					return await new Promise<string | null>((_resolve, reject) => {
+						const abort = () => reject(new Error("summary aborted"));
+						if (signal.aborted) {
+							abort();
+							return;
+						}
+						signal.addEventListener("abort", abort, { once: true });
+					});
+				},
+				buildInstructionsPrompt: async () => "review instructions",
+				buildEditorPrompt: async () => "review target prompt",
+				describeTarget: () => "current changes",
+			},
+		});
+
+		await handler("", {
+			hasUI: true,
+			cwd: "/tmp/project",
+			waitForIdle: async () => {},
+			navigateTree: async () => ({ cancelled: false }),
+			sessionManager: {
+				getLeafId: () => "leaf-2",
+				getEntries: () => [
+					{ id: "user-1", type: "message", message: { role: "user" } },
+					{ id: "leaf-2", type: "message", message: { role: "assistant" } },
+				],
+			},
+			ui: {
+				custom: (factory: any) =>
+					runCustomUi(factory, (component) => component.handleInput("\x1b")),
+				select: async () => "Empty branch",
+				notify: (message: string, level: string) => notifications.push({ message, level }),
+				setEditorText: (text: string) => editorPrefills.push(text),
+			},
+		});
+
+		expect(summarySignal?.aborted).toBe(true);
+		expect(startCalls).toHaveLength(1);
+		expect(editorPrefills.at(-1)).toBe("review target prompt");
+		expect(notifications).toContainEqual({
+			message: "Change summary cancelled. Continuing review startup.",
+			level: "info",
+		});
+		expect(notifications.some((event) => event.message.includes("summary aborted"))).toBe(false);
 	});
 
 	test("does not summarize uncommitted changes for current branch reviews", async () => {

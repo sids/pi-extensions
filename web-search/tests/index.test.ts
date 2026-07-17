@@ -1,5 +1,9 @@
-import { describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import webSearchExtension from "../index";
+
+afterEach(() => {
+	vi.restoreAllMocks();
+});
 
 describe("web-search extension", () => {
 	test("registers Brave providers and web_search prompt metadata", () => {
@@ -67,5 +71,47 @@ describe("web-search extension", () => {
 
 		expect(editorText).toEqual(["/login brave-search-fallback"]);
 		expect(notifications).toEqual(["Press Enter to configure the Brave Search API key."]);
+	});
+
+	test("passes the tool abort signal to Brave requests", async () => {
+		let tool: any;
+		webSearchExtension(
+			{
+				registerCommand() {},
+				registerProvider() {},
+				registerTool(candidate: any) {
+					tool = candidate;
+				},
+			} as any,
+		);
+		if (!tool) {
+			throw new Error("web_search was not registered");
+		}
+
+		const controller = new AbortController();
+		const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+			new Response(JSON.stringify({ web: { results: [] } }), {
+				status: 200,
+				headers: { "content-type": "application/json" },
+			}),
+		);
+
+		await tool.execute(
+			"call-1",
+			{ query: "pi extensions" },
+			controller.signal,
+			undefined,
+			{
+				modelRegistry: {
+					getApiKeyForProvider: async (providerId: string) =>
+						providerId === "brave-search" ? "api-key" : undefined,
+				},
+			},
+		);
+
+		expect(fetchMock).toHaveBeenCalledWith(
+			"https://api.search.brave.com/res/v1/web/search?q=pi+extensions&count=10",
+			expect.objectContaining({ signal: controller.signal }),
+		);
 	});
 });

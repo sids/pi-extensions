@@ -1,5 +1,9 @@
-import { describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import fetchUrlExtension from "../index";
+
+afterEach(() => {
+	vi.restoreAllMocks();
+});
 
 describe("fetch-url extension", () => {
 	test("registers fetch_url with a prompt snippet", () => {
@@ -20,5 +24,34 @@ describe("fetch-url extension", () => {
 		expect(tool?.promptGuidelines).toEqual([
 			"Use fetch_url when the user asks to inspect a URL or when web content is needed from a known URL.",
 		]);
+	});
+
+	test("passes the tool abort signal to fetch", async () => {
+		let tool: any;
+		fetchUrlExtension(
+			{
+				registerTool(candidate: any) {
+					tool = candidate;
+				},
+			} as any,
+		);
+		if (!tool) {
+			throw new Error("fetch_url was not registered");
+		}
+
+		const controller = new AbortController();
+		const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+			new Response("response body", {
+				status: 200,
+				headers: { "content-type": "text/plain" },
+			}),
+		);
+
+		await tool.execute("call-1", { url: "https://example.com/article" }, controller.signal);
+
+		expect(fetchMock).toHaveBeenCalledWith(
+			"https://example.com/article",
+			expect.objectContaining({ signal: controller.signal }),
+		);
 	});
 });

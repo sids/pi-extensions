@@ -838,6 +838,7 @@ async function runSubagentTask(
 			cwd: task.cwd,
 			env,
 			shell: false,
+			signal: options?.signal,
 			stdio: ["ignore", "pipe", "pipe"],
 		});
 
@@ -858,7 +859,9 @@ async function runSubagentTask(
 			aborted = true;
 			recordStatus("aborting");
 			try {
-				child.kill("SIGTERM");
+				if (!child.killed) {
+					child.kill("SIGTERM");
+				}
 			} catch {
 				return;
 			}
@@ -1007,6 +1010,9 @@ async function runSubagentTask(
 		});
 
 		child.on("error", (error) => {
+			if (options?.signal?.aborted && (error as NodeJS.ErrnoException).code === "ABORT_ERR") {
+				return;
+			}
 			cleanupAbortHandling();
 			recordStderrLine(error.message);
 			resolveOnce({

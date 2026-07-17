@@ -1,4 +1,5 @@
 import path from "node:path";
+import { BorderedLoader } from "@earendil-works/pi-coding-agent";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { isTuiMode } from "@siddr/pi-shared-qna/extension-mode";
 import { isProjectTrusted } from "@siddr/pi-shared-qna/project-trust";
@@ -63,7 +64,11 @@ type ReviewFlowDependencies = {
 	buildInstructionsPrompt: (cwd: string, options?: { projectTrusted?: boolean }) => Promise<string>;
 	buildEditorPrompt: (pi: ExtensionAPI, cwd: string, target: ReviewTarget) => Promise<string>;
 	describeTarget: (target: ReviewTarget) => string;
-	summarizeChangesFromSessionHistory: (ctx: ExtensionContext, sourceLeafId: string | undefined) => Promise<string | null>;
+	summarizeChangesFromSessionHistory: (
+		ctx: ExtensionContext,
+		sourceLeafId: string | undefined,
+		options?: { signal?: AbortSignal },
+	) => Promise<string | null>;
 	getActivePlanFilePath: (ctx: ExtensionContext) => string | undefined;
 	getCommentsForRun: (ctx: ExtensionContext, runId: string) => ReviewComment[];
 	runTriage: (ctx: ExtensionContext, comments: ReviewComment[], targetHint?: string) => Promise<{
@@ -168,6 +173,43 @@ const defaultDependencies: ReviewFlowDependencies = {
 	runPromptCountdown: runReviewPromptCountdown,
 	formatSummary: formatReviewSummaryMessage,
 };
+
+type ReviewChangeSummaryResult =
+	| { status: "completed"; summary: string | null }
+	| { status: "cancelled" }
+	| { status: "failed"; error: unknown };
+
+async function runCancellableChangeSummary(
+	ctx: ExtensionContext,
+	sourceLeafId: string | undefined,
+	summarize: ReviewFlowDependencies["summarizeChangesFromSessionHistory"],
+): Promise<ReviewChangeSummaryResult> {
+	return ctx.ui.custom<ReviewChangeSummaryResult>((tui, theme, _keybindings, done) => {
+		const loader = new BorderedLoader(tui, theme, "Summarizing changes from session history...");
+		let settled = false;
+		const finish = (result: ReviewChangeSummaryResult) => {
+			if (settled) {
+				return;
+			}
+			settled = true;
+			done(result);
+		};
+
+		loader.onAbort = () => finish({ status: "cancelled" });
+		void Promise.resolve()
+			.then(() => summarize(ctx, sourceLeafId, { signal: loader.signal }))
+			.then((summary) => finish({ status: "completed", summary }))
+			.catch((error) => {
+				if (loader.signal.aborted) {
+					finish({ status: "cancelled" });
+					return;
+				}
+				finish({ status: "failed", error });
+			});
+
+		return loader;
+	});
+}
 
 async function navigateToFreshReviewBranch(ctx: ExtensionContext, cancelMessage: string): Promise<boolean> {
 	const firstUserMessageId = getFirstUserMessageId(ctx);
@@ -384,13 +426,20 @@ export async function startReviewMode(
 	const targetHint = dependencies.describeTarget(target);
 	let changeSummary: string | null = null;
 	if (useFreshBranch && target.type === "uncommitted") {
-		ctx.ui.notify("Summarizing changes from session history...", "info");
-		try {
-			changeSummary = await dependencies.summarizeChangesFromSessionHistory(ctx, originLeafId);
+		const summaryResult = await runCancellableChangeSummary(
+			ctx,
+			originLeafId,
+			dependencies.summarizeChangesFromSessionHistory,
+		).catch((error) => ({ status: "failed" as const, error }));
+		if (summaryResult.status === "completed") {
+			changeSummary = summaryResult.summary;
 			if (!changeSummary) {
 				ctx.ui.notify("Could not summarize changes from session history. Continuing review startup.", "warning");
 			}
-		} catch (error) {
+		} else if (summaryResult.status === "cancelled") {
+			ctx.ui.notify("Change summary cancelled. Continuing review startup.", "info");
+		} else {
+			const error = summaryResult.error;
 			ctx.ui.notify(
 				`Could not summarize changes from session history: ${error instanceof Error ? error.message : String(error)}. Continuing review startup.`,
 				"warning",

@@ -16,6 +16,7 @@ export type ModelAuth = {
 type SummarizeDependencies = {
 	complete?: typeof completeSimple;
 	now?: () => number;
+	signal?: AbortSignal;
 };
 
 export function buildSessionChangeSummaryPrompt(): string {
@@ -139,6 +140,7 @@ export async function summarizeChangesFromSessionHistory(
 			headers: auth.headers,
 			maxTokens: 1_000,
 			sessionId: ctx.sessionManager.getSessionId(),
+			signal: dependencies.signal ?? ctx.signal,
 		},
 	);
 	if (completion.stopReason === "error" || completion.stopReason === "aborted") {

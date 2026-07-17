@@ -86,8 +86,9 @@ describe("buildSessionChangeSummaryPrompt", () => {
 });
 
 describe("summarizeChangesFromSessionHistory", () => {
-	test("uses source branch history, current model/auth, session cache, and omits reasoning", async () => {
+	test("uses source branch history, current model/auth, session cache, abort signal, and omits reasoning", async () => {
 		const model = createModel();
+		const signal = new AbortController().signal;
 		const authCalls: any[] = [];
 		const completeCalls: any[] = [];
 
@@ -112,6 +113,7 @@ describe("summarizeChangesFromSessionHistory", () => {
 			"assistant-1",
 			{
 				now: () => 123,
+				signal,
 				complete: async (...args: any[]) => {
 					completeCalls.push(args);
 					return {
@@ -150,6 +152,7 @@ describe("summarizeChangesFromSessionHistory", () => {
 			headers: { "x-test": "yes" },
 			maxTokens: 1_000,
 			sessionId: "session-1",
+			signal,
 		});
 		expect("reasoning" in completeCalls[0][2]).toBe(false);
 	});

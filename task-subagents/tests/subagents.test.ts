@@ -208,6 +208,7 @@ const usage = {
 	totalTokens: 0,
 	cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
 };
+const delayMs = Number(process.env.SUBAGENT_TEST_DELAY_MS || "25");
 setTimeout(() => {
 	process.stdout.write(JSON.stringify({
 		type: "message_end",
@@ -251,7 +252,7 @@ setTimeout(() => {
 		},
 	}) + "\\n");
 	process.exit(0);
-}, 25);
+}, delayMs);
 `,
 	);
 	await chmod(stubPiPath, 0o755);
@@ -512,6 +513,71 @@ describe("subagents tool", () => {
 				delete process.env.SUBAGENT_LOG_PATH;
 			} else {
 				process.env.SUBAGENT_LOG_PATH = previousSpawnLogPath;
+			}
+			await rm(tempDir, { recursive: true, force: true });
+		}
+	});
+
+	test("aborts running subagent processes with the tool signal", async () => {
+		const tempDir = await mkdtemp(path.join(os.tmpdir(), "task-subagents-process-abort-"));
+		const { binDir, sourceAgentDir, spawnLogPath } = await setupStubPi(tempDir);
+		const subagentsTool = registerTools().subagents;
+		const controller = new AbortController();
+		let previousAgentDir: string | undefined;
+		let previousPath: string | undefined;
+		let previousSpawnLogPath: string | undefined;
+		let previousDelayMs: string | undefined;
+
+		try {
+			previousAgentDir = process.env.PI_CODING_AGENT_DIR;
+			previousPath = process.env.PATH;
+			previousSpawnLogPath = process.env.SUBAGENT_LOG_PATH;
+			previousDelayMs = process.env.SUBAGENT_TEST_DELAY_MS;
+			process.env.PI_CODING_AGENT_DIR = sourceAgentDir;
+			process.env.PATH = [binDir, previousPath].filter(Boolean).join(path.delimiter);
+			process.env.SUBAGENT_LOG_PATH = spawnLogPath;
+			process.env.SUBAGENT_TEST_DELAY_MS = "5000";
+
+			const executionPromise = subagentsTool.execute(
+				"call-1",
+				{
+					tasks: [{ id: "task-a", prompt: "Inspect A", cwd: tempDir }],
+					concurrency: 1,
+				},
+				controller.signal,
+				undefined,
+				createExecuteContext(tempDir),
+			);
+			await expect.poll(async () => (await readSpawnLog(spawnLogPath)).length, { timeout: 3000 }).toBe(1);
+
+			controller.abort();
+			const result = await executionPromise;
+
+			expect(result.details?.tasks[0]).toMatchObject({
+				status: "failed",
+				exitCode: 1,
+				stderr: "aborted",
+			});
+		} finally {
+			if (previousAgentDir === undefined) {
+				delete process.env.PI_CODING_AGENT_DIR;
+			} else {
+				process.env.PI_CODING_AGENT_DIR = previousAgentDir;
+			}
+			if (previousPath === undefined) {
+				delete process.env.PATH;
+			} else {
+				process.env.PATH = previousPath;
+			}
+			if (previousSpawnLogPath === undefined) {
+				delete process.env.SUBAGENT_LOG_PATH;
+			} else {
+				process.env.SUBAGENT_LOG_PATH = previousSpawnLogPath;
+			}
+			if (previousDelayMs === undefined) {
+				delete process.env.SUBAGENT_TEST_DELAY_MS;
+			} else {
+				process.env.SUBAGENT_TEST_DELAY_MS = previousDelayMs;
 			}
 			await rm(tempDir, { recursive: true, force: true });
 		}
