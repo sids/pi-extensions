@@ -8,7 +8,6 @@ A collection of pi extensions. Each extension lives in its own directory with it
 
 - [`plan-md/`](plan-md/) – Branch-based planning workflow with persisted plan files
 - [`task-subagents/`](task-subagents/) – Standalone `subagents` / `steer_subagent` delegation tools with recursion disabled in spawned child sessions
-- [`diff-cmux/`](diff-cmux/) – cmux browser diff review with continuous changed-file streaming, grouped sidebar navigation, and send-to-editor comments
 - [`diff-review/`](diff-review/) – Browser diff review using Pierre diffs/trees with send-to-editor comments
 - [`review/`](review/) – Interactive review mode with target selection, structured findings capture, and triage
 - [`side/`](side/) – Ephemeral floating read-only side chat with summarized and live parent-session context

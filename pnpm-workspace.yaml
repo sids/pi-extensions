@@ -2,7 +2,6 @@ packages:
   - shared
   - answer
   - cmux-status
-  - diff-cmux
   - diff-review
   - fetch-url
   - mention-skills
