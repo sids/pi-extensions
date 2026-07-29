@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.8 - 2026-07-29
+
+- Added tool guidance for choosing `fetch_url` when content is needed from a known URL.
+- Raised the minimum Pi peer version to 0.80.6.
+
 ## 0.1.7 - 2026-05-15
 
 - Updated package metadata for the pnpm workspace migration.

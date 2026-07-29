@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.7 - 2026-07-29
+
+- Registered primary and fallback Brave Search authentication providers with Pi's `/login` flow.
+- Added setup commands that prefill the corresponding Brave Search login command.
+- Added tool guidance for choosing `web_search` when current or external information is needed.
+- Raised the minimum Pi peer version to 0.80.6.
+
 ## 0.1.6 - 2026-05-15
 
 - Updated package metadata for the pnpm workspace migration.

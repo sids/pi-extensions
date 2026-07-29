@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.1.15 - 2026-07-29
+
+- Avoided persisting plans for informational or advice-only requests.
+- Restricted active tools while plan mode is enabled and restored the previous tool set on exit.
+- Added tool guidance for requesting user input during planning.
+- Reported loaded context files and skills when plan mode starts.
+- Limited interactive planning operations and confirmations to TUI sessions.
+- Resolved prompt files from Pi's configured agent directory.
+- Raised the minimum Pi peer version to 0.80.6.
+
 ## 0.1.14 - 2026-05-15
 
 - Updated package metadata for the pnpm workspace migration.

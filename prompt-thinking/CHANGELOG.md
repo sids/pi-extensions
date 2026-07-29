@@ -1,8 +1,9 @@
 # Changelog
 
-## Unreleased
+## 0.1.9 - 2026-07-29
 
 - Added per-prompt `max` thinking overrides for models such as GPT-5.6.
+- Declared `^` as an autocomplete trigger so thinking-level suggestions open naturally.
 - Raised the minimum Pi peer version to 0.80.6.
 
 ## 0.1.8 - 2026-05-15

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.4 - 2026-07-29
+
+- Refined collapsed and expanded Bash output with clearer running, failure, and truncation states.
+- Added richer edit diffs with stats, tinted rows, and current multi-edit argument support.
+- Rendered failed edits with error styling.
+- Preserved built-in tool guidance when registering display overrides.
+- Raised the minimum Pi peer version to 0.80.6.
+
 ## 0.1.3 - 2026-05-15
 
 - Updated package metadata for the pnpm workspace migration.

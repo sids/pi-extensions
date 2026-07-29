@@ -1,8 +1,12 @@
 # Changelog
 
-## Unreleased
+## 0.1.8 - 2026-07-29
 
 - Added `max` thinking-level inheritance, validation, model clamping, and launch controls.
+- Added a live progress widget while subagents are running.
+- Propagated parent cancellation to nested subagent work.
+- Added explicit tool guidance for launching and steering subagents only when requested.
+- Resolved agent paths through Pi's configured agent directory.
 - Raised the minimum Pi peer version to 0.80.6.
 
 ## 0.1.7 - 2026-05-15

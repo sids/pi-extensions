@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.6 - 2026-07-29
+
+- Refreshed the cmux sidebar status when the Pi session name changes.
+- Raised the minimum Pi peer version to 0.80.6.
+
 ## 0.1.5 - 2026-05-15
 
 - Updated package metadata for the pnpm workspace migration.

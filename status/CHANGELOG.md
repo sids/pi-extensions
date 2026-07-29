@@ -1,8 +1,10 @@
 # Changelog
 
-## Unreleased
+## 0.1.9 - 2026-07-29
 
 - Added status coloring for the `max` thinking level.
+- Displayed active plan and review mode tools in the status widget.
+- Refreshed the widget when the Pi session name changes.
 - Raised the minimum Pi peer version to 0.80.6.
 
 ## 0.1.8 - 2026-05-15

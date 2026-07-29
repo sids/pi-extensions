@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.1.12 - 2026-07-29
+
+- Added a 10-second auto-submit countdown for review start and follow-up prompts, with controls to edit or cancel submission.
+- Propagated cancellation through review prompt submission and change-summary generation.
+- Restricted active tools while review mode is enabled and restored the previous tool set on exit.
+- Reported loaded context files and skills when review mode starts.
+- Added explicit guidance for recording findings with `add_review_comment`.
+- Limited review mode to TUI sessions and loaded project review guidance only for trusted projects.
+- Raised the minimum Pi peer version to 0.80.6.
+
 ## 0.1.11 - 2026-05-15
 
 - Updated package metadata for the pnpm workspace migration.
