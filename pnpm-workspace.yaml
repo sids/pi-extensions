@@ -11,6 +11,7 @@ packages:
   - prompt-save
   - prompt-thinking
   - review
+  - session-paths
   - side
   - status
   - task-subagents

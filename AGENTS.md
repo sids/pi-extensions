@@ -2,7 +2,7 @@
 
 ## Project overview
 
-This repository contains the **answer**, **fetch-url**, **web-search**, **status**, **plan-md**, **task-subagents**, **review**, **side**, and **mention-skills** pi extensions.
+This repository contains the **answer**, **fetch-url**, **web-search**, **status**, **plan-md**, **task-subagents**, **review**, **side**, **mention-skills**, and **session-paths** pi extensions.
 
 ## Key files
 
@@ -57,6 +57,11 @@ This repository contains the **answer**, **fetch-url**, **web-search**, **status
 - `mention-skills/utils.ts`: Skill discovery, mention detection, replacement, and autocomplete provider helpers
 - `mention-skills/README.md`: Usage docs
 - `mention-skills/tests/utils.test.ts`: Unit tests
+- `session-paths/index.ts`: Extension entry point
+- `session-paths/session-manager.ts`: SessionManager path-equivalence patch
+- `session-paths/utils.ts`: Home path and session directory helpers
+- `session-paths/README.md`: Usage docs
+- `session-paths/tests/*.test.ts`: Unit tests
 - `shared/qna-tui.ts`: Shared Q&A TUI component
 - `shared/package.json`: npm package manifest for `@siddr/pi-shared-qna`
 - `shared/README.md`: shared package usage notes
@@ -95,5 +100,6 @@ This repository contains the **answer**, **fetch-url**, **web-search**, **status
   pnpm test -- review/tests/target-selector.test.ts
   pnpm test -- side/tests/*.test.ts
   pnpm test -- mention-skills/tests/utils.test.ts
+  pnpm test -- session-paths/tests/*.test.ts
   ```
 - To load an extension locally, symlink its directory into `~/.pi/agent/extensions/<name>` and run `/reload` in pi.

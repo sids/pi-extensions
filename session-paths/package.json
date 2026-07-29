@@ -1,0 +1,31 @@
+{
+  "name": "pi-session-paths",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Treat macOS and Linux home paths as equivalent when finding pi sessions",
+  "license": "MIT",
+  "keywords": [
+    "pi-package"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sids/pi-extensions.git",
+    "directory": "session-paths"
+  },
+  "bugs": {
+    "url": "https://github.com/sids/pi-extensions/issues"
+  },
+  "homepage": "https://github.com/sids/pi-extensions/tree/main/session-paths#readme",
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": ">=0.80.6"
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/",
+    "access": "public"
+  }
+}
