@@ -90,7 +90,7 @@ function formatExpandHint(theme: any): string {
 }
 
 function formatWarning(notice: string | undefined, theme: any): string | undefined {
-	return notice ? theme.fg("warning", notice) : undefined;
+	return notice ? theme.fg("dim", notice) : undefined;
 }
 
 function joinSections(...parts: Array<string | undefined>): string {

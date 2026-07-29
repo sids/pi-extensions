@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.5 - 2026-07-29
+
+- Dimmed file continuation notices so truncated read output stays visually subdued.
+
 ## 0.1.4 - 2026-07-29
 
 - Refined collapsed and expanded Bash output with clearer running, failure, and truncation states.

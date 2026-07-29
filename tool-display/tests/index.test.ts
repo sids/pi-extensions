@@ -14,7 +14,7 @@ const theme = {
 } as any;
 
 const dimTheme = {
-	fg: (name: string, text: string) => (name === "dim" ? `<dim>${text}</dim>` : text),
+	fg: (name: string, text: string) => (name === "dim" || name === "muted" ? `<${name}>${text}</${name}>` : text),
 	bg: (_name: string, text: string) => text,
 	bold: (text: string) => text,
 } as any;
@@ -152,11 +152,22 @@ describe("tool-display extension", () => {
 			const readCollapsed = renderComponent(
 				readTool.renderResult(readResult, { expanded: false, isPartial: false }, theme),
 			);
+			const readLimitedResult = await readTool.execute(
+				"call-read-limited",
+				{ path: "sample.ts", limit: 1 },
+				undefined,
+				undefined,
+				{ cwd: tempRoot },
+			);
+			const readLimitedCollapsed = renderComponent(
+				readTool.renderResult(readLimitedResult, { expanded: false, isPartial: false }, dimTheme),
+			);
 
 			expect(readCall).toContain("read");
 			expect(readCall).toContain("sample.ts");
 			expect(readCollapsed).toContain("loaded 2 lines");
 			expect(readCollapsed).toContain("ctrl+o");
+			expect(readLimitedCollapsed).toContain("<dim>[1 more lines in file. Use offset=2 to continue.]</dim>");
 			expect(readResult.details.toolDisplay.path).toBe("sample.ts");
 
 			const content = Array.from({ length: 12 }, (_, index) => `line ${index + 1}`).join("\n");

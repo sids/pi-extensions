@@ -1,6 +1,6 @@
 {
   "name": "@siddr/pi-tool-display",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "type": "module",
   "description": "Compact built-in tool rendering overrides for pi",
   "license": "MIT",
