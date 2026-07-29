@@ -367,13 +367,13 @@ function registerOverrides(pi: ExtensionAPI, cwd: string) {
 			const text = `${theme.fg("toolTitle", theme.bold("edit"))} ${theme.fg("accent", displayPath)}${suffix}`;
 			return getTextComponent(text);
 		},
-		renderResult(result, { isPartial }, theme) {
+		renderResult(result, { isPartial }, theme, context) {
 			if (isPartial) {
 				return getTextComponent(theme.fg("muted", "Editing..."));
 			}
 
 			const text = extractTextContent(result);
-			if (isErrorResult(result, text)) {
+			if (context.isError || isErrorResult(result, text)) {
 				return renderRawText(text, theme, true);
 			}
 

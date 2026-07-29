@@ -244,7 +244,21 @@ describe("tool-display extension", () => {
 			};
 			const editCall = renderComponent(editTool.renderCall(editArgs, theme));
 			const editRendered = renderComponent(
-				editTool.renderResult(editResult, { expanded: false, isPartial: false }, theme),
+				editTool.renderResult(
+					editResult,
+					{ expanded: false, isPartial: false },
+					theme,
+					{ isError: false } as any,
+				),
+			);
+			const editError = "Could not find edits[0] in edit-target.txt. The oldText must match exactly.";
+			const failedEditRendered = renderComponent(
+				editTool.renderResult(
+					{ content: [{ type: "text", text: editError }] },
+					{ expanded: false, isPartial: false },
+					theme,
+					{ isError: true } as any,
+				),
 			);
 
 			expect(editTool.renderShell).toBe("default");
@@ -257,6 +271,8 @@ describe("tool-display extension", () => {
 			expect(editRendered).toContain("alpha updated");
 			expect(editRendered).toContain("beta updated");
 			expect(editResult.details.toolDisplay.path).toBe("edit-target.txt");
+			expect(failedEditRendered).toContain(editError);
+			expect(failedEditRendered).not.toContain("Applied");
 		} finally {
 			await rm(tempRoot, { recursive: true, force: true });
 		}
