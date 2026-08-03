@@ -1,4 +1,5 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { runReviewAutoSelect } from "./auto-select-tui";
 import {
 	checkoutPr,
 	getCurrentBranch,
@@ -31,6 +32,16 @@ const GH_SETUP_INSTRUCTIONS =
 export type ParsedReviewArgs = ReviewTarget | { type: "pr"; ref: string } | null;
 
 type SmartDefaultReviewPreset = "uncommitted" | "baseBranch" | "commit";
+
+type ReviewPresetItem = { value: ReviewPreset; label: string; description: string };
+
+export type ReviewTargetSelectionDependencies = {
+	selectPreset?: (
+		ctx: ExtensionContext,
+		items: ReviewPresetItem[],
+		smartDefault: SmartDefaultReviewPreset,
+	) => Promise<string | undefined>;
+};
 
 async function getSmartDefaultReviewPreset(pi: ExtensionAPI, cwd: string): Promise<SmartDefaultReviewPreset> {
 	if (await hasUncommittedChanges(pi, cwd)) {
@@ -299,19 +310,41 @@ async function showPrInput(pi: ExtensionAPI, ctx: ExtensionContext): Promise<Rev
 	return resolvePullRequestTarget(pi, ctx, prRef.trim());
 }
 
-async function showReviewSelector(pi: ExtensionAPI, ctx: ExtensionContext): Promise<ReviewTarget | null> {
+async function selectReviewPreset(
+	ctx: ExtensionContext,
+	items: ReviewPresetItem[],
+	smartDefault: SmartDefaultReviewPreset,
+): Promise<string | undefined> {
+	if (smartDefault === "uncommitted") {
+		return runReviewAutoSelect(ctx, "Select a review preset", items, "uncommitted");
+	}
+
+	const labels = items.map((item) => `${item.label}${item.description ? ` ${item.description}` : ""}`);
+	const selectedLabel = await ctx.ui.select("Select a review preset", labels);
+	const selectedIndex = labels.indexOf(selectedLabel ?? "");
+	return selectedIndex >= 0 ? items[selectedIndex]?.value : undefined;
+}
+
+async function showReviewSelector(
+	pi: ExtensionAPI,
+	ctx: ExtensionContext,
+	selectPreset: NonNullable<ReviewTargetSelectionDependencies["selectPreset"]>,
+): Promise<ReviewTarget | null> {
 	const smartDefault = await getSmartDefaultReviewPreset(pi, ctx.cwd);
 	const ordered = getReviewPresetsForSelector(smartDefault);
 
 	while (true) {
-		const labels = ordered.map((preset) => `${preset.label}${preset.description ? ` ${preset.description}` : ""}`);
-		const selection = await ctx.ui.select("Select a review preset", labels);
+		const items = ordered.map((preset) => ({
+			value: preset.value,
+			label: preset.label,
+			description: preset.description,
+		}));
+		const selection = await selectPreset(ctx, items, smartDefault);
 		if (selection === undefined) {
 			return null;
 		}
 
-		const selectedIndex = labels.indexOf(selection);
-		const selected = ordered[selectedIndex];
+		const selected = ordered.find((preset) => preset.value === selection);
 		if (!selected) {
 			return null;
 		}
@@ -357,6 +390,7 @@ export async function resolveReviewTarget(
 	pi: ExtensionAPI,
 	ctx: ExtensionContext,
 	args: string,
+	dependencies: ReviewTargetSelectionDependencies = {},
 ): Promise<ReviewTarget | null> {
 	const trimmedArgs = args.trim();
 	const parsed = parseReviewArgs(trimmedArgs);
@@ -379,5 +413,5 @@ export async function resolveReviewTarget(
 		return null;
 	}
 
-	return showReviewSelector(pi, ctx);
+	return showReviewSelector(pi, ctx, dependencies.selectPreset ?? selectReviewPreset);
 }

@@ -62,7 +62,13 @@ describe("resolveReviewTarget selector", () => {
 			},
 		} as any;
 
-		const target = await resolveReviewTarget(pi, ctx, "");
+		const target = await resolveReviewTarget(pi, ctx, "", {
+			selectPreset: async (_ctx, items, smartDefault) => {
+				expect(smartDefault).toBe("uncommitted");
+				labelsSeen = items.map((item) => `${item.label}${item.description ? ` ${item.description}` : ""}`);
+				return undefined;
+			},
+		});
 		expect(target).toBeNull();
 		expect(labelsSeen).toEqual([
 			"Review uncommitted changes",

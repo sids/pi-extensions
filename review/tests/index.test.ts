@@ -6,9 +6,14 @@ initTheme(undefined, false);
 
 type Handler = (event: any, ctx: any) => any;
 
-function createHarness(entries: any[]) {
+function createHarness(entries: any[], options?: { tui?: boolean; automaticTriageResult?: unknown }) {
 	const handlers = new Map<string, Handler[]>();
 	const messageRenderers = new Map<string, any>();
+	const commandHandlers = new Map<string, (args: string, ctx: any) => Promise<void>>();
+	const editorTexts: string[] = [];
+	const sentMessages: any[] = [];
+	const sentUserMessages: string[] = [];
+	const notifications: Array<{ message: string; level: string }> = [];
 
 	const pi = {
 		on(name: string, handler: Handler) {
@@ -16,8 +21,8 @@ function createHarness(entries: any[]) {
 			list.push(handler);
 			handlers.set(name, list);
 		},
-		appendEntry(_customType: string, data: any) {
-			entries.push({ type: "custom", customType: "review-mode:state", data });
+		appendEntry(customType: string, data: any) {
+			entries.push({ type: "custom", customType, data });
 		},
 		getActiveTools() {
 			return [];
@@ -27,17 +32,38 @@ function createHarness(entries: any[]) {
 			messageRenderers.set(customType, renderer);
 		},
 		registerTool() {},
-		registerCommand() {},
+		registerCommand(name: string, command: { handler: (args: string, ctx: any) => Promise<void> }) {
+			commandHandlers.set(name, command.handler);
+		},
+		sendMessage(message: any) {
+			sentMessages.push(message);
+		},
+		sendUserMessage(message: string) {
+			sentUserMessages.push(message);
+		},
+		getThinkingLevel() {
+			return "off";
+		},
+		setThinkingLevel() {},
+		setModel: async () => true,
+		exec: async () => ({ code: 0, stdout: "", stderr: "" }),
 	} as any;
 
 	reviewExtension(pi);
 
 	const ctx = {
-		hasUI: false,
+		mode: options?.tui ? "tui" : "print",
+		hasUI: Boolean(options?.tui),
 		cwd: "/tmp",
 		ui: {
-			notify() {},
+			notify(message: string, level: string) {
+				notifications.push({ message, level });
+			},
 			setWidget() {},
+			setEditorText(text: string) {
+				editorTexts.push(text);
+			},
+			custom: async () => options?.automaticTriageResult,
 		},
 		sessionManager: {
 			getEntries: () => entries,
@@ -53,9 +79,156 @@ function createHarness(entries: any[]) {
 
 	return {
 		emit,
+		commandHandlers,
+		editorTexts,
 		messageRenderers,
+		notifications,
+		sentMessages,
+		sentUserMessages,
 	};
 }
+
+describe("automatic review exit", () => {
+	const activeStateEntry = {
+		type: "custom",
+		customType: "review-mode:state",
+		data: {
+			version: 1,
+			active: true,
+			runId: "review-current",
+			targetHint: "current changes",
+			reviewInstructionsPrompt: "Review prompt",
+		},
+	};
+
+	test("preserves restored-session triage until /review provides a command context", async () => {
+		const entries: any[] = [activeStateEntry];
+		const harness = createHarness(entries, {
+			tui: true,
+			automaticTriageResult: { comments: [], keptCount: 0, discardedCount: 0 },
+		});
+		await harness.emit("session_start");
+		await harness.emit("agent_settled");
+		expect(harness.notifications).toEqual([]);
+
+		await harness.emit("agent_start");
+		await harness.emit("agent_settled");
+		await new Promise((resolve) => setTimeout(resolve, 5));
+
+		expect(harness.sentUserMessages).toEqual([]);
+		expect(harness.editorTexts).toEqual(["/review"]);
+		expect(harness.notifications).toContainEqual({
+			message: "Review triage is complete. Press Enter to return to the original branch.",
+			level: "warning",
+		});
+
+		const reviewHandler = harness.commandHandlers.get("review");
+		if (!reviewHandler) {
+			throw new Error("Review command was not registered");
+		}
+		await reviewHandler("", {
+			mode: "tui",
+			hasUI: true,
+			cwd: "/tmp",
+			waitForIdle: async () => {},
+			sessionManager: {
+				getLeafId: () => "review-leaf",
+				getEntries: () => entries,
+			},
+			ui: {
+				notify: () => {},
+				setEditorText: () => {},
+				setWidget: () => {},
+			},
+		});
+		const latestState = entries.findLast(
+			(entry) => entry.type === "custom" && entry.customType === "review-mode:state",
+		)?.data;
+		expect(latestState.active).toBe(false);
+	});
+
+	test("ends through the captured command context without injecting a slash command", async () => {
+		const entries: any[] = [
+			{ id: "origin-leaf", type: "message", message: { role: "user" } },
+		];
+		let currentLeaf = "origin-leaf";
+		const navigateCalls: string[] = [];
+		const harness = createHarness(entries, {
+			tui: true,
+			automaticTriageResult: {
+				comments: [{
+					id: "comment-1",
+					keep: true,
+					priority: "P1",
+					comment: "Fix the race",
+					references: [],
+					originalPriority: "P1",
+				}],
+				keptCount: 1,
+				discardedCount: 0,
+			},
+		});
+		await harness.emit("session_start");
+
+		const reviewHandler = harness.commandHandlers.get("review");
+		if (!reviewHandler) {
+			throw new Error("Review command was not registered");
+		}
+		await reviewHandler("custom review target", {
+			mode: "tui",
+			hasUI: true,
+			cwd: "/tmp",
+			waitForIdle: async () => {},
+			getSystemPromptOptions: () => ({}),
+			navigateTree: async (entryId: string) => {
+				navigateCalls.push(entryId);
+				currentLeaf = entryId;
+				return { cancelled: false };
+			},
+			sessionManager: {
+				getLeafId: () => currentLeaf,
+				getEntries: () => entries,
+			},
+			ui: {
+				custom: async () => "edit",
+				notify: () => {},
+				setEditorText: () => {},
+				setWidget: () => {},
+			},
+		});
+
+		const activeState = entries.findLast(
+			(entry) => entry.type === "custom" && entry.customType === "review-mode:state",
+		)?.data;
+		if (!activeState?.runId) {
+			throw new Error("Review mode did not start");
+		}
+		entries.push({
+			type: "custom",
+			customType: "review-mode:comment",
+			data: {
+				version: 1,
+				id: "comment-1",
+				runId: activeState.runId,
+				priority: "P1",
+				comment: "Fix the race",
+				references: [],
+				createdAt: 1,
+			},
+		});
+		currentLeaf = "review-leaf";
+
+		await harness.emit("agent_start");
+		await harness.emit("agent_settled");
+		await new Promise((resolve) => setTimeout(resolve, 5));
+
+		expect(navigateCalls).toEqual(["origin-leaf"]);
+		expect(harness.sentMessages.at(-1)?.content).toContain("Fix the race");
+		expect(harness.sentUserMessages).toEqual([
+			"Exercise your judgment as to which review comments to accept. Address the comments you accept.",
+		]);
+	});
+});
 
 describe("review change summary renderer", () => {
 	test("shows a short preview until expanded", () => {

@@ -1,6 +1,6 @@
 import { keyHint, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Box, Text } from "@earendil-works/pi-tui";
-import { registerAddReviewCommentTool } from "./comments";
+import { getReviewCommentsForRun, registerAddReviewCommentTool } from "./comments";
 import {
 	registerReviewCommand,
 	REVIEW_CHANGE_SUMMARY_ENTRY_TYPE,
@@ -8,11 +8,14 @@ import {
 	REVIEW_SUMMARY_ENTRY_TYPE,
 	type ReviewPromptDetails,
 } from "./flow";
+import { ReviewLifecycleController } from "./lifecycle";
 import { AddReviewCommentSchema } from "./schemas";
 import { CONTEXT_ENTRY_TYPE, createReviewModeStateManager } from "./state";
+import { runReviewTriageWithCountdown } from "./triage-tui";
 
 export default function (pi: ExtensionAPI) {
 	const stateManager = createReviewModeStateManager(pi);
+	const lifecycle = new ReviewLifecycleController();
 
 	pi.registerMessageRenderer(REVIEW_SUMMARY_ENTRY_TYPE, (message, _options, theme) => {
 		const box = new Box(1, 0, (segment) => theme.bg("customMessageBg", segment));
@@ -87,8 +90,11 @@ export default function (pi: ExtensionAPI) {
 		addReviewCommentSchema: AddReviewCommentSchema,
 	});
 
-	registerReviewCommand(pi, {
+	const reviewCommand = registerReviewCommand(pi, {
 		stateManager,
+		flow: {
+			setLifecyclePhase: (phase, runId) => lifecycle.setPhase(phase, runId),
+		},
 	});
 
 	pi.on("before_agent_start", async () => {
@@ -112,8 +118,69 @@ export default function (pi: ExtensionAPI) {
 		};
 	});
 
+	pi.on("agent_start", async () => {
+		const state = stateManager.getState();
+		if (!state.active || !state.runId) {
+			return;
+		}
+		lifecycle.markAgentStarted(state.runId);
+	});
+
+	pi.on("agent_settled", async (_event, ctx) => {
+		const state = stateManager.getState();
+		if (
+			ctx.mode !== "tui"
+			|| !state.active
+			|| !state.runId
+			|| !lifecycle.beginAutoExit(state.runId)
+		) {
+			return;
+		}
+
+		setTimeout(() => {
+			void (async () => {
+				const latestState = stateManager.getState();
+				if (!latestState.active || latestState.runId !== state.runId) {
+					lifecycle.restore(latestState.active, latestState.runId);
+					return;
+				}
+
+				const comments = getReviewCommentsForRun(ctx, state.runId);
+				const triageResult = await runReviewTriageWithCountdown(ctx, comments, state.targetHint);
+				if (!triageResult) {
+					lifecycle.setPhase("reviewing", state.runId);
+					ctx.ui.notify("Review mode end cancelled. Continuing review mode.", "info");
+					return;
+				}
+
+				const result = await reviewCommand.endAutomatically(state.runId, triageResult);
+				if (result === "ended") {
+					return;
+				}
+				const currentState = stateManager.getState();
+				lifecycle.restore(currentState.active, currentState.runId);
+				if (result === "unavailable" && currentState.active && currentState.runId === state.runId) {
+					ctx.ui.setEditorText("/review");
+					ctx.ui.notify(
+						"Review triage is complete. Press Enter to return to the original branch.",
+						"warning",
+					);
+				}
+			})().catch((error) => {
+				const latestState = stateManager.getState();
+				lifecycle.restore(latestState.active, latestState.runId);
+				ctx.ui.notify(
+					`Automatic review exit failed: ${error instanceof Error ? error.message : String(error)}`,
+					"error",
+				);
+			});
+		}, 0);
+	});
+
 	pi.on("session_start", async (_event, ctx) => {
 		stateManager.refresh(ctx);
+		const state = stateManager.getState();
+		lifecycle.restore(state.active, state.runId);
 	});
 
 	pi.on("session_tree", async (_event, ctx) => {

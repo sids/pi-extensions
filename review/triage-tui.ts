@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { isTuiMode } from "@siddr/pi-shared-qna/extension-mode";
+import { CountdownController, formatCountdownLabel } from "./countdown";
 import type { ReviewComment, ReviewPriority, ReviewTriageResult, TriagedReviewComment } from "./types";
 import { toTriagedReviewComment } from "./utils";
 
@@ -113,10 +114,20 @@ export function buildReviewTriageResult(comments: TriagedReviewComment[]): Revie
 	};
 }
 
+export type ReviewTriageTimingOptions = {
+	timeoutMs?: number;
+	countdownTickMs?: number;
+	now?: () => number;
+};
+
+const DEFAULT_AUTO_ACCEPT_TIMEOUT_MS = 10_000;
+const DEFAULT_COUNTDOWN_TICK_MS = 250;
+
 type TuiComponent = {
 	handleInput: (data: string) => void;
 	render: (width: number) => string[];
 	invalidate: () => void;
+	dispose?: () => void;
 };
 
 class ReviewTriageComponent implements TuiComponent {
@@ -134,6 +145,8 @@ class ReviewTriageComponent implements TuiComponent {
 	private tui: { requestRender: () => void };
 	private onDone: (result: ReviewTriageResult | null) => void;
 	private titleHint?: string;
+	private autoAcceptCountdown?: CountdownController;
+	private autoAcceptInterrupted = false;
 
 	private cachedWidth?: number;
 	private cachedLines?: string[];
@@ -157,6 +170,7 @@ class ReviewTriageComponent implements TuiComponent {
 			mutedColor?: (text: string) => string;
 			dimColor?: (text: string) => string;
 			boldText?: (text: string) => string;
+			autoAcceptTiming?: ReviewTriageTimingOptions;
 		},
 	) {
 		this.comments = comments;
@@ -185,6 +199,21 @@ class ReviewTriageComponent implements TuiComponent {
 			this.tui.requestRender();
 		};
 		this.loadCurrentNote();
+
+		if (options?.autoAcceptTiming) {
+			this.autoAcceptCountdown = new CountdownController(
+				() => this.submit(),
+				() => {
+					this.invalidate();
+					this.tui.requestRender();
+				},
+				{
+					timeoutMs: options.autoAcceptTiming.timeoutMs ?? DEFAULT_AUTO_ACCEPT_TIMEOUT_MS,
+					countdownTickMs: options.autoAcceptTiming.countdownTickMs ?? DEFAULT_COUNTDOWN_TICK_MS,
+					now: options.autoAcceptTiming.now,
+				},
+			);
+		}
 	}
 
 	private getCurrent(): TriagedReviewComment | undefined {
@@ -263,8 +292,23 @@ class ReviewTriageComponent implements TuiComponent {
 	}
 
 	private submit(): void {
+		this.autoAcceptCountdown?.stop();
 		this.saveCurrentNote();
 		this.onDone(buildReviewTriageResult(this.comments));
+	}
+
+	private interruptAutoAccept(): void {
+		if (!this.autoAcceptCountdown || this.autoAcceptInterrupted) {
+			return;
+		}
+		this.autoAcceptInterrupted = true;
+		this.autoAcceptCountdown.stop();
+		this.invalidate();
+		this.tui.requestRender();
+	}
+
+	dispose(): void {
+		this.autoAcceptCountdown?.stop();
 	}
 
 	invalidate(): void {
@@ -274,6 +318,7 @@ class ReviewTriageComponent implements TuiComponent {
 
 	handleInput(data: string): void {
 		const { Key, matchesKey } = getPiTui();
+		this.interruptAutoAccept();
 
 		if (matchesKey(data, Key.ctrl("c"))) {
 			this.onDone(null);
@@ -368,6 +413,20 @@ class ReviewTriageComponent implements TuiComponent {
 		};
 
 		lines.push("");
+		const heading = this.bold(this.showingConfirmation ? "Confirm review submission" : "Review Triage");
+		if (this.titleHint?.trim()) {
+			lines.push(padLine(`${heading}${this.dim(` · Target: ${this.titleHint.trim()}`)}`));
+		} else {
+			lines.push(padLine(heading));
+		}
+		lines.push(padLine(this.dim("─".repeat(Math.max(0, lineWidth - 1)))));
+		if (this.autoAcceptCountdown) {
+			const autoAcceptStatus = this.autoAcceptInterrupted
+				? this.muted("Automatic acceptance paused. Triage comments manually.")
+				: `${this.warning("Accepting all comments and returning in ")}${this.accent(formatCountdownLabel(this.autoAcceptCountdown.getRemainingMs()))}${this.warning(". Press any key to triage manually.")}`;
+			lines.push(padLine(autoAcceptStatus));
+			lines.push(padLine(""));
+		}
 		if (this.comments.length === 0) {
 			lines.push(padLine("No review comments were collected for this run."));
 			lines.push(padLine(this.dim("Press Enter to confirm or Ctrl+C to cancel.")));
@@ -376,14 +435,6 @@ class ReviewTriageComponent implements TuiComponent {
 			this.cachedWidth = width;
 			return lines;
 		}
-
-		const heading = this.bold(this.showingConfirmation ? "Confirm review submission" : "Review Triage");
-		if (this.titleHint?.trim()) {
-			lines.push(padLine(`${heading}${this.dim(` · Target: ${this.titleHint.trim()}`)}`));
-		} else {
-			lines.push(padLine(heading));
-		}
-		lines.push(padLine(this.dim("─".repeat(Math.max(0, lineWidth - 1)))));
 
 		const separator = this.muted(" · ");
 		const hint = (shortcut: string, action: string) => `${this.bold(shortcut)} ${this.muted(action)}`;
@@ -502,10 +553,11 @@ class ReviewTriageComponent implements TuiComponent {
 	}
 }
 
-export async function runReviewTriage(
+async function runReviewTriageComponent(
 	ctx: ExtensionContext,
 	comments: ReviewComment[],
 	targetHint?: string,
+	autoAcceptTiming?: ReviewTriageTimingOptions,
 ): Promise<ReviewTriageResult | null> {
 	if (!isTuiMode(ctx)) {
 		return null;
@@ -521,6 +573,24 @@ export async function runReviewTriage(
 			mutedColor: (text) => theme.fg("muted", text),
 			dimColor: (text) => theme.fg("dim", text),
 			boldText: (text) => theme.bold(text),
+			...(autoAcceptTiming ? { autoAcceptTiming } : {}),
 		});
 	});
+}
+
+export async function runReviewTriage(
+	ctx: ExtensionContext,
+	comments: ReviewComment[],
+	targetHint?: string,
+): Promise<ReviewTriageResult | null> {
+	return runReviewTriageComponent(ctx, comments, targetHint);
+}
+
+export async function runReviewTriageWithCountdown(
+	ctx: ExtensionContext,
+	comments: ReviewComment[],
+	targetHint?: string,
+	timing: ReviewTriageTimingOptions = {},
+): Promise<ReviewTriageResult | null> {
+	return runReviewTriageComponent(ctx, comments, targetHint, timing);
 }

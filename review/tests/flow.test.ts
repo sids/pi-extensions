@@ -69,10 +69,12 @@ function createRegisteredReviewHandler(options: {
 		...(options.pi ?? {}),
 	} as any;
 
-	registerReviewCommand(pi, {
+	const reviewCommand = registerReviewCommand(pi, {
 		stateManager: options.stateManager,
 		flow: {
 			runPromptCountdown: async () => "edit",
+			selectStartLocation: async (ctx: any) =>
+				ctx.ui.select("Start review in:", ["Empty branch", "Current branch"]),
 			...(options.flow as any),
 		},
 		onReviewEnded: options.onReviewEnded,
@@ -91,7 +93,7 @@ function createRegisteredReviewHandler(options: {
 			},
 		});
 
-	return { handler: wrappedHandler, commandNames, sentUserMessages, sentMessages, pi };
+	return { handler: wrappedHandler, commandNames, reviewCommand, sentUserMessages, sentMessages, pi };
 }
 
 describe("registerReviewCommand", () => {
@@ -227,12 +229,19 @@ describe("/review inactive", () => {
 
 	test("includes the uncommitted change summary in the editable start prompt", async () => {
 		const summarizeCalls: any[] = [];
+		let replacementUiCalls = 0;
+		const lifecyclePhases: Array<{ phase: string; runId?: string }> = [];
 		const editorPrefills: string[] = [];
+		let state: any = { version: 1, active: false };
 		const { handler, sentMessages } = createRegisteredReviewHandler({
 			stateManager: {
-				getState: () => ({ version: 1, active: false }),
-				setState: () => {},
-				startReviewMode: () => {},
+				getState: () => state,
+				setState: (_ctx, nextState) => {
+					state = nextState;
+				},
+				startReviewMode: (_ctx, options) => {
+					state = { version: 1, active: true, runId: options.runId };
+				},
 			},
 			flow: {
 				isGitRepository: async () => true,
@@ -248,6 +257,7 @@ describe("/review inactive", () => {
 				buildInstructionsPrompt: async () => "review instructions",
 				buildEditorPrompt: async () => "review target prompt",
 				describeTarget: () => "current changes",
+				setLifecyclePhase: (phase: string, runId?: string) => lifecyclePhases.push({ phase, runId }),
 			},
 		});
 
@@ -264,12 +274,17 @@ describe("/review inactive", () => {
 				],
 			},
 			ui: {
+				custom: (factory: any) => {
+					replacementUiCalls += 1;
+					return runCustomUi(factory);
+				},
 				select: async () => "Empty branch",
 				notify: () => {},
 				setEditorText: (text: string) => editorPrefills.push(text),
 			},
 		});
 
+		expect(replacementUiCalls).toBe(1);
 		expect(summarizeCalls).toHaveLength(1);
 		expect(summarizeCalls[0].sourceLeafId).toBe("leaf-2");
 		expect(summarizeCalls[0].signal).toBeInstanceOf(AbortSignal);
@@ -289,6 +304,11 @@ describe("/review inactive", () => {
 		expect(editorPrefills.at(-1)).toBe(
 			"review target prompt\n\n## Change summary\n\nUpdates review startup.",
 		);
+		expect(lifecyclePhases).toEqual([
+			{ phase: "selecting", runId: undefined },
+			{ phase: "summarizing", runId: undefined },
+			{ phase: "reviewing", runId: expect.any(String) },
+		]);
 	});
 
 	test("cancels change summary generation with the loader signal", async () => {
@@ -1038,6 +1058,155 @@ describe("/review inactive", () => {
 });
 
 describe("/review active", () => {
+	test("preserves automatic triage until a command context becomes available", async () => {
+		let state: any = { version: 1, active: true, runId: "run-current" };
+		let commentsRead = false;
+		const { handler, reviewCommand, sentMessages, sentUserMessages } = createRegisteredReviewHandler({
+			stateManager: {
+				getState: () => state,
+				setState: (_ctx, nextState) => {
+					state = nextState;
+				},
+				startReviewMode: () => {},
+			},
+			flow: {
+				getCommentsForRun: () => {
+					commentsRead = true;
+					return [];
+				},
+			},
+		});
+
+		expect(await reviewCommand.endAutomatically("run-current", {
+			comments: [],
+			keptCount: 0,
+			discardedCount: 0,
+		})).toBe("unavailable");
+		expect(commentsRead).toBe(false);
+
+		await handler("", {
+			hasUI: true,
+			cwd: "/tmp/project",
+			waitForIdle: async () => {},
+			sessionManager: {
+				getLeafId: () => "review-leaf",
+				getEntries: () => [],
+			},
+			ui: { notify: () => {}, setEditorText: () => {} },
+		});
+
+		expect(state.active).toBe(false);
+		expect(commentsRead).toBe(true);
+		expect(sentMessages).toEqual([]);
+		expect(sentUserMessages).toEqual([]);
+	});
+
+	test("automatically ends without triage and lets the agent judge all comments", async () => {
+		let state: any = { version: 1, active: false };
+		let currentLeaf = "origin-leaf";
+		const entries = [{ id: "origin-leaf", type: "message", message: { role: "user" } }];
+		const navigateCalls: any[] = [];
+		const editorPrefills: string[] = [];
+		const { handler, reviewCommand, sentMessages, sentUserMessages } = createRegisteredReviewHandler({
+			stateManager: {
+				getState: () => state,
+				setState: (_ctx, next) => {
+					state = next;
+				},
+				startReviewMode: (_ctx, options) => {
+					state = { version: 1, active: true, ...options };
+				},
+			},
+			flow: {
+				isGitRepository: async () => true,
+				resolveTarget: async () => ({ type: "custom", instructions: "review target" }),
+				buildInstructionsPrompt: async () => "review instructions",
+				buildEditorPrompt: async () => "review target prompt",
+				describeTarget: () => "current changes",
+				getCommentsForRun: (_ctx, runId) => [
+					{
+						version: 1,
+						id: "c1",
+						runId,
+						priority: "P1",
+						comment: "first finding",
+						references: [],
+						createdAt: 1,
+					},
+					{
+						version: 1,
+						id: "c2",
+						runId,
+						priority: "P2",
+						comment: "second finding",
+						references: [],
+						createdAt: 2,
+					},
+				],
+				runTriage: async () => {
+					throw new Error("automatic end should skip manual triage");
+				},
+			},
+		});
+		const commandContext = {
+			hasUI: true,
+			cwd: "/tmp/project",
+			waitForIdle: async () => {},
+			navigateTree: async (entryId: string, options: any) => {
+				navigateCalls.push({ entryId, options });
+				currentLeaf = entryId;
+				return { cancelled: false };
+			},
+			sessionManager: {
+				getLeafId: () => currentLeaf,
+				getEntries: () => entries,
+			},
+			ui: {
+				notify: () => {},
+				setEditorText: (text: string) => editorPrefills.push(text),
+			},
+		};
+
+		await handler("custom review target", commandContext);
+		const runId = state.runId;
+		currentLeaf = "review-leaf";
+		expect(await reviewCommand.endAutomatically(runId, {
+			comments: [
+				{
+					id: "c1",
+					keep: true,
+					priority: "P1",
+					comment: "first finding",
+					references: [],
+					originalPriority: "P1",
+				},
+				{
+					id: "c2",
+					keep: true,
+					priority: "P2",
+					comment: "second finding",
+					references: [],
+					originalPriority: "P2",
+				},
+			],
+			keptCount: 2,
+			discardedCount: 0,
+		})).toBe("ended");
+
+		expect(navigateCalls).toEqual([
+			{
+				entryId: "origin-leaf",
+				options: { summarize: false, label: "review-mode" },
+			},
+		]);
+		expect(sentMessages.at(-1).content).toContain("first finding");
+		expect(sentMessages.at(-1).content).toContain("second finding");
+		expect(sentUserMessages).toEqual([
+			"Exercise your judgment as to which review comments to accept. Address the comments you accept.",
+		]);
+		expect(editorPrefills).toEqual(["review target prompt"]);
+	});
+
 	test("ends review mode and summarizes only kept comments", async () => {
 		let state = {
 			version: 1,

@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import {
 	runReviewPromptCountdown,
 	type ReviewPromptCountdownDecision,
@@ -8,9 +8,9 @@ import {
 const ESCAPE = "\u001b";
 const CTRL_C = "\u0003";
 
-function delay(ms: number): Promise<void> {
-	return new Promise((resolve) => setTimeout(resolve, ms));
-}
+afterEach(() => {
+	vi.useRealTimers();
+});
 
 async function runPromptCountdown(options: {
 	drive: (component: any) => Promise<void> | void;
@@ -64,10 +64,11 @@ describe("runReviewPromptCountdown", () => {
 	});
 
 	test("auto-submits when the timer expires", async () => {
+		vi.useFakeTimers();
 		const result = await runPromptCountdown({
 			timing: { timeoutMs: 30, countdownTickMs: 5 },
 			drive: async () => {
-				await delay(60);
+				await vi.advanceTimersByTimeAsync(60);
 			},
 		});
 
@@ -75,11 +76,12 @@ describe("runReviewPromptCountdown", () => {
 	});
 
 	test("ignores regular input while auto-submit is active", async () => {
+		vi.useFakeTimers();
 		const result = await runPromptCountdown({
 			timing: { timeoutMs: 30, countdownTickMs: 5 },
 			drive: async (component) => {
 				component.handleInput("x");
-				await delay(60);
+				await vi.advanceTimersByTimeAsync(60);
 			},
 		});
 
@@ -87,13 +89,14 @@ describe("runReviewPromptCountdown", () => {
 	});
 
 	test("uses Ctrl+C to stop auto-submit", async () => {
+		vi.useFakeTimers();
 		const result = await runPromptCountdown({
 			timing: { timeoutMs: 30, countdownTickMs: 5 },
 			drive: (component) => {
 				component.handleInput(CTRL_C);
 			},
 		});
-		await delay(60);
+		await vi.advanceTimersByTimeAsync(60);
 
 		expect(result).toBe("edit");
 	});

@@ -1,6 +1,7 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Key, matchesKey, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
 import { isTuiMode } from "@siddr/pi-shared-qna/extension-mode";
+import { CountdownController, formatCountdownLabel } from "./countdown";
 
 export type ReviewPromptCountdownDecision = "submit" | "edit";
 
@@ -25,13 +26,7 @@ class ReviewPromptCountdownComponent implements TuiComponent {
 	private readonly title: string;
 	private readonly tui: { requestRender: () => void };
 	private readonly onDone: (decision: ReviewPromptCountdownDecision) => void;
-	private readonly timeoutMs: number;
-	private readonly countdownTickMs: number;
-	private readonly now: () => number;
-	private readonly deadlineMs: number;
-
-	private timeout?: ReturnType<typeof setTimeout>;
-	private refreshTimer?: ReturnType<typeof setInterval>;
+	private readonly countdown: CountdownController;
 	private finished = false;
 	private cachedWidth?: number;
 	private cachedLines?: string[];
@@ -65,25 +60,18 @@ class ReviewPromptCountdownComponent implements TuiComponent {
 		this.accent = options?.accentColor ?? this.accent;
 		this.warning = options?.warningColor ?? this.warning;
 		this.muted = options?.mutedColor ?? this.muted;
-		this.timeoutMs =
-			typeof options?.timing?.timeoutMs === "number" && Number.isFinite(options.timing.timeoutMs)
-				? Math.max(1, Math.floor(options.timing.timeoutMs))
-				: DEFAULT_TIMEOUT_MS;
-		this.countdownTickMs =
-			typeof options?.timing?.countdownTickMs === "number" && Number.isFinite(options.timing.countdownTickMs)
-				? Math.max(1, Math.floor(options.timing.countdownTickMs))
-				: DEFAULT_COUNTDOWN_TICK_MS;
-		this.now = options?.timing?.now ?? Date.now;
-		this.deadlineMs = this.now() + this.timeoutMs;
-
-		this.timeout = setTimeout(() => this.finish("submit"), this.timeoutMs);
-		this.refreshTimer = setInterval(() => {
-			if (this.finished) {
-				return;
-			}
-			this.invalidate();
-			this.tui.requestRender();
-		}, this.countdownTickMs);
+		this.countdown = new CountdownController(
+			() => this.finish("submit"),
+			() => {
+				this.invalidate();
+				this.tui.requestRender();
+			},
+			{
+				timeoutMs: options?.timing?.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+				countdownTickMs: options?.timing?.countdownTickMs ?? DEFAULT_COUNTDOWN_TICK_MS,
+				now: options?.timing?.now,
+			},
+		);
 	}
 
 	private finish(decision: ReviewPromptCountdownDecision): void {
@@ -91,31 +79,16 @@ class ReviewPromptCountdownComponent implements TuiComponent {
 			return;
 		}
 		this.finished = true;
-		this.clearTimers();
+		this.countdown.stop();
 		this.onDone(decision);
 	}
 
-	private clearTimers(): void {
-		if (this.timeout) {
-			clearTimeout(this.timeout);
-			this.timeout = undefined;
-		}
-		if (this.refreshTimer) {
-			clearInterval(this.refreshTimer);
-			this.refreshTimer = undefined;
-		}
-	}
-
 	private getCountdownLabel(): string {
-		const remainingMs = Math.max(0, this.deadlineMs - this.now());
-		if (remainingMs >= 10_000) {
-			return `${Math.ceil(remainingMs / 1000)}s`;
-		}
-		return `${(Math.ceil(remainingMs / 100) / 10).toFixed(1)}s`;
+		return formatCountdownLabel(this.countdown.getRemainingMs());
 	}
 
 	dispose(): void {
-		this.clearTimers();
+		this.countdown.stop();
 	}
 
 	invalidate(): void {
