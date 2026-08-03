@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.10 - 2026-08-03
+
+- Added `Alt+Shift+Tab` to cycle backward through thinking levels supported by the active model.
+- Added `Ctrl+Shift+T` to select the session thinking level from a filterable list.
+- Preserved session-level changes made while a per-prompt thinking override is active.
+
 ## 0.1.9 - 2026-07-29
 
 - Added per-prompt `max` thinking overrides for models such as GPT-5.6.

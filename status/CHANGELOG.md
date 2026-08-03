@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.10 - 2026-08-03
+
+- Moved session, repository, and pull-request context above the editor while keeping model, thinking, context usage, and timing below it.
+- Simplified model and context labels and refreshed repository details independently from prompt timing.
+- Displayed active 24-hour OpenAI cache retention from `openai-params`.
+
 ## 0.1.9 - 2026-07-29
 
 - Added status coloring for the `max` thinking level.

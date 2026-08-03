@@ -1,6 +1,6 @@
 {
   "name": "@siddr/pi-prompt-thinking",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "type": "module",
   "description": "Thinking level controls for pi prompts and sessions",
   "license": "MIT",

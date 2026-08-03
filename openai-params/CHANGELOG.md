@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.7 - 2026-08-03
+
+- Added an optional 24-hour prompt cache retention setting for supported official OpenAI APIs.
+- Emitted effective cache-retention details so cache-aware extensions can track the configured window.
+
 ## 0.1.6 - 2026-07-29
 
 - Applied fast mode to any `gpt-` model on official OpenAI providers instead of maintaining a model allowlist.

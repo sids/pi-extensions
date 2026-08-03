@@ -1,6 +1,6 @@
 {
   "name": "@siddr/pi-openai-params",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "type": "module",
   "description": "OpenAI fast mode, long cache, and verbosity settings for pi",
   "license": "MIT",

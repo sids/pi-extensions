@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.13 - 2026-08-03
+
+- Added timed defaults for starting reviews from an empty branch and selecting uncommitted changes.
+- Opened review triage automatically when the reviewing agent settles, with a countdown to accept all comments and return to the original branch.
+- Added recovery guidance when automatic review exit cannot resume after a restart or extension reload.
+- Added `Ctrl+Alt+R` to start a review from an empty editor.
+
 ## 0.1.12 - 2026-07-29
 
 - Added a 10-second auto-submit countdown for review start and follow-up prompts, with controls to edit or cancel submission.
