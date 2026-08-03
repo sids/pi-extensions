@@ -33,6 +33,7 @@ pi install npm:@siddr/pi-review
 - `/review folder <paths...>`
 - `/review custom [instructions...]`
 - `/review pr <number-or-url>`
+- `Ctrl+Alt+R` (start review when the editor is empty)
 
 Direct command arguments support single and double quotes, so paths and instructions can contain spaces:
 

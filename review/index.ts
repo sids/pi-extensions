@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import { keyHint, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Box, Text } from "@earendil-works/pi-tui";
 import { getReviewCommentsForRun, registerAddReviewCommentTool } from "./comments";
@@ -10,6 +11,7 @@ import {
 } from "./flow";
 import { ReviewLifecycleController } from "./lifecycle";
 import { AddReviewCommentSchema } from "./schemas";
+import { resolveReviewCommandName, startReviewFromShortcut } from "./shortcut";
 import { CONTEXT_ENTRY_TYPE, createReviewModeStateManager } from "./state";
 import { runReviewTriageWithCountdown } from "./triage-tui";
 
@@ -94,6 +96,22 @@ export default function (pi: ExtensionAPI) {
 		stateManager,
 		flow: {
 			setLifecyclePhase: (phase, runId) => lifecycle.setPhase(phase, runId),
+		},
+	});
+
+	pi.registerShortcut("ctrl+alt+r", {
+		description: "Start review",
+		handler: async (ctx) => {
+			if (stateManager.getState().active) {
+				ctx.ui.notify("Review mode is already active. Use /review to exit.", "info");
+				return;
+			}
+			const commandName = resolveReviewCommandName(pi.getCommands(), fileURLToPath(import.meta.url));
+			if (!commandName) {
+				ctx.ui.notify("Ctrl+Alt+R could not resolve the review command.", "warning");
+				return;
+			}
+			await startReviewFromShortcut(ctx, commandName);
 		},
 	});
 

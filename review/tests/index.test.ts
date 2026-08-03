@@ -10,6 +10,7 @@ function createHarness(entries: any[], options?: { tui?: boolean; automaticTriag
 	const handlers = new Map<string, Handler[]>();
 	const messageRenderers = new Map<string, any>();
 	const commandHandlers = new Map<string, (args: string, ctx: any) => Promise<void>>();
+	const shortcutHandlers = new Map<string, (ctx: any) => Promise<void> | void>();
 	const editorTexts: string[] = [];
 	const sentMessages: any[] = [];
 	const sentUserMessages: string[] = [];
@@ -34,6 +35,9 @@ function createHarness(entries: any[], options?: { tui?: boolean; automaticTriag
 		registerTool() {},
 		registerCommand(name: string, command: { handler: (args: string, ctx: any) => Promise<void> }) {
 			commandHandlers.set(name, command.handler);
+		},
+		registerShortcut(shortcut: string, options: { handler: (ctx: any) => Promise<void> | void }) {
+			shortcutHandlers.set(shortcut, options.handler);
 		},
 		sendMessage(message: any) {
 			sentMessages.push(message);
@@ -85,8 +89,16 @@ function createHarness(entries: any[], options?: { tui?: boolean; automaticTriag
 		notifications,
 		sentMessages,
 		sentUserMessages,
+		shortcutHandlers,
 	};
 }
+
+describe("review shortcut", () => {
+	test("registers Ctrl+Alt+R", () => {
+		const harness = createHarness([]);
+		expect(harness.shortcutHandlers.has("ctrl+alt+r")).toBe(true);
+	});
+});
 
 describe("automatic review exit", () => {
 	const activeStateEntry = {
