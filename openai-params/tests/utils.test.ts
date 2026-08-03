@@ -63,12 +63,14 @@ describe("toOpenAIParamsEventPayload", () => {
 		expect(
 			toOpenAIParamsEventPayload("/work", {
 				fast: true,
+				longCache: true,
 				verbosity: undefined,
 			}),
 		).toEqual({
 			source: "openai-params",
 			cwd: "/work",
 			fast: true,
+			longCache: true,
 			verbosity: null,
 		});
 	});
@@ -87,6 +89,7 @@ describe("resolveConfig", () => {
 			globalConfigPath,
 			JSON.stringify({
 				fast: true,
+				longCache: true,
 				verbosity: "medium",
 			}),
 		);
@@ -100,6 +103,7 @@ describe("resolveConfig", () => {
 		const resolved = resolveConfig(cwd, homeDir);
 		expect(resolved.configPath).toBe(projectConfigPath);
 		expect(resolved.fast).toBe(true);
+		expect(resolved.longCache).toBe(true);
 		expect(resolved.verbosity).toBe("high");
 
 		rmSync(baseDir, { recursive: true, force: true });
@@ -114,6 +118,7 @@ describe("resolveConfig", () => {
 		const resolved = resolveConfig(cwd, homeDir);
 		expect(resolved.configPath).toBe(globalConfigPath);
 		expect(readFileSync(globalConfigPath, "utf8")).toContain('"fast": false');
+		expect(readFileSync(globalConfigPath, "utf8")).toContain('"longCache": false');
 		expect(readFileSync(globalConfigPath, "utf8")).toContain('"verbosity": null');
 
 		rmSync(baseDir, { recursive: true, force: true });
@@ -130,6 +135,7 @@ describe("resolveConfig", () => {
 			projectConfigPath,
 			JSON.stringify({
 				fast: true,
+				longCache: true,
 				verbosity: "high",
 			}),
 		);
@@ -137,6 +143,7 @@ describe("resolveConfig", () => {
 		const resolved = resolveConfig(cwd, homeDir, { projectTrusted: false });
 		expect(resolved.configPath).toBe(globalConfigPath);
 		expect(resolved.fast).toBe(false);
+		expect(resolved.longCache).toBe(false);
 		expect(resolved.verbosity).toBeUndefined();
 		expect(readFileSync(globalConfigPath, "utf8")).toContain('"fast": false');
 
@@ -148,6 +155,7 @@ describe("applyConfiguredParams", () => {
 	const config: ResolvedOpenAIParamsConfig = {
 		configPath: "/tmp/openai-params.json",
 		fast: true,
+		longCache: true,
 		verbosity: "low",
 	};
 
@@ -176,7 +184,46 @@ describe("applyConfiguredParams", () => {
 		);
 
 		expect(result.changed).toBe(true);
-		expect(result.payload).toEqual({ messages: [], service_tier: "priority" });
+		expect(result.payload).toEqual({
+			messages: [],
+			service_tier: "priority",
+			prompt_cache_retention: "24h",
+		});
+	});
+
+	test("applies long cache only to official OpenAI API models", () => {
+		const enabled = applyConfiguredParams(
+			{ input: "hi", prompt_cache_key: "session-1" },
+			{ provider: "openai", id: "gpt-5.4", api: "openai-responses" },
+			{ ...config, fast: false, verbosity: undefined },
+		);
+		expect(enabled.longCacheApplied).toBe(true);
+		expect(enabled.payload).toEqual({
+			input: "hi",
+			prompt_cache_key: "session-1",
+			prompt_cache_retention: "24h",
+		});
+
+		const codex = applyConfiguredParams(
+			{ input: "hi" },
+			{ provider: "openai-codex", id: "gpt-5.4", api: "openai-codex-responses" },
+			{ ...config, fast: false, verbosity: undefined },
+		);
+		expect(codex.changed).toBe(false);
+		expect(codex.longCacheApplied).toBe(false);
+		expect(codex.payload).toEqual({ input: "hi" });
+	});
+
+	test("leaves cache retention unchanged when the toggle is off", () => {
+		const result = applyConfiguredParams(
+			{ input: "hi" },
+			{ provider: "openai", id: "gpt-5.4", api: "openai-responses" },
+			{ ...config, fast: false, longCache: false, verbosity: undefined },
+		);
+
+		expect(result.changed).toBe(false);
+		expect(result.longCacheApplied).toBe(false);
+		expect(result.payload).toEqual({ input: "hi" });
 	});
 
 	test("does not apply fast mode to non-GPT models", () => {

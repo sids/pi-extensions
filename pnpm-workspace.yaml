@@ -1,6 +1,7 @@
 packages:
   - shared
   - answer
+  - cache-expiry-warning
   - cmux-status
   - diff-review
   - fetch-url

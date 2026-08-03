@@ -7,11 +7,13 @@ import openAIParamsExtension from "../index";
 import {
 	OPENAI_PARAMS_COMMAND,
 	OPENAI_PARAMS_EVENT_CHANNEL,
+	OPENAI_LONG_CACHE_TTL_MS,
+	PROMPT_CACHE_RETENTION_EVENT_CHANNEL,
 	type OpenAIParamsState,
 	type Verbosity,
 } from "../utils";
 
-type Handler = (event: any, ctx: any) => Promise<void> | void;
+type Handler = (event: any, ctx: any) => Promise<unknown> | unknown;
 
 type ExtensionEvent = {
 	channel: string;
@@ -20,7 +22,7 @@ type ExtensionEvent = {
 
 const cleanupPaths: string[] = [];
 
-function createProjectConfig(options?: { fast?: boolean; verbosity?: Verbosity | null }) {
+function createProjectConfig(options?: { fast?: boolean; longCache?: boolean; verbosity?: Verbosity | null }) {
 	const baseDir = mkdtempSync(join(tmpdir(), "openai-params-index-"));
 	cleanupPaths.push(baseDir);
 	const cwd = join(baseDir, "repo");
@@ -31,6 +33,7 @@ function createProjectConfig(options?: { fast?: boolean; verbosity?: Verbosity |
 		`${JSON.stringify(
 			{
 				fast: options?.fast ?? false,
+				longCache: options?.longCache ?? false,
 				verbosity: options?.verbosity ?? null,
 			},
 			null,
@@ -88,9 +91,11 @@ function createHarness(initialCustomResult: OpenAIParamsState | null = null) {
 
 	return {
 		async emit(name: string, event: any = {}, ctx: any = {}) {
+			let result: unknown;
 			for (const handler of handlers.get(name) ?? []) {
-				await handler(event, ctx);
+				result = await handler(event, ctx);
 			}
+			return result;
 		},
 		async runCommand(ctx: any, args = "") {
 			if (!commandHandler) {
@@ -121,8 +126,8 @@ afterEach(() => {
 
 describe("openai-params extension", () => {
 	test("emits resolved config when session_start fires for startup and resume", async () => {
-		const firstProject = createProjectConfig({ fast: true, verbosity: "medium" });
-		const secondProject = createProjectConfig({ fast: false, verbosity: "high" });
+		const firstProject = createProjectConfig({ fast: true, longCache: true, verbosity: "medium" });
+		const secondProject = createProjectConfig({ fast: false, longCache: false, verbosity: "high" });
 		const harness = createHarness();
 
 		await harness.emit("session_start", { reason: "startup" }, harness.createCtx(firstProject.cwd));
@@ -135,6 +140,7 @@ describe("openai-params extension", () => {
 					source: "openai-params",
 					cwd: firstProject.cwd,
 					fast: true,
+					longCache: true,
 					verbosity: "medium",
 				},
 			},
@@ -144,15 +150,53 @@ describe("openai-params extension", () => {
 					source: "openai-params",
 					cwd: secondProject.cwd,
 					fast: false,
+					longCache: false,
 					verbosity: "high",
 				},
 			},
 		]);
 	});
 
+	test("reports the effective retention when a request is patched", async () => {
+		const project = createProjectConfig({ longCache: true });
+		const harness = createHarness();
+		const ctx = harness.createCtx(project.cwd);
+		await harness.emit("session_start", {}, ctx);
+		harness.emittedEvents.length = 0;
+
+		const payload = await harness.emit("before_provider_request", { payload: { input: "hi" } }, ctx);
+
+		expect(payload).toEqual({ input: "hi", prompt_cache_retention: "24h" });
+		expect(harness.emittedEvents).toEqual([
+			{
+				channel: PROMPT_CACHE_RETENTION_EVENT_CHANNEL,
+				data: {
+					source: "openai-params",
+					cwd: project.cwd,
+					cacheTtlMs: OPENAI_LONG_CACHE_TTL_MS,
+					requestStartedAtMs: expect.any(Number),
+				},
+			},
+		]);
+	});
+
+	test("does not patch Codex subscription requests", async () => {
+		const project = createProjectConfig({ longCache: true });
+		const harness = createHarness();
+		const ctx = harness.createCtx(project.cwd);
+		ctx.model = { provider: "openai-codex", id: "gpt-5.4", api: "openai-codex-responses" };
+		await harness.emit("session_start", {}, ctx);
+		harness.emittedEvents.length = 0;
+
+		const payload = await harness.emit("before_provider_request", { payload: { input: "hi" } }, ctx);
+
+		expect(payload).toBeUndefined();
+		expect(harness.emittedEvents).toEqual([]);
+	});
+
 	test("skips the settings screen outside TUI mode", async () => {
 		const project = createProjectConfig({ fast: false, verbosity: null });
-		const harness = createHarness({ fast: true, verbosity: "low" });
+		const harness = createHarness({ fast: true, longCache: true, verbosity: "low" });
 		const ctx = harness.createCtx(project.cwd, true, "rpc");
 
 		await harness.runCommand(ctx);
@@ -169,10 +213,10 @@ describe("openai-params extension", () => {
 
 	test("emits updated state immediately after saving via the command", async () => {
 		const project = createProjectConfig({ fast: false, verbosity: null });
-		const harness = createHarness({ fast: true, verbosity: "low" });
+		const harness = createHarness({ fast: true, longCache: true, verbosity: "low" });
 		const ctx = harness.createCtx(project.cwd, true);
 
-		harness.setCustomResult({ fast: true, verbosity: "high" });
+		harness.setCustomResult({ fast: true, longCache: true, verbosity: "high" });
 		await harness.runCommand(ctx);
 
 		expect(harness.emittedEvents).toEqual([
@@ -182,15 +226,17 @@ describe("openai-params extension", () => {
 					source: "openai-params",
 					cwd: project.cwd,
 					fast: true,
+					longCache: true,
 					verbosity: "high",
 				},
 			},
 		]);
 		expect(readFileSync(project.configPath, "utf8")).toContain('"fast": true');
+		expect(readFileSync(project.configPath, "utf8")).toContain('"longCache": true');
 		expect(readFileSync(project.configPath, "utf8")).toContain('"verbosity": "high"');
 		expect(harness.notifications).toEqual([
 			{
-				message: "Saved OpenAI params: fast on, verbosity high",
+				message: "Saved OpenAI params: fast on, long cache on, verbosity high",
 				level: "info",
 			},
 		]);

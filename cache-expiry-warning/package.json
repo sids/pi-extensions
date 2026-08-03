@@ -1,8 +1,8 @@
 {
-  "name": "@siddr/pi-openai-params",
-  "version": "0.1.6",
+  "name": "@siddr/pi-cache-expiry-warning",
+  "version": "0.1.0",
   "type": "module",
-  "description": "OpenAI fast mode, long cache, and verbosity settings for pi",
+  "description": "Prompt cache expiry warning extension for pi",
   "license": "MIT",
   "keywords": [
     "pi-package"
@@ -10,24 +10,20 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/sids/pi-extensions.git",
-    "directory": "openai-params"
+    "directory": "cache-expiry-warning"
   },
   "bugs": {
     "url": "https://github.com/sids/pi-extensions/issues"
   },
-  "homepage": "https://github.com/sids/pi-extensions/tree/main/openai-params#readme",
+  "homepage": "https://github.com/sids/pi-extensions/tree/main/cache-expiry-warning#readme",
   "pi": {
     "extensions": [
       "./index.ts"
     ]
   },
   "peerDependencies": {
-    "@earendil-works/pi-ai": ">=0.80.6",
     "@earendil-works/pi-coding-agent": ">=0.80.6",
     "@earendil-works/pi-tui": ">=0.80.6"
-  },
-  "dependencies": {
-    "@siddr/pi-shared-qna": "workspace:^"
   },
   "publishConfig": {
     "registry": "https://registry.npmjs.org/",

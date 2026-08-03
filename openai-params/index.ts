@@ -8,8 +8,10 @@ import {
 	OPENAI_PARAMS_COMMAND,
 	OPENAI_PARAMS_EVENT_CHANNEL,
 	persistConfig,
+	PROMPT_CACHE_RETENTION_EVENT_CHANNEL,
 	resolveConfig,
 	toOpenAIParamsEventPayload,
+	toPromptCacheRetentionEventPayload,
 	type OpenAIParamsState,
 	type ResolvedOpenAIParamsConfig,
 } from "./utils";
@@ -21,11 +23,13 @@ function getConfigCwd(ctx: ExtensionContext): string {
 export default function openAIParams(pi: ExtensionAPI): void {
 	let state: OpenAIParamsState = {
 		fast: false,
+		longCache: false,
 		verbosity: undefined,
 	};
 	let config: ResolvedOpenAIParamsConfig = {
 		configPath: "",
 		fast: false,
+		longCache: false,
 		verbosity: undefined,
 	};
 
@@ -33,6 +37,7 @@ export default function openAIParams(pi: ExtensionAPI): void {
 		config = resolveConfig(getConfigCwd(ctx), undefined, { projectTrusted: isProjectTrusted(ctx) });
 		state = {
 			fast: config.fast,
+			longCache: config.longCache,
 			verbosity: config.verbosity,
 		};
 	}
@@ -47,7 +52,7 @@ export default function openAIParams(pi: ExtensionAPI): void {
 	});
 
 	pi.registerCommand(OPENAI_PARAMS_COMMAND, {
-		description: "Open OpenAI fast mode and verbosity settings",
+		description: "Open OpenAI fast mode, long cache, and verbosity settings",
 		handler: async (_args, ctx) => {
 			refreshConfig(ctx);
 
@@ -74,12 +79,13 @@ export default function openAIParams(pi: ExtensionAPI): void {
 			config = {
 				...config,
 				fast: state.fast,
+				longCache: state.longCache,
 				verbosity: state.verbosity,
 			};
 			persistConfig(config);
 			emitOpenAIParamsState(ctx);
 			ctx.ui.notify(
-				`Saved OpenAI params: fast ${state.fast ? "on" : "off"}, verbosity ${state.verbosity ?? "default"}`,
+				`Saved OpenAI params: fast ${state.fast ? "on" : "off"}, long cache ${state.longCache ? "on" : "off"}, verbosity ${state.verbosity ?? "default"}`,
 				"info",
 			);
 		},
@@ -87,6 +93,12 @@ export default function openAIParams(pi: ExtensionAPI): void {
 
 	pi.on("before_provider_request", (event, ctx) => {
 		const next = applyConfiguredParams(event.payload, ctx.model, state);
+		if (next.longCacheApplied) {
+			pi.events.emit(
+				PROMPT_CACHE_RETENTION_EVENT_CHANNEL,
+				toPromptCacheRetentionEventPayload(getConfigCwd(ctx)),
+			);
+		}
 		if (!next.changed) {
 			return;
 		}

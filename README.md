@@ -12,11 +12,12 @@ A collection of pi extensions. Each extension lives in its own directory with it
 - [`review/`](review/) – Interactive review mode with target selection, structured findings capture, and triage
 - [`side/`](side/) – Ephemeral floating read-only side chat with summarized and live parent-session context
 - [`answer/`](answer/) – Interactive Q&A workflow for extracting questions and sending compiled answers
+- [`cache-expiry-warning/`](cache-expiry-warning/) – Above-editor warning when a configured prompt cache may expire between turns
 - [`mention-skills/`](mention-skills/) – `$skill-name` autocomplete with submit-time expansion to `SKILL.md` paths
 - [`prompt-save/`](prompt-save/) – Session-wide saved prompt picker with save, restore, copy, and delete shortcuts
 - [`prompt-thinking/`](prompt-thinking/) – `^thinking-level` autocomplete with single-prompt thinking overrides
 - [`session-paths/`](session-paths/) – Cross-platform session lookup for equivalent macOS and Linux home paths
-- [`openai-params/`](openai-params/) – OpenAI settings UI for fast mode and verbosity request parameters
+- [`openai-params/`](openai-params/) – OpenAI settings UI for fast mode, 24-hour cache retention, and verbosity
 - [`fetch-url/`](fetch-url/) – URL fetch tool with main-content extraction and markdown/html/raw output
 - [`web-search/`](web-search/) – Brave Search `web_search` tool for single or multi-query result sets
 - [`status/`](status/) – Live status widget for model, repo, timing, and PR context

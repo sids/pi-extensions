@@ -2,7 +2,7 @@
 
 ## Project overview
 
-This repository contains the **answer**, **fetch-url**, **web-search**, **status**, **plan-md**, **task-subagents**, **review**, **side**, **mention-skills**, and **session-paths** pi extensions.
+This repository contains the **answer**, **cache-expiry-warning**, **fetch-url**, **web-search**, **status**, **plan-md**, **task-subagents**, **review**, **side**, **mention-skills**, and **session-paths** pi extensions.
 
 ## Key files
 
@@ -13,6 +13,10 @@ This repository contains the **answer**, **fetch-url**, **web-search**, **status
 - `answer/README.md`: Usage/config docs
 - `answer/tests/utils.test.ts`: Unit tests
 - `answer/tests/qna-adapter.test.ts`: Unit tests
+- `cache-expiry-warning/index.ts`: Extension entry point
+- `cache-expiry-warning/utils.ts`: Cache TTL detection and formatting helpers
+- `cache-expiry-warning/README.md`: Usage docs
+- `cache-expiry-warning/tests/*.test.ts`: Unit tests
 - `fetch-url/index.ts`: Extension entry point
 - `fetch-url/utils.ts`: Shared helpers
 - `fetch-url/README.md`: Usage/config docs
@@ -82,6 +86,7 @@ This repository contains the **answer**, **fetch-url**, **web-search**, **status
   ```bash
   pnpm test -- answer/tests/utils.test.ts
   pnpm test -- answer/tests/qna-adapter.test.ts
+  pnpm test -- cache-expiry-warning/tests/*.test.ts
   pnpm test -- fetch-url/tests/utils.test.ts
   pnpm test -- web-search/tests/utils.test.ts
   pnpm test -- status/tests/utils.test.ts

@@ -1,10 +1,10 @@
 # openai-params
 
-Combined OpenAI fast-mode and verbosity settings for pi.
+OpenAI fast-mode, long-cache, and verbosity settings for pi.
 
 ## What it does
 
-This extension adds `/openai-params`, which opens a small settings screen for:
+This extension adds `/openai-params`, which opens a small settings screen for fast mode, long cache retention, and verbosity.
 
 - `Ctrl+S` saves
 - `Esc` cancels
@@ -12,11 +12,13 @@ This extension adds `/openai-params`, which opens a small settings screen for:
 Use the list to:
 
 - toggling fast mode
+- toggling 24-hour prompt cache retention
 - setting verbosity to `low`, `medium`, `high`, or the default unset state
 
 When enabled, it patches provider requests right before send:
 
 - fast mode → `service_tier=priority`
+- long cache → `prompt_cache_retention=24h`
 - verbosity → `text.verbosity=<level>`
 
 ## Behavior
@@ -26,6 +28,8 @@ When enabled, it patches provider requests right before send:
   - `openai-responses`
   - `openai-codex-responses`
 - Models from GitHub Copilot, local servers, and custom proxies are not patched merely because they use an OpenAI-compatible serializer.
+- Long cache retention is applied only to the official `openai` provider with `openai-completions` or `openai-responses`.
+- OpenAI Codex subscription models are excluded because their endpoint rejects `prompt_cache_retention`.
 - Verbosity is applied only to OpenAI Responses-family APIs:
   - `openai-responses`
   - `openai-codex-responses`
@@ -46,6 +50,7 @@ Default config:
 ```json
 {
   "fast": false,
+  "longCache": false,
   "verbosity": null
 }
 ```
@@ -59,15 +64,19 @@ This extension emits its current state on pi's extension event bus over `pi:open
 - `source`
 - `cwd`
 - `fast`
+- `longCache`
 - `verbosity`
 
-That lets other extensions, including `status`, show the active non-default fast/verbosity settings for the current workspace.
+That lets other extensions, including `status`, show the active non-default fast/cache/verbosity settings for the current workspace.
+
+When long cache retention is actually added to a request, the extension also emits `pi:prompt-cache-retention` with the effective TTL and request start time. Cache-aware extensions can therefore observe the applied behavior without duplicating OpenAI model support rules.
 
 ## Notes
 
 This extension combines the behavior of:
 
 - `@benvargas/pi-openai-fast` for `service_tier=priority`
+- Pi's long OpenAI cache retention for `prompt_cache_retention=24h`
 - `pi-verbosity-control` for `text.verbosity`
 
 based on OpenAI GPT-5 / Responses API parameter docs.

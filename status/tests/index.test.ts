@@ -207,12 +207,13 @@ describe("status extension", () => {
 				source: "openai-params",
 				cwd: ctx.cwd,
 				fast: true,
+				longCache: true,
 				verbosity: "low",
 			});
 
 			const updatedLine = normalizeLine(harness.renderLatestWidget()[0] ?? "");
 			expect(harness.setWidgetCalls.length).toBeGreaterThan(initialWidgetCount);
-			expect(updatedLine).toContain("openai/gpt-5.4 (high /fast 🗣️low) 43% (54k)");
+			expect(updatedLine).toContain("openai/gpt-5.4 (high /fast cache:24h 🗣️low) 43% (54k)");
 		} finally {
 			await harness.emit("session_shutdown", {}, ctx);
 		}
@@ -264,13 +265,14 @@ describe("status extension", () => {
 				source: "openai-params",
 				cwd: ctx.cwd,
 				fast: true,
+				longCache: true,
 				verbosity: "low",
 			});
 
 			const line = harness.renderLatestWidget(200, (name, text) => `<${name}>${text}</${name}>`)[0] ?? "";
 			expect(line).toContain("<thinkingHigh>high</thinkingHigh>");
-			expect(line).toContain("<muted>/fast 🗣️low</muted>");
-			expect(line).not.toContain("<thinkingHigh>/fast 🗣️low</thinkingHigh>");
+			expect(line).toContain("<muted>/fast cache:24h 🗣️low</muted>");
+			expect(line).not.toContain("<thinkingHigh>/fast cache:24h 🗣️low</thinkingHigh>");
 		} finally {
 			await harness.emit("session_shutdown", {}, ctx);
 		}

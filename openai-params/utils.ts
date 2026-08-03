@@ -7,12 +7,16 @@ import { CONFIG_DIR_NAME } from "@earendil-works/pi-coding-agent";
 export const OPENAI_PARAMS_COMMAND = "openai-params";
 export const OPENAI_PARAMS_CONFIG_BASENAME = "openai-params.json";
 export const OPENAI_PARAMS_EVENT_CHANNEL = "pi:openai-params";
+export const PROMPT_CACHE_RETENTION_EVENT_CHANNEL = "pi:prompt-cache-retention";
 export const OPENAI_FAST_SERVICE_TIER = "priority";
+export const OPENAI_LONG_CACHE_RETENTION = "24h";
+export const OPENAI_LONG_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 
 export type Verbosity = "low" | "medium" | "high";
 
 export interface OpenAIParamsState {
 	fast: boolean;
+	longCache: boolean;
 	verbosity: Verbosity | undefined;
 }
 
@@ -20,11 +24,20 @@ export interface OpenAIParamsEventPayload {
 	source: typeof OPENAI_PARAMS_COMMAND;
 	cwd: string;
 	fast: boolean;
+	longCache: boolean;
 	verbosity: Verbosity | null;
+}
+
+export interface PromptCacheRetentionEventPayload {
+	source: typeof OPENAI_PARAMS_COMMAND;
+	cwd: string;
+	cacheTtlMs: number;
+	requestStartedAtMs: number;
 }
 
 export interface OpenAIParamsConfigFile {
 	fast?: boolean;
+	longCache?: boolean;
 	verbosity?: Verbosity | null;
 }
 
@@ -40,6 +53,7 @@ type ModelLike = Pick<Model<Api>, "provider" | "id" | "api">;
 
 const DEFAULT_CONFIG_FILE: OpenAIParamsConfigFile = {
 	fast: false,
+	longCache: false,
 	verbosity: null,
 };
 
@@ -116,6 +130,9 @@ export function readConfigFile(filePath: string): OpenAIParamsConfigFile | null 
 		if (typeof parsed.fast === "boolean") {
 			config.fast = parsed.fast;
 		}
+		if (typeof parsed.longCache === "boolean") {
+			config.longCache = parsed.longCache;
+		}
 		if (parsed.verbosity === null) {
 			config.verbosity = null;
 		} else {
@@ -174,6 +191,7 @@ export function resolveConfig(
 	return {
 		configPath: selectedConfigPath,
 		fast: merged.fast ?? DEFAULT_CONFIG_FILE.fast ?? false,
+		longCache: merged.longCache ?? DEFAULT_CONFIG_FILE.longCache ?? false,
 		verbosity: normalizeVerbosity(merged.verbosity),
 	};
 }
@@ -181,6 +199,7 @@ export function resolveConfig(
 export function toConfigFile(config: ResolvedOpenAIParamsConfig | OpenAIParamsState): OpenAIParamsConfigFile {
 	return {
 		fast: config.fast,
+		longCache: config.longCache,
 		verbosity: config.verbosity ?? null,
 	};
 }
@@ -190,7 +209,20 @@ export function toOpenAIParamsEventPayload(cwd: string, config: ResolvedOpenAIPa
 		source: OPENAI_PARAMS_COMMAND,
 		cwd,
 		fast: config.fast,
+		longCache: config.longCache,
 		verbosity: config.verbosity ?? null,
+	};
+}
+
+export function toPromptCacheRetentionEventPayload(
+	cwd: string,
+	requestStartedAtMs: number = Date.now(),
+): PromptCacheRetentionEventPayload {
+	return {
+		source: OPENAI_PARAMS_COMMAND,
+		cwd,
+		cacheTtlMs: OPENAI_LONG_CACHE_TTL_MS,
+		requestStartedAtMs,
 	};
 }
 
@@ -225,6 +257,16 @@ export function supportsFastMode(model: ModelLike | undefined): boolean {
 	);
 }
 
+export function supportsLongCache(model: ModelLike | undefined): boolean {
+	if (!model) {
+		return false;
+	}
+	return (
+		model.provider === "openai" &&
+		(model.api === "openai-completions" || model.api === "openai-responses")
+	);
+}
+
 export function applyFastServiceTier(payload: unknown): unknown {
 	if (!isObject(payload)) {
 		return payload;
@@ -233,6 +275,17 @@ export function applyFastServiceTier(payload: unknown): unknown {
 	return {
 		...payload,
 		service_tier: OPENAI_FAST_SERVICE_TIER,
+	};
+}
+
+export function applyLongCacheRetention(payload: unknown): unknown {
+	if (!isObject(payload)) {
+		return payload;
+	}
+
+	return {
+		...payload,
+		prompt_cache_retention: OPENAI_LONG_CACHE_RETENTION,
 	};
 }
 
@@ -255,13 +308,21 @@ export function applyConfiguredParams(
 	payload: unknown,
 	model: ModelLike | undefined,
 	config: ResolvedOpenAIParamsConfig | OpenAIParamsState,
-): { payload: unknown; changed: boolean } {
+): { payload: unknown; changed: boolean; longCacheApplied: boolean } {
 	let nextPayload = payload;
 	let changed = false;
+	let longCacheApplied = false;
 
 	if (config.fast && supportsFastMode(model)) {
 		nextPayload = applyFastServiceTier(nextPayload);
 		changed = nextPayload !== payload || changed;
+	}
+
+	if (config.longCache && supportsLongCache(model)) {
+		const patchedPayload = applyLongCacheRetention(nextPayload);
+		longCacheApplied = patchedPayload !== nextPayload;
+		changed = longCacheApplied || changed;
+		nextPayload = patchedPayload;
 	}
 
 	if (config.verbosity && supportsVerbosityControl(model)) {
@@ -270,7 +331,7 @@ export function applyConfiguredParams(
 		nextPayload = patchedPayload;
 	}
 
-	return { payload: nextPayload, changed };
+	return { payload: nextPayload, changed, longCacheApplied };
 }
 
 export const _test = {

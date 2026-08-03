@@ -47,13 +47,24 @@ describe("parseOpenAIParamsEvent", () => {
 				source: "openai-params",
 				cwd: "/work",
 				fast: true,
+				longCache: true,
 				verbosity: "medium",
 			}),
 		).toEqual({
 			source: "openai-params",
 			cwd: "/work",
 			fast: true,
+			longCache: true,
 			verbosity: "medium",
+		});
+		expect(
+			parseOpenAIParamsEvent({ source: "openai-params", cwd: "/work", fast: false, verbosity: null }),
+		).toEqual({
+			source: "openai-params",
+			cwd: "/work",
+			fast: false,
+			longCache: false,
+			verbosity: null,
 		});
 	});
 
@@ -61,18 +72,24 @@ describe("parseOpenAIParamsEvent", () => {
 		expect(parseOpenAIParamsEvent({ source: "other", cwd: "/work", fast: true, verbosity: "low" })).toBeNull();
 		expect(parseOpenAIParamsEvent({ source: "openai-params", cwd: "/work", fast: "yes", verbosity: "low" })).toBeNull();
 		expect(parseOpenAIParamsEvent({ source: "openai-params", cwd: "/work", fast: true, verbosity: "default" })).toBeNull();
+		expect(
+			parseOpenAIParamsEvent({ source: "openai-params", cwd: "/work", fast: true, longCache: "yes", verbosity: "low" }),
+		).toBeNull();
 	});
 });
 
 describe("formatOpenAIParamsLabel", () => {
 	test("omits default state", () => {
-		expect(formatOpenAIParamsLabel({ fast: false, verbosity: null })).toBeNull();
+		expect(formatOpenAIParamsLabel({ fast: false, longCache: false, verbosity: null })).toBeNull();
 	});
 
 	test("formats fast-only, verbosity-only, and combined labels", () => {
-		expect(formatOpenAIParamsLabel({ fast: true, verbosity: null })).toBe("/fast");
-		expect(formatOpenAIParamsLabel({ fast: false, verbosity: "low" })).toBe("🗣️low");
-		expect(formatOpenAIParamsLabel({ fast: true, verbosity: "high" })).toBe("/fast 🗣️high");
+		expect(formatOpenAIParamsLabel({ fast: true, longCache: false, verbosity: null })).toBe("/fast");
+		expect(formatOpenAIParamsLabel({ fast: false, longCache: true, verbosity: null })).toBe("cache:24h");
+		expect(formatOpenAIParamsLabel({ fast: false, longCache: false, verbosity: "low" })).toBe("🗣️low");
+		expect(formatOpenAIParamsLabel({ fast: true, longCache: true, verbosity: "high" })).toBe(
+			"/fast cache:24h 🗣️high",
+		);
 	});
 });
 

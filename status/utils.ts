@@ -10,6 +10,7 @@ export type OpenAIParamsEventPayload = {
 	source: "openai-params";
 	cwd: string;
 	fast: boolean;
+	longCache: boolean;
 	verbosity: OpenAIParamsVerbosity | null;
 };
 
@@ -56,8 +57,10 @@ export function parseOpenAIParamsEvent(data: unknown): OpenAIParamsEventPayload 
 	const source = typeof data.source === "string" ? data.source.trim() : "";
 	const cwd = typeof data.cwd === "string" ? data.cwd.trim() : "";
 	const fast = typeof data.fast === "boolean" ? data.fast : null;
+	const longCache =
+		data.longCache === undefined ? false : typeof data.longCache === "boolean" ? data.longCache : null;
 	const verbosity = normalizeOpenAIParamsVerbosity(data.verbosity);
-	if (source !== "openai-params" || !cwd || fast === null || verbosity === undefined) {
+	if (source !== "openai-params" || !cwd || fast === null || longCache === null || verbosity === undefined) {
 		return null;
 	}
 
@@ -65,12 +68,13 @@ export function parseOpenAIParamsEvent(data: unknown): OpenAIParamsEventPayload 
 		source: "openai-params",
 		cwd,
 		fast,
+		longCache,
 		verbosity,
 	};
 }
 
 export function formatOpenAIParamsLabel(
-	params?: Pick<OpenAIParamsEventPayload, "fast" | "verbosity"> | null,
+	params?: Pick<OpenAIParamsEventPayload, "fast" | "longCache" | "verbosity"> | null,
 ): string | null {
 	if (!params) {
 		return null;
@@ -79,6 +83,9 @@ export function formatOpenAIParamsLabel(
 	const labels: string[] = [];
 	if (params.fast) {
 		labels.push("/fast");
+	}
+	if (params.longCache) {
+		labels.push("cache:24h");
 	}
 	if (params.verbosity) {
 		labels.push(`🗣️${params.verbosity}`);

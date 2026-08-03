@@ -13,7 +13,7 @@ import {
 } from "@earendil-works/pi-tui";
 import { cycleVerbosity, formatVerbosityLabel, type OpenAIParamsState } from "./utils";
 
-type MenuItemValue = "fast" | "verbosity";
+type MenuItemValue = "fast" | "longCache" | "verbosity";
 
 type MenuItem = SelectItem & {
 	value: MenuItemValue;
@@ -41,6 +41,11 @@ function buildMenuItems(state: OpenAIParamsState): MenuItem[] {
 			value: "fast",
 			label: `Fast mode: ${state.fast ? "on" : "off"}`,
 			description: "Toggle service_tier=priority on supported models",
+		},
+		{
+			value: "longCache",
+			label: `Long cache: ${state.longCache ? "on" : "off"}`,
+			description: "Toggle 24-hour prompt caching on supported official OpenAI API models",
 		},
 		{
 			value: "verbosity",
@@ -95,6 +100,11 @@ export class OpenAIParamsScreen implements Component {
 		this.refreshList();
 	}
 
+	private toggleLongCache(): void {
+		this.draft.longCache = !this.draft.longCache;
+		this.refreshList();
+	}
+
 	private cycleVerbosity(direction: "forward" | "backward"): void {
 		this.draft.verbosity = cycleVerbosity(this.draft.verbosity, direction);
 		this.refreshList();
@@ -104,6 +114,9 @@ export class OpenAIParamsScreen implements Component {
 		switch (this.selectedValue) {
 			case "fast":
 				this.toggleFast();
+				return;
+			case "longCache":
+				this.toggleLongCache();
 				return;
 			case "verbosity":
 				this.cycleVerbosity("forward");
@@ -133,9 +146,13 @@ export class OpenAIParamsScreen implements Component {
 			return;
 		}
 
-		if (this.selectedValue === "fast") {
+		if (this.selectedValue === "fast" || this.selectedValue === "longCache") {
 			if (matchesKey(data, Key.left) || matchesKey(data, Key.right)) {
-				this.toggleFast();
+				if (this.selectedValue === "fast") {
+					this.toggleFast();
+				} else {
+					this.toggleLongCache();
+				}
 				return;
 			}
 		}
@@ -193,6 +210,7 @@ export class OpenAIParamsScreen implements Component {
 		const notes = [
 			this.options.modelLabel ? `Current model: ${this.options.modelLabel}` : undefined,
 			"Fast mode sends service_tier=priority for GPT models on official OpenAI providers.",
+			"Long cache sends prompt_cache_retention=24h for supported official OpenAI API models.",
 			"Verbosity sets text.verbosity for OpenAI Responses-family models.",
 		]
 			.filter((line): line is string => Boolean(line));
