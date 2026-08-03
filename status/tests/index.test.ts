@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import statusExtension from "../index";
 import { OPENAI_PARAMS_EVENT_CHANNEL } from "../utils";
 
@@ -14,24 +14,16 @@ function normalizeLine(line: string): string {
 	return line.replace(/\s+/g, " ").trim();
 }
 
-async function flushAsyncWork() {
-	await new Promise((resolve) => setTimeout(resolve, 0));
-	await new Promise((resolve) => setTimeout(resolve, 0));
-}
-
 function createHarness() {
 	const handlers = new Map<string, Handler[]>();
 	const eventHandlers = new Map<string, Array<(data: unknown) => void>>();
 	const setWidgetCalls: WidgetCall[] = [];
-	const setFooterCalls: unknown[] = [];
 	const execCalls: Array<{ command: string; args: string[]; options?: { cwd?: string; timeout?: number } }> = [];
 	let thinkingLevel = "high";
 	let sessionName: string | undefined;
-	let activeTools = ["read", "bash"];
-	let allTools = [
-		{ name: "read", promptGuidelines: ["Use read to inspect files."], sourceInfo: { source: "builtin" } },
-		{ name: "bash", promptGuidelines: ["Use bash to run shell commands."], sourceInfo: { source: "builtin" } },
-	];
+	let gitBranch = "main";
+	let gitRemote = "git@github.com:org/repo.git";
+	let pullRequests: unknown[] = [];
 
 	const pi = {
 		on(name: string, handler: Handler) {
@@ -45,12 +37,6 @@ function createHarness() {
 		},
 		getSessionName() {
 			return sessionName;
-		},
-		getActiveTools() {
-			return [...activeTools];
-		},
-		getAllTools() {
-			return [...allTools];
 		},
 		events: {
 			on(channel: string, handler: (data: unknown) => void) {
@@ -73,13 +59,13 @@ function createHarness() {
 		async exec(command: string, args: string[], options?: { cwd?: string; timeout?: number }) {
 			execCalls.push({ command, args, options });
 			if (command === "git" && args.join(" ") === "rev-parse --abbrev-ref HEAD") {
-				return { stdout: "main\n", stderr: "", code: 0, killed: false };
+				return { stdout: `${gitBranch}\n`, stderr: "", code: 0, killed: false };
 			}
 			if (command === "git" && args.join(" ") === "config --get remote.origin.url") {
-				return { stdout: "git@github.com:org/repo.git\n", stderr: "", code: 0, killed: false };
+				return { stdout: `${gitRemote}\n`, stderr: "", code: 0, killed: false };
 			}
 			if (command === "gh" && args[0] === "pr" && args[1] === "list") {
-				return { stdout: "[]", stderr: "", code: 0, killed: false };
+				return { stdout: JSON.stringify(pullRequests), stderr: "", code: 0, killed: false };
 			}
 			throw new Error(`Unexpected command: ${command} ${args.join(" ")}`);
 		},
@@ -91,14 +77,12 @@ function createHarness() {
 		hasUI: true,
 		cwd,
 		model: { provider: "openai", id: "gpt-5.4" },
-		getContextUsage: () => ({ percent: 42.6, tokens: 54_321 }),
+		getContextUsage: () => ({ percent: 42.6, tokens: 54_321, contextWindow: 128_000 }),
 		ui: {
 			setWidget: (key: string, factory: WidgetCall["factory"], options?: unknown) => {
 				setWidgetCalls.push({ key, factory, options });
 			},
-			setFooter: (value: unknown) => {
-				setFooterCalls.push(value);
-			},
+			setFooter() {},
 			notify() {},
 		},
 	});
@@ -108,15 +92,12 @@ function createHarness() {
 			for (const handler of handlers.get(name) ?? []) {
 				await handler(event, ctx);
 			}
-			await flushAsyncWork();
 		},
-		async emitExtensionEvent(channel: string, data: unknown) {
+		emitExtensionEvent(channel: string, data: unknown) {
 			pi.events.emit(channel, data);
-			await flushAsyncWork();
 		},
 		createCtx,
 		setWidgetCalls,
-		setFooterCalls,
 		execCalls,
 		setThinkingLevel(level: string) {
 			thinkingLevel = level;
@@ -124,14 +105,23 @@ function createHarness() {
 		setSessionName(value: string | undefined) {
 			sessionName = value;
 		},
-		setTools(nextActiveTools: string[], nextAllTools = allTools) {
-			activeTools = nextActiveTools;
-			allTools = nextAllTools;
+		setGitBranch(value: string) {
+			gitBranch = value;
 		},
-		renderLatestWidget(width = 200, fg: (name: string, text: string) => string = (_name, text) => text) {
-			const latest = [...setWidgetCalls].reverse().find((call) => call.key === "status" && typeof call.factory === "function");
+		setGitRemote(value: string) {
+			gitRemote = value;
+		},
+		setPullRequests(value: unknown[]) {
+			pullRequests = value;
+		},
+		renderLatestWidget(
+			width = 200,
+			fg: (name: string, text: string) => string = (_name, text) => text,
+			key = "pi-status.details",
+		) {
+			const latest = [...setWidgetCalls].reverse().find((call) => call.key === key && typeof call.factory === "function");
 			if (!latest?.factory) {
-				throw new Error("status widget was not rendered");
+				throw new Error(`${key} widget was not rendered`);
 			}
 			return latest.factory(
 				{},
@@ -156,6 +146,64 @@ describe("status extension", () => {
 			expect(line).not.toContain(" loop ");
 		} finally {
 			await harness.emit("session_shutdown", {}, ctx);
+		}
+	});
+
+	test("shows the dim path and PR above the editor", async () => {
+		const harness = createHarness();
+		harness.setPullRequests([
+			{
+				url: "https://github.com/org/repo/pull/42",
+				state: "OPEN",
+				headRefName: "main",
+				headRepositoryOwner: { login: "org" },
+			},
+		]);
+		const ctx = harness.createCtx("/tmp/status-project");
+
+		try {
+			await harness.emit("session_start", {}, ctx);
+			const headerCall = [...harness.setWidgetCalls].reverse().find((call) => call.key === "pi-status.header");
+			const statusCall = [...harness.setWidgetCalls].reverse().find((call) => call.key === "pi-status.details");
+			const lines = harness
+				.renderLatestWidget(200, (name, text) => `<${name}>${text}</${name}>`, "pi-status.header")
+				.map(normalizeLine);
+
+			expect(headerCall?.options).toBeUndefined();
+			expect(statusCall?.options).toEqual({ placement: "belowEditor" });
+			expect(lines[0]).toContain("<dim>/tmp/status-project (main)</dim>");
+			expect(lines[1]).toContain("<accent>https://github.com/org/repo/pull/42</accent>");
+		} finally {
+			await harness.emit("session_shutdown", {}, ctx);
+		}
+	});
+
+	test("polls repository state independently after branch and remote changes", async () => {
+		vi.useFakeTimers();
+		const harness = createHarness();
+		const ctx = harness.createCtx("/tmp/status-project");
+
+		try {
+			await harness.emit("session_start", {}, ctx);
+			harness.setGitBranch("feature/status");
+			harness.setGitRemote("git@github.com:other/new-repo.git");
+			harness.setPullRequests([
+				{
+					url: "https://github.com/other/new-repo/pull/43",
+					state: "OPEN",
+					headRefName: "feature/status",
+					headRepositoryOwner: { login: "other" },
+				},
+			]);
+
+			await vi.advanceTimersByTimeAsync(5_000);
+
+			const lines = harness.renderLatestWidget(200, undefined, "pi-status.header").map(normalizeLine);
+			expect(lines[0]).toContain("/tmp/status-project (feature/status)");
+			expect(lines[1]).toContain("https://github.com/other/new-repo/pull/43");
+		} finally {
+			await harness.emit("session_shutdown", {}, ctx);
+			vi.useRealTimers();
 		}
 	});
 
@@ -202,7 +250,9 @@ describe("status extension", () => {
 			const initialLine = normalizeLine(harness.renderLatestWidget()[0] ?? "");
 			expect(initialLine).not.toContain("🗣️");
 
-			const initialWidgetCount = harness.setWidgetCalls.length;
+			const initialHeaderCount = harness.setWidgetCalls.filter((call) => call.key === "pi-status.header").length;
+			const initialDetailsCount = harness.setWidgetCalls.filter((call) => call.key === "pi-status.details").length;
+			const initialExecCount = harness.execCalls.length;
 			await harness.emitExtensionEvent(OPENAI_PARAMS_EVENT_CHANNEL, {
 				source: "openai-params",
 				cwd: ctx.cwd,
@@ -212,8 +262,13 @@ describe("status extension", () => {
 			});
 
 			const updatedLine = normalizeLine(harness.renderLatestWidget()[0] ?? "");
-			expect(harness.setWidgetCalls.length).toBeGreaterThan(initialWidgetCount);
-			expect(updatedLine).toContain("openai/gpt-5.4 (high /fast cache:24h 🗣️low) 43% (54k)");
+			expect(harness.setWidgetCalls.filter((call) => call.key === "pi-status.header")).toHaveLength(initialHeaderCount);
+			expect(harness.setWidgetCalls.filter((call) => call.key === "pi-status.details")).toHaveLength(
+				initialDetailsCount + 1,
+			);
+			expect(harness.execCalls).toHaveLength(initialExecCount);
+			expect(updatedLine).toContain("gpt-5.4 (high /fast cache:24h 🗣️low) 43%/128k");
+			expect(updatedLine).not.toContain("openai/");
 		} finally {
 			await harness.emit("session_shutdown", {}, ctx);
 		}
@@ -225,14 +280,18 @@ describe("status extension", () => {
 
 		try {
 			await harness.emit("session_start", {}, ctx);
-			const initialWidgetCount = harness.setWidgetCalls.length;
-			const initialLine = normalizeLine(harness.renderLatestWidget()[0] ?? "");
+			const initialHeaderCount = harness.setWidgetCalls.filter((call) => call.key === "pi-status.header").length;
+			const initialDetailsCount = harness.setWidgetCalls.filter((call) => call.key === "pi-status.details").length;
+			const initialLine = normalizeLine(harness.renderLatestWidget(200, undefined, "pi-status.header")[0] ?? "");
 
 			harness.setSessionName("build");
 			await harness.emit("session_info_changed", { name: "build" }, ctx);
 
-			const updatedLine = normalizeLine(harness.renderLatestWidget()[0] ?? "");
-			expect(harness.setWidgetCalls.length).toBeGreaterThan(initialWidgetCount);
+			const updatedLine = normalizeLine(harness.renderLatestWidget(200, undefined, "pi-status.header")[0] ?? "");
+			expect(harness.setWidgetCalls.filter((call) => call.key === "pi-status.header")).toHaveLength(
+				initialHeaderCount + 1,
+			);
+			expect(harness.setWidgetCalls.filter((call) => call.key === "pi-status.details")).toHaveLength(initialDetailsCount);
 			expect(updatedLine).not.toBe(initialLine);
 			expect(updatedLine).toContain("build ·");
 		} finally {
@@ -278,42 +337,16 @@ describe("status extension", () => {
 		}
 	});
 
-	test("shows concise active mode tool reasons", async () => {
+	test("does not show an additional tools line", async () => {
 		const harness = createHarness();
-		harness.setTools(
-			["read", "fetch_url", "subagents", "set_plan", "request_user_input", "extension_without_reason"],
-			[
-				{ name: "read", promptGuidelines: ["Use read to inspect files."], sourceInfo: { source: "tool-display" } },
-				{ name: "fetch_url", promptGuidelines: ["Use fetch_url when web content is needed."], sourceInfo: { source: "fetch-url" } },
-				{ name: "subagents", promptGuidelines: ["Use subagents only when the user asks."], sourceInfo: { source: "task-subagents" } },
-				{
-					name: "set_plan",
-					promptGuidelines: ["Use set_plan only to persist a concrete plan or revision, not for discussion-only replies."],
-					sourceInfo: { source: "plan-md" },
-				},
-				{
-					name: "request_user_input",
-					promptGuidelines: ["Use request_user_input in Plan mode when a short answer from the user is required before writing or revising the plan."],
-					sourceInfo: { source: "plan-md" },
-				},
-				{
-					name: "extension_without_reason",
-					sourceInfo: { source: "other" },
-				},
-			],
-		);
 		const ctx = harness.createCtx("/tmp/status-project");
 
 		try {
 			await harness.emit("session_start", {}, ctx);
 			const lines = harness.renderLatestWidget(500).map(normalizeLine);
-			const toolLine = lines.find((line) => line.startsWith("Tools:"));
 
-			expect(toolLine).toBe("Tools: plan mode: set_plan, request_user_input");
-			expect(toolLine).not.toContain("extension_without_reason");
-			expect(toolLine).not.toContain("fetch_url");
-			expect(toolLine).not.toContain("subagents");
-			expect(toolLine).not.toContain("read");
+			expect(lines).toHaveLength(1);
+			expect(lines[0]).not.toContain("Tools:");
 		} finally {
 			await harness.emit("session_shutdown", {}, ctx);
 		}

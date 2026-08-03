@@ -1,16 +1,20 @@
 # Status extension
 
-Shows a status widget below the input editor with session context (plus an optional PR line):
+Shows session and repository context around the input editor:
 
-- Current provider/model
+Above the editor:
+
+- Current session name, when set
+- Current working directory and Git branch in dim text
+- Current GitHub PR URL for the active branch, below the path (includes `(merged)` / `(closed)` when not open)
+
+Below the editor:
+
+- Current model (without the provider)
 - Current thinking level
 - Current OpenAI fast/cache/verbosity indicators from `openai-params` when non-default, shown inside the thinking parentheses (`/fast`, `cache:24h`, `🗣️low`, `🗣️medium`, `🗣️high`)
-- Current session name, when set
-- Current working directory
-- Current Git branch
-- Context usage percent plus used token count
+- Context usage percent plus model context length (`<percent>/<context-length>`)
 - Current/last agent time plus cumulative turn total and session time (`<agent> agent · <turn total> turn total · <session> session`)
-- Current GitHub PR URL for the active branch (includes `(merged)` / `(closed)` when not open)
 
 Time values use a compact `d/h/m` format (`XdYhZm`, `YhZm`, or `Zm`) and are separated with a center dot (`·`). Agent time reflects the current or last completed prompt run. Turn total accumulates time spent across turns in the current session. All timers reset when a new session starts. The default footer widget is hidden while this extension is active.
 

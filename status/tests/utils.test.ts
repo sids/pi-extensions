@@ -3,7 +3,6 @@ import path from "node:path";
 import { describe, expect, test } from "vitest";
 import {
 	activeAgentDurationMs,
-	carryForwardTimingDurations,
 	elapsedDurationMs,
 	filterPullRequestsByHeadOwner,
 	formatContextLabel,
@@ -11,13 +10,11 @@ import {
 	formatElapsedMinutes,
 	formatModelLabel,
 	formatOpenAIParamsLabel,
-	formatPullRequestLabel,
 	formatRepoLabel,
 	formatTokenCount,
 	formatThinkingLevel,
 	formatWorkingDirectory,
 	isGitHubHost,
-	normalizeGitBranch,
 	parseAllowedGitHubHosts,
 	parseGitRemoteRepo,
 	parseOpenAIParamsEvent,
@@ -25,8 +22,8 @@ import {
 } from "../utils";
 
 describe("formatModelLabel", () => {
-	test("formats provider and model", () => {
-		expect(formatModelLabel({ provider: "anthropic", id: "claude" })).toBe("anthropic/claude");
+	test("formats the model without the provider", () => {
+		expect(formatModelLabel({ id: "claude" })).toBe("claude");
 	});
 
 	test("handles missing model", () => {
@@ -137,13 +134,15 @@ describe("formatTokenCount", () => {
 });
 
 describe("formatContextLabel", () => {
-	test("shows percent and used tokens", () => {
-		expect(formatContextLabel({ percent: 42.6, tokens: 54_321 })).toBe("43% (54k)");
+	test("shows percent and context length", () => {
+		expect(formatContextLabel({ percent: 42.6, contextWindow: 128_000 })).toBe("43%/128k");
 	});
 
-	test("falls back when usage is unknown", () => {
-		expect(formatContextLabel(undefined)).toBe("--");
-		expect(formatContextLabel({ percent: null, tokens: null })).toBe("--");
+	test("keeps a stable shape when usage is partially or fully unknown", () => {
+		expect(formatContextLabel(undefined)).toBe("--/--");
+		expect(formatContextLabel({ percent: null, contextWindow: 128_000 })).toBe("--/128k");
+		expect(formatContextLabel({ percent: 42.6, contextWindow: null })).toBe("43%/--");
+		expect(formatContextLabel({ percent: null, contextWindow: null })).toBe("--/--");
 	});
 });
 
@@ -188,35 +187,6 @@ describe("activeAgentDurationMs", () => {
 
 	test("falls back to completed duration when no active turn", () => {
 		expect(activeAgentDurationMs(2_000, null, 8_500)).toBe(2_000);
-	});
-});
-
-describe("carryForwardTimingDurations", () => {
-	test("accumulates session and agent durations across resets", () => {
-		const carried = carryForwardTimingDurations(5_000, 3_000, 10_000, 2_000, 11_000, 14_000);
-		expect(carried).toEqual({
-			sessionDurationCarryMs: 9_000,
-			agentDurationCarryMs: 8_000,
-		});
-
-		const afterSecondReset = carryForwardTimingDurations(
-			carried.sessionDurationCarryMs,
-			carried.agentDurationCarryMs,
-			14_000,
-			0,
-			null,
-			18_000,
-		);
-		expect(afterSecondReset).toEqual({
-			sessionDurationCarryMs: 13_000,
-			agentDurationCarryMs: 8_000,
-		});
-	});
-});
-
-describe("normalizeGitBranch", () => {
-	test("handles empty branch", () => {
-		expect(normalizeGitBranch(null)).toBe("--");
 	});
 });
 
@@ -358,23 +328,5 @@ describe("pickPullRequest", () => {
 
 	test("returns null for empty list", () => {
 		expect(pickPullRequest([])).toBeNull();
-	});
-});
-
-describe("formatPullRequestLabel", () => {
-	test("shows url for open PR", () => {
-		expect(formatPullRequestLabel({ url: "https://github.com/org/repo/pull/2", state: "OPEN" })).toBe(
-			"PR: https://github.com/org/repo/pull/2",
-		);
-	});
-
-	test("appends state when PR is not open", () => {
-		expect(formatPullRequestLabel({ url: "https://github.com/org/repo/pull/2", state: "MERGED" })).toBe(
-			"PR: https://github.com/org/repo/pull/2 (merged)",
-		);
-	});
-
-	test("returns null when missing url", () => {
-		expect(formatPullRequestLabel({ state: "OPEN" })).toBeNull();
 	});
 });

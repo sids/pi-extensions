@@ -1,10 +1,10 @@
 import os from "node:os";
 import path from "node:path";
 
-export const UNKNOWN_VALUE = "--";
+const UNKNOWN_VALUE = "--";
 export const OPENAI_PARAMS_EVENT_CHANNEL = "pi:openai-params";
 
-export type OpenAIParamsVerbosity = "low" | "medium" | "high";
+type OpenAIParamsVerbosity = "low" | "medium" | "high";
 
 export type OpenAIParamsEventPayload = {
 	source: "openai-params";
@@ -14,16 +14,8 @@ export type OpenAIParamsEventPayload = {
 	verbosity: OpenAIParamsVerbosity | null;
 };
 
-export type ModelLabelInput = {
-	provider?: string;
-	id?: string;
-};
-
-export function formatModelLabel(model?: ModelLabelInput | null): string {
-	if (!model?.provider || !model?.id) {
-		return "none";
-	}
-	return `${model.provider}/${model.id}`;
+export function formatModelLabel(model?: { id?: string } | null): string {
+	return model?.id?.trim() || "none";
 }
 
 export function formatThinkingLevel(level?: string): string {
@@ -133,20 +125,10 @@ export function formatTokenCount(count?: number | null): string {
 	return `${Math.round(rounded / 1_000_000)}M`;
 }
 
-export function formatContextLabel(usage?: { percent: number | null; tokens: number | null } | null): string {
+export function formatContextLabel(usage?: { percent: number | null; contextWindow: number | null } | null): string {
 	const percent = formatContextPercent(usage);
-	const tokens = formatTokenCount(usage?.tokens ?? null);
-
-	if (percent !== UNKNOWN_VALUE && tokens !== UNKNOWN_VALUE) {
-		return `${percent} (${tokens})`;
-	}
-	if (percent !== UNKNOWN_VALUE) {
-		return percent;
-	}
-	if (tokens !== UNKNOWN_VALUE) {
-		return tokens;
-	}
-	return UNKNOWN_VALUE;
+	const contextWindow = formatTokenCount(usage?.contextWindow ?? null);
+	return `${percent}/${contextWindow}`;
 }
 
 export function formatElapsedMinutes(minutes?: number | null): string {
@@ -190,33 +172,9 @@ export function activeAgentDurationMs(
 	return completed + elapsedDurationMs(activeTurnStartedAt, now);
 }
 
-export function carryForwardTimingDurations(
-	sessionDurationCarryMs: number,
-	agentDurationCarryMs: number,
-	sessionStartedAt: number | null,
-	completedTurnDurationMs: number,
-	activeTurnStartedAt: number | null,
-	now = Date.now(),
-): { sessionDurationCarryMs: number; agentDurationCarryMs: number } {
-	const safeSessionCarry = Number.isNaN(sessionDurationCarryMs) ? 0 : Math.max(0, sessionDurationCarryMs);
-	const safeAgentCarry = Number.isNaN(agentDurationCarryMs) ? 0 : Math.max(0, agentDurationCarryMs);
-	return {
-		sessionDurationCarryMs: safeSessionCarry + elapsedDurationMs(sessionStartedAt, now),
-		agentDurationCarryMs: safeAgentCarry + activeAgentDurationMs(completedTurnDurationMs, activeTurnStartedAt, now),
-	};
-}
-
-export function normalizeGitBranch(branch?: string | null): string {
-	const trimmed = branch?.trim();
-	if (!trimmed) {
-		return UNKNOWN_VALUE;
-	}
-	return trimmed;
-}
-
 export function formatRepoLabel(cwd: string, branch?: string | null): string {
 	const dir = formatWorkingDirectory(cwd);
-	const gitBranch = normalizeGitBranch(branch);
+	const gitBranch = branch?.trim() || UNKNOWN_VALUE;
 	return `${dir} (${gitBranch})`;
 }
 
@@ -362,16 +320,4 @@ export function pickPullRequest(prs: PullRequestSummary[]): PullRequestSummary |
 		return bSafe - aSafe;
 	});
 	return sorted[0] ?? null;
-}
-
-export function formatPullRequestLabel(pr?: PullRequestSummary | null): string | null {
-	const url = pr?.url?.trim();
-	if (!url) {
-		return null;
-	}
-	const state = pr?.state?.trim().toUpperCase();
-	if (!state || state === "OPEN") {
-		return `PR: ${url}`;
-	}
-	return `PR: ${url} (${state.toLowerCase()})`;
 }
