@@ -1,5 +1,10 @@
-import { getSupportedThinkingLevels } from "@earendil-works/pi-ai";
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { clampThinkingLevel, getSupportedThinkingLevels } from "@earendil-works/pi-ai";
+import {
+	ThinkingSelectorComponent,
+	type ExtensionAPI,
+	type ExtensionContext,
+} from "@earendil-works/pi-coding-agent";
+import { Container, Input, Text } from "@earendil-works/pi-tui";
 import {
 	buildThinkingAutocompleteItems,
 	createThinkingAutocompleteProvider,
@@ -19,6 +24,22 @@ type ActiveOverride = {
 export default function (pi: ExtensionAPI) {
 	let pendingPrompts: PendingPrompt[] = [];
 	let activeOverride: ActiveOverride | null = null;
+
+	function getSessionThinkingLevel(model: NonNullable<ExtensionContext["model"]>): ThinkingLevel {
+		const level = clampThinkingLevel(model, activeOverride?.previousLevel ?? pi.getThinkingLevel());
+		if (activeOverride) {
+			activeOverride.previousLevel = level;
+		}
+		return level;
+	}
+
+	function setSessionThinkingLevel(level: ThinkingLevel) {
+		if (activeOverride) {
+			activeOverride.previousLevel = level;
+		} else {
+			pi.setThinkingLevel(level);
+		}
+	}
 
 	function clearPromptState() {
 		pendingPrompts = [];
@@ -40,24 +61,72 @@ export default function (pi: ExtensionAPI) {
 	pi.registerShortcut("alt+shift+tab", {
 		description: "Cycle thinking level backward",
 		handler: (ctx) => {
-			if (!ctx.model?.reasoning) {
+			const model = ctx.model;
+			if (!model?.reasoning) {
 				ctx.ui.notify("Current model does not support thinking", "info");
 				return;
 			}
 
-			const levels = getSupportedThinkingLevels(ctx.model);
-			const sessionLevel = activeOverride?.previousLevel ?? pi.getThinkingLevel();
-			const currentIndex = levels.indexOf(sessionLevel);
+			const levels = getSupportedThinkingLevels(model);
+			const currentIndex = levels.indexOf(getSessionThinkingLevel(model));
 			const previousLevel = levels.at(currentIndex > 0 ? currentIndex - 1 : -1);
 			if (!previousLevel) {
 				return;
 			}
-			if (activeOverride) {
-				activeOverride.previousLevel = previousLevel;
-			} else {
-				pi.setThinkingLevel(previousLevel);
-			}
+			setSessionThinkingLevel(previousLevel);
 			ctx.ui.notify(`Thinking level: ${previousLevel}`, "info");
+		},
+	});
+
+	pi.registerShortcut("ctrl+shift+t", {
+		description: "Select thinking level",
+		handler: async (ctx) => {
+			const model = ctx.model;
+			if (!model?.reasoning) {
+				ctx.ui.notify("Current model does not support thinking", "info");
+				return;
+			}
+
+			const levels = getSupportedThinkingLevels(model);
+			const selection = await ctx.ui.custom<ThinkingLevel | null>((tui, _theme, _keybindings, done) => {
+				const selector = new ThinkingSelectorComponent(
+					getSessionThinkingLevel(model),
+					levels,
+					done,
+					() => done(null),
+				);
+				const selectList = selector.getSelectList();
+				const filterInput = new Input();
+				const container = new Container();
+				container.addChild(new Text("Filter:", 1, 0));
+				container.addChild(filterInput);
+				container.addChild(selector);
+
+				return {
+					get focused() {
+						return filterInput.focused;
+					},
+					set focused(value: boolean) {
+						filterInput.focused = value;
+					},
+					render: (width: number) => container.render(width),
+					invalidate: () => container.invalidate(),
+					handleInput: (data: string) => {
+						const previousFilter = filterInput.getValue();
+						filterInput.handleInput(data);
+						if (filterInput.getValue() !== previousFilter) {
+							selectList.setFilter(filterInput.getValue());
+						}
+						selectList.handleInput(data);
+						tui.requestRender();
+					},
+				};
+			});
+			if (!selection) {
+				return;
+			}
+			setSessionThinkingLevel(selection);
+			ctx.ui.notify(`Thinking level: ${selection}`, "info");
 		},
 	});
 

@@ -60,6 +60,7 @@ function createHarness(initialThinkingLevel: ThinkingLevel = "high") {
 			model,
 			ui: {
 				notify: vi.fn(),
+				custom: vi.fn(async (): Promise<ThinkingLevel | null> => null),
 				addAutocompleteProvider(factory: (current: AutocompleteProvider) => AutocompleteProvider) {
 					providerFactories.push(factory);
 				},
@@ -108,6 +109,24 @@ function composeProviders(factories: Array<(current: AutocompleteProvider) => Au
 		current = factory(current);
 	}
 	return current;
+}
+
+function driveThinkingSelector(inputs: string[]) {
+	return async (factory: any): Promise<ThinkingLevel | null> => {
+		let selection: ThinkingLevel | null = null;
+		const component = factory(
+			{ requestRender: vi.fn() },
+			undefined,
+			undefined,
+			(value: ThinkingLevel | null) => {
+				selection = value;
+			},
+		);
+		for (const input of inputs) {
+			component.handleInput(input);
+		}
+		return selection;
+	};
 }
 
 describe("prompt-thinking extension", () => {
@@ -171,6 +190,71 @@ describe("prompt-thinking extension", () => {
 		await harness.emit("agent_end", {}, {});
 		expect(harness.getThinkingLevel()).toBe("medium");
 		expect(harness.setThinkingCalls).toEqual(["low", "medium"]);
+	});
+
+	test("Ctrl+Shift+T selects from the supported thinking levels", async () => {
+		const harness = createHarness("high");
+		const ctx = harness.createSessionContext({
+			id: "reasoning-model",
+			reasoning: true,
+			thinkingLevelMap: { minimal: null, xhigh: "xhigh" },
+		});
+		ctx.ui.custom.mockImplementation(driveThinkingSelector(["\x1b[A", "\x1b[A", "\r"]));
+		const shortcut = harness.shortcuts.get("ctrl+shift+t");
+
+		expect(shortcut?.description).toBe("Select thinking level");
+		await shortcut?.handler(ctx);
+
+		expect(ctx.ui.custom).toHaveBeenCalledOnce();
+		expect(harness.setThinkingCalls).toEqual(["low"]);
+		expect(ctx.ui.notify).toHaveBeenCalledWith("Thinking level: low", "info");
+	});
+
+	test("the thinking selector filters levels as the user types", async () => {
+		const harness = createHarness("high");
+		const ctx = harness.createSessionContext();
+		ctx.ui.custom.mockImplementation(driveThinkingSelector(["l", "\r"]));
+
+		await harness.shortcuts.get("ctrl+shift+t")?.handler(ctx);
+
+		expect(harness.setThinkingCalls).toEqual(["low"]);
+		expect(ctx.ui.notify).toHaveBeenCalledWith("Thinking level: low", "info");
+	});
+
+	test("the thinking selector updates the session level without changing an active prompt override", async () => {
+		const harness = createHarness("high");
+		const ctx = harness.createSessionContext();
+		ctx.ui.custom.mockResolvedValue("medium");
+		await harness.emit("input", { text: "^low summarize", images: [], source: "interactive" }, {});
+		await harness.emit("before_agent_start", { prompt: "summarize" }, {});
+
+		await harness.shortcuts.get("ctrl+shift+t")?.handler(ctx);
+
+		expect(harness.getThinkingLevel()).toBe("low");
+		expect(harness.setThinkingCalls).toEqual(["low"]);
+		expect(ctx.ui.custom).toHaveBeenCalledOnce();
+
+		await harness.emit("agent_end", {}, {});
+		expect(harness.getThinkingLevel()).toBe("medium");
+		expect(harness.setThinkingCalls).toEqual(["low", "medium"]);
+	});
+
+	test("the thinking selector clamps a saved session level after the model changes", async () => {
+		const harness = createHarness("max");
+		const ctx = harness.createSessionContext();
+		ctx.ui.custom.mockImplementation(driveThinkingSelector(["\r"]));
+		await harness.emit("input", { text: "^low summarize", images: [], source: "interactive" }, {});
+		await harness.emit("before_agent_start", { prompt: "summarize" }, {});
+
+		await harness.shortcuts.get("ctrl+shift+t")?.handler(ctx);
+
+		expect(harness.getThinkingLevel()).toBe("low");
+		expect(harness.setThinkingCalls).toEqual(["low"]);
+		expect(ctx.ui.notify).toHaveBeenCalledWith("Thinking level: high", "info");
+
+		await harness.emit("agent_end", {}, {});
+		expect(harness.getThinkingLevel()).toBe("high");
+		expect(harness.setThinkingCalls).toEqual(["low", "high"]);
 	});
 
 	test("registers an autocomplete provider on session start", async () => {

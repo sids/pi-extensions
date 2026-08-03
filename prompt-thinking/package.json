@@ -2,7 +2,7 @@
   "name": "@siddr/pi-prompt-thinking",
   "version": "0.1.9",
   "type": "module",
-  "description": "Per-prompt thinking level override extension for pi",
+  "description": "Thinking level controls for pi prompts and sessions",
   "license": "MIT",
   "keywords": [
     "pi-package"
