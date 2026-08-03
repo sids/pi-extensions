@@ -1,11 +1,10 @@
+import { getSupportedThinkingLevels } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import {
 	buildThinkingAutocompleteItems,
 	createThinkingAutocompleteProvider,
-	getAvailableThinkingLevels,
 	stripThinkingLevelControlTokens,
 	type ThinkingLevel,
-	type ThinkingModel,
 } from "./utils";
 
 type PendingPrompt = {
@@ -18,21 +17,8 @@ type ActiveOverride = {
 };
 
 export default function (pi: ExtensionAPI) {
-	let currentModel: ThinkingModel | null = null;
-	let availableThinkingLevels: ThinkingLevel[] = ["off"];
 	let pendingPrompts: PendingPrompt[] = [];
 	let activeOverride: ActiveOverride | null = null;
-
-	function getLiveThinkingLevel(): ThinkingLevel {
-		return pi.getThinkingLevel() as ThinkingLevel;
-	}
-
-	function refreshAvailableThinkingLevels(model?: ThinkingModel | null) {
-		if (model !== undefined) {
-			currentModel = model;
-		}
-		availableThinkingLevels = getAvailableThinkingLevels(currentModel);
-	}
 
 	function clearPromptState() {
 		pendingPrompts = [];
@@ -51,13 +37,39 @@ export default function (pi: ExtensionAPI) {
 		return pendingPrompts.shift();
 	}
 
+	pi.registerShortcut("alt+shift+tab", {
+		description: "Cycle thinking level backward",
+		handler: (ctx) => {
+			if (!ctx.model?.reasoning) {
+				ctx.ui.notify("Current model does not support thinking", "info");
+				return;
+			}
+
+			const levels = getSupportedThinkingLevels(ctx.model);
+			const sessionLevel = activeOverride?.previousLevel ?? pi.getThinkingLevel();
+			const currentIndex = levels.indexOf(sessionLevel);
+			const previousLevel = levels.at(currentIndex > 0 ? currentIndex - 1 : -1);
+			if (!previousLevel) {
+				return;
+			}
+			if (activeOverride) {
+				activeOverride.previousLevel = previousLevel;
+			} else {
+				pi.setThinkingLevel(previousLevel);
+			}
+			ctx.ui.notify(`Thinking level: ${previousLevel}`, "info");
+		},
+	});
+
 	pi.on("session_start", (_event, ctx) => {
 		clearPromptState();
-		refreshAvailableThinkingLevels((ctx.model as ThinkingModel | undefined) ?? null);
 		if (ctx.hasUI) {
 			ctx.ui.addAutocompleteProvider((current) =>
 				createThinkingAutocompleteProvider(current, () =>
-					buildThinkingAutocompleteItems(availableThinkingLevels, getLiveThinkingLevel()),
+					buildThinkingAutocompleteItems(
+						ctx.model ? getSupportedThinkingLevels(ctx.model) : ["off"],
+						pi.getThinkingLevel(),
+					),
 				),
 			);
 		}
@@ -68,10 +80,6 @@ export default function (pi: ExtensionAPI) {
 			pi.setThinkingLevel(activeOverride.previousLevel);
 		}
 		clearPromptState();
-	});
-
-	pi.on("model_select", (event) => {
-		refreshAvailableThinkingLevels(event.model as ThinkingModel);
 	});
 
 	pi.on("input", (event, _ctx) => {
@@ -102,7 +110,7 @@ export default function (pi: ExtensionAPI) {
 			return;
 		}
 
-		const previousLevel = getLiveThinkingLevel();
+		const previousLevel = pi.getThinkingLevel();
 		activeOverride = { previousLevel };
 		pi.setThinkingLevel(pendingPrompt.overrideLevel);
 	});

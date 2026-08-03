@@ -4,7 +4,6 @@ import {
 	buildThinkingAutocompleteItems,
 	createThinkingAutocompleteProvider,
 	findThinkingTokenAtCursor,
-	getAvailableThinkingLevels,
 	normalizeThinkingLevel,
 	stripThinkingLevelControlTokens,
 } from "../utils";
@@ -27,53 +26,6 @@ describe("normalizeThinkingLevel", () => {
 
 	test("returns null for unknown values", () => {
 		expect(normalizeThinkingLevel("turbo")).toBeNull();
-	});
-});
-
-describe("getAvailableThinkingLevels", () => {
-	test("returns only off for non-reasoning models", () => {
-		expect(getAvailableThinkingLevels({ id: "gpt-4.1", reasoning: false })).toEqual(["off"]);
-	});
-
-	test("returns off through high for reasoning models without xhigh", () => {
-		expect(getAvailableThinkingLevels({ id: "claude-sonnet-4-5", reasoning: true })).toEqual([
-			"off",
-			"minimal",
-			"low",
-			"medium",
-			"high",
-		]);
-	});
-
-	test("includes xhigh for supported legacy models", () => {
-		expect(getAvailableThinkingLevels({ id: "gpt-5.3-codex", reasoning: true })).toEqual([
-			"off",
-			"minimal",
-			"low",
-			"medium",
-			"high",
-			"xhigh",
-		]);
-	});
-
-	test("uses thinkingLevelMap when present", () => {
-		expect(
-			getAvailableThinkingLevels({
-				id: "gpt-5.6-luna",
-				reasoning: true,
-				thinkingLevelMap: { off: "none", xhigh: "xhigh", max: "max" },
-			}),
-		).toEqual(["off", "minimal", "low", "medium", "high", "xhigh", "max"]);
-	});
-
-	test("hides off when thinkingLevelMap marks it unsupported", () => {
-		expect(
-			getAvailableThinkingLevels({
-				id: "gemini-3-pro",
-				reasoning: true,
-				thinkingLevelMap: { off: null },
-			}),
-		).toEqual(["minimal", "low", "medium", "high"]);
 	});
 });
 

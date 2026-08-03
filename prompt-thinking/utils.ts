@@ -1,15 +1,8 @@
+import type { ModelThinkingLevel } from "@earendil-works/pi-ai";
 import type { AutocompleteItem, AutocompleteProvider } from "@earendil-works/pi-tui";
 
 export const THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
-export const STANDARD_THINKING_LEVELS = THINKING_LEVELS.slice(0, -2) as Exclude<ThinkingLevel, "xhigh" | "max">[];
-
-export type ThinkingLevel = (typeof THINKING_LEVELS)[number];
-export type ThinkingModel = {
-	id: string;
-	api?: string;
-	reasoning?: boolean;
-	thinkingLevelMap?: Partial<Record<ThinkingLevel, string | null>>;
-};
+export type ThinkingLevel = ModelThinkingLevel;
 
 /** Regex matching a ^thinking token ending at cursor position. */
 const THINKING_TOKEN_PATTERN = /(?:^|\s)\^([a-zA-Z]*)$/;
@@ -58,35 +51,6 @@ function getRemovalRange(text: string, start: number, end: number): { start: num
 export function normalizeThinkingLevel(value: string): ThinkingLevel | null {
 	const normalized = value.trim().toLowerCase();
 	return (THINKING_LEVELS as readonly string[]).includes(normalized) ? (normalized as ThinkingLevel) : null;
-}
-
-function legacySupportsXhigh(model: ThinkingModel): boolean {
-	if (model.id.includes("gpt-5.2") || model.id.includes("gpt-5.3")) {
-		return true;
-	}
-	if (model.api === "anthropic-messages") {
-		return model.id.includes("opus-4-6") || model.id.includes("opus-4.6");
-	}
-	return false;
-}
-
-export function getAvailableThinkingLevels(model: ThinkingModel | null | undefined): ThinkingLevel[] {
-	if (!model?.reasoning) {
-		return ["off"];
-	}
-	if (model.thinkingLevelMap) {
-		return THINKING_LEVELS.filter((level) => {
-			const mapped = model.thinkingLevelMap?.[level];
-			if (mapped === null) {
-				return false;
-			}
-			if (level === "xhigh" || level === "max") {
-				return mapped !== undefined;
-			}
-			return true;
-		});
-	}
-	return legacySupportsXhigh(model) ? [...STANDARD_THINKING_LEVELS, "xhigh"] : [...STANDARD_THINKING_LEVELS];
 }
 
 /**

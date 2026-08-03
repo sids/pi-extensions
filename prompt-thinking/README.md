@@ -1,6 +1,6 @@
 # Prompt Thinking extension
 
-Type `^level` in the editor to pick a thinking level for a single prompt. The control token is removed before the prompt is sent.
+Type `^level` to set the thinking level for one prompt. Press **Alt+Shift+Tab** to cycle the session thinking level backward. The control token is removed before the prompt is sent.
 
 ## Install
 
@@ -15,6 +15,10 @@ pi install npm:@siddr/pi-prompt-thinking
 3. Pick a level from autocomplete.
 4. Send the prompt normally.
 5. pi temporarily applies that thinking level for the prompt, then restores the previous session level after the response finishes.
+
+### Keyboard shortcut
+
+Press **Alt+Shift+Tab** to cycle backward through the thinking levels available for the active model. The shortcut wraps from the lowest available level to the highest and skips unsupported levels.
 
 ### Examples
 

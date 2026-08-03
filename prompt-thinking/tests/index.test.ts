@@ -1,13 +1,20 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import type { AutocompleteProvider } from "@earendil-works/pi-tui";
 import promptThinkingExtension from "../index";
 import type { ThinkingLevel } from "../utils";
 
 type Handler = (event: any, ctx: any) => any;
+type ShortcutHandler = (ctx: any) => any;
+type TestModel = {
+	id: string;
+	reasoning: boolean;
+	thinkingLevelMap?: Partial<Record<ThinkingLevel, string | null>>;
+};
 
 function createHarness(initialThinkingLevel: ThinkingLevel = "high") {
 	const handlers = new Map<string, Handler[]>();
 	const providerFactories: Array<(current: AutocompleteProvider) => AutocompleteProvider> = [];
+	const shortcuts = new Map<string, { description: string; handler: ShortcutHandler }>();
 	let currentThinkingLevel = initialThinkingLevel;
 	let getThinkingCalls = 0;
 	const setThinkingCalls: ThinkingLevel[] = [];
@@ -26,6 +33,9 @@ function createHarness(initialThinkingLevel: ThinkingLevel = "high") {
 			currentThinkingLevel = level;
 			setThinkingCalls.push(level);
 		},
+		registerShortcut(shortcut: string, options: { description: string; handler: ShortcutHandler }) {
+			shortcuts.set(shortcut, options);
+		},
 	} as any;
 
 	promptThinkingExtension(pi);
@@ -40,7 +50,7 @@ function createHarness(initialThinkingLevel: ThinkingLevel = "high") {
 	}
 
 	function createSessionContext(
-		model: { id: string; reasoning: boolean; thinkingLevelMap?: Partial<Record<ThinkingLevel, string | null>> } = {
+		model: TestModel = {
 			id: "claude-sonnet-4-5",
 			reasoning: true,
 		},
@@ -49,6 +59,7 @@ function createHarness(initialThinkingLevel: ThinkingLevel = "high") {
 			hasUI: true,
 			model,
 			ui: {
+				notify: vi.fn(),
 				addAutocompleteProvider(factory: (current: AutocompleteProvider) => AutocompleteProvider) {
 					providerFactories.push(factory);
 				},
@@ -59,6 +70,7 @@ function createHarness(initialThinkingLevel: ThinkingLevel = "high") {
 	return {
 		emit,
 		providerFactories,
+		shortcuts,
 		createSessionContext,
 		getThinkingLevel: () => currentThinkingLevel,
 		getThinkingCallCount: () => getThinkingCalls,
@@ -99,6 +111,68 @@ function composeProviders(factories: Array<(current: AutocompleteProvider) => Au
 }
 
 describe("prompt-thinking extension", () => {
+	test("registers Alt+Shift+Tab and cycles to the previous supported level", () => {
+		const harness = createHarness("high");
+		const ctx = harness.createSessionContext({
+			id: "reasoning-model",
+			reasoning: true,
+			thinkingLevelMap: { minimal: null, medium: null, xhigh: null },
+		});
+		const shortcut = harness.shortcuts.get("alt+shift+tab");
+
+		expect(shortcut?.description).toBe("Cycle thinking level backward");
+		shortcut?.handler(ctx);
+
+		expect(harness.setThinkingCalls).toEqual(["low"]);
+		expect(ctx.ui.notify).toHaveBeenCalledWith("Thinking level: low", "info");
+	});
+
+	test("the thinking shortcut wraps to the highest supported level", () => {
+		const harness = createHarness("off");
+		const ctx = harness.createSessionContext({
+			id: "reasoning-model",
+			reasoning: true,
+			thinkingLevelMap: {
+				minimal: null,
+				low: null,
+				medium: null,
+				xhigh: null,
+				max: "max",
+			},
+		});
+
+		harness.shortcuts.get("alt+shift+tab")?.handler(ctx);
+
+		expect(harness.setThinkingCalls).toEqual(["max"]);
+	});
+
+	test("the thinking shortcut leaves non-reasoning models unchanged", () => {
+		const harness = createHarness("off");
+		const ctx = harness.createSessionContext({ id: "plain-model", reasoning: false });
+
+		harness.shortcuts.get("alt+shift+tab")?.handler(ctx);
+
+		expect(harness.setThinkingCalls).toEqual([]);
+		expect(ctx.ui.notify).toHaveBeenCalledWith("Current model does not support thinking", "info");
+	});
+
+	test("the thinking shortcut updates the session level without changing an active prompt override", async () => {
+		const harness = createHarness("high");
+		const ctx = harness.createSessionContext();
+		await harness.emit("input", { text: "^low summarize", images: [], source: "interactive" }, {});
+		await harness.emit("before_agent_start", { prompt: "summarize" }, {});
+
+		harness.shortcuts.get("alt+shift+tab")?.handler(ctx);
+
+		expect(harness.getThinkingLevel()).toBe("low");
+		expect(harness.setThinkingCalls).toEqual(["low"]);
+		expect(ctx.ui.notify).toHaveBeenCalledWith("Thinking level: medium", "info");
+
+		await harness.emit("agent_end", {}, {});
+		expect(harness.getThinkingLevel()).toBe("medium");
+		expect(harness.setThinkingCalls).toEqual(["low", "medium"]);
+	});
+
 	test("registers an autocomplete provider on session start", async () => {
 		const harness = createHarness("high");
 
@@ -126,12 +200,17 @@ describe("prompt-thinking extension", () => {
 		expect(harness.getThinkingCallCount()).toBeGreaterThan(0);
 	});
 
-	test("refreshes available levels after model changes without reading the current level until suggestions", async () => {
+	test("reads available levels from the live model when suggestions are requested", async () => {
 		const harness = createHarness("off");
-		await harness.emit("session_start", {}, harness.createSessionContext({ id: "gpt-4.1", reasoning: false }));
+		const ctx = harness.createSessionContext({ id: "plain-model", reasoning: false });
+		await harness.emit("session_start", {}, ctx);
 
 		harness.setThinkingLevelForTest("xhigh");
-		await harness.emit("model_select", { model: { id: "gpt-5.3-codex", reasoning: true } }, {});
+		ctx.model = {
+			id: "reasoning-model",
+			reasoning: true,
+			thinkingLevelMap: { xhigh: "xhigh" },
+		};
 		expect(harness.getThinkingCallCount()).toBe(0);
 
 		const provider = composeProviders(harness.providerFactories);

@@ -39,6 +39,7 @@ function createHarness(commands: any[], extensionOrder: ExtensionName[] = ["ment
 		setThinkingLevel(level: string) {
 			currentThinkingLevel = level;
 		},
+		registerShortcut() {},
 	} as any;
 
 	for (const extensionName of extensionOrder) {
