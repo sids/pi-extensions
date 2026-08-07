@@ -5,6 +5,7 @@ packages:
   - cmux-status
   - diff-review
   - fetch-url
+  - herdr-integration
   - mention-skills
   - openai-params
   - plan-md

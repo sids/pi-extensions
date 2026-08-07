@@ -13,6 +13,7 @@ A collection of pi extensions. Each extension lives in its own directory with it
 - [`side/`](side/) – Ephemeral floating read-only side chat with summarized and live parent-session context
 - [`answer/`](answer/) – Interactive Q&A workflow for extracting questions and sending compiled answers
 - [`cache-expiry-warning/`](cache-expiry-warning/) – Above-editor warning when a configured prompt cache may expire between turns
+- [`herdr-integration/`](herdr-integration/) – Herdr blocked-state reporting when Pi requires user input
 - [`mention-skills/`](mention-skills/) – `$skill-name` autocomplete with submit-time expansion to `SKILL.md` paths
 - [`prompt-save/`](prompt-save/) – Session-wide saved prompt picker with save, restore, copy, and delete shortcuts
 - [`prompt-thinking/`](prompt-thinking/) – `^thinking-level` overrides and session thinking-level shortcuts

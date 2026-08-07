@@ -2,7 +2,7 @@
 
 ## Project overview
 
-This repository contains the **answer**, **cache-expiry-warning**, **fetch-url**, **web-search**, **status**, **plan-md**, **task-subagents**, **review**, **side**, **mention-skills**, and **session-paths** pi extensions.
+This repository contains the **answer**, **cache-expiry-warning**, **fetch-url**, **web-search**, **status**, **plan-md**, **task-subagents**, **review**, **side**, **mention-skills**, **session-paths**, and **herdr-integration** pi extensions.
 
 ## Key files
 
@@ -66,6 +66,10 @@ This repository contains the **answer**, **cache-expiry-warning**, **fetch-url**
 - `session-paths/utils.ts`: Home path and session directory helpers
 - `session-paths/README.md`: Usage docs
 - `session-paths/tests/*.test.ts`: Unit tests
+- `herdr-integration/index.ts`: Herdr blocked-state lifecycle and event bridge
+- `herdr-integration/utils.ts`: Herdr environment, sentinel, and event parsing helpers
+- `herdr-integration/README.md`: Usage docs
+- `herdr-integration/tests/*.test.ts`: Unit tests
 - `shared/qna-tui.ts`: Shared Q&A TUI component
 - `shared/package.json`: npm package manifest for `@siddr/pi-shared-qna`
 - `shared/README.md`: shared package usage notes
@@ -106,5 +110,6 @@ This repository contains the **answer**, **cache-expiry-warning**, **fetch-url**
   pnpm test -- side/tests/*.test.ts
   pnpm test -- mention-skills/tests/utils.test.ts
   pnpm test -- session-paths/tests/*.test.ts
+  pnpm test -- herdr-integration/tests/*.test.ts
   ```
 - To load an extension locally, symlink its directory into `~/.pi/agent/extensions/<name>` and run `/reload` in pi.
