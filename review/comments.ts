@@ -3,6 +3,8 @@ import os from "node:os";
 import path from "node:path";
 import type { AgentToolResult } from "@earendil-works/pi-agent-core";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { Component } from "@earendil-works/pi-tui";
+import type { TSchema } from "typebox";
 import type { ReviewModeState } from "./types";
 import type { PersistedReviewComment, ReviewPriority, ReviewReference } from "./types";
 import {
@@ -29,7 +31,7 @@ function requirePiTui() {
 
 function createText(text: string) {
 	const { Text } = requirePiTui() as {
-		Text: new (text: string, x: number, y: number) => unknown;
+		Text: new (text: string, x: number, y: number) => Component;
 	};
 	return new Text(text, 0, 0);
 }
@@ -140,7 +142,7 @@ export function registerAddReviewCommentTool(
 	pi: ExtensionAPI,
 	dependencies: {
 		getState: () => ReviewModeState;
-		addReviewCommentSchema: unknown;
+		addReviewCommentSchema: TSchema;
 	},
 ) {
 	pi.registerTool({
@@ -153,6 +155,7 @@ export function registerAddReviewCommentTool(
 			"Use add_review_comment in Review mode to record each concrete finding instead of only listing it in assistant text.",
 		],
 		parameters: dependencies.addReviewCommentSchema,
+		constrainedSampling: { type: "json_schema", strict: "prefer" },
 		renderCall(args, theme) {
 			const priority = normalizeReviewPriority(args.priority) ?? "P?";
 			return createText(

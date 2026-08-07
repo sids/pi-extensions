@@ -1,6 +1,6 @@
 {
   "name": "@siddr/pi-shared-qna",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "type": "module",
   "description": "Shared TUI helpers for siddr pi extensions",
   "license": "MIT",
@@ -31,7 +31,7 @@
   },
   "homepage": "https://github.com/sids/pi-extensions/tree/main/shared#readme",
   "peerDependencies": {
-    "@earendil-works/pi-tui": ">=0.80.6"
+    "@earendil-works/pi-tui": ">=0.83.0"
   },
   "publishConfig": {
     "registry": "https://registry.npmjs.org/",

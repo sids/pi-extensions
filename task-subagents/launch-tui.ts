@@ -1,12 +1,8 @@
-import { existsSync } from "node:fs";
-import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
-import { CONFIG_DIR_NAME, getAgentDir, type ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { isTuiMode } from "@siddr/pi-shared-qna/extension-mode";
-import { isProjectTrusted } from "@siddr/pi-shared-qna/project-trust";
 import {
 	SUBAGENT_THINKING_LEVELS,
 	type NormalizedSubagentTask,
@@ -26,46 +22,6 @@ function requirePiTui() {
 			throw error;
 		}
 		return require(path.join(os.homedir(), ".bun", "install", "global", "node_modules", "@earendil-works", "pi-tui"));
-	}
-}
-
-function findPackageDir(startDir: string, packageName: string): string | undefined {
-	let currentDir = path.resolve(startDir);
-	while (true) {
-		const candidate = path.join(currentDir, "node_modules", packageName);
-		if (existsSync(candidate)) {
-			return candidate;
-		}
-		const parentDir = path.dirname(currentDir);
-		if (parentDir === currentDir) {
-			return undefined;
-		}
-		currentDir = parentDir;
-	}
-}
-
-function requirePiCodingAgentModule(modulePath: string) {
-	try {
-		return require(`@earendil-works/pi-coding-agent/${modulePath}`);
-	} catch (error) {
-		const code = (error as { code?: string }).code;
-		if (code !== "MODULE_NOT_FOUND" && code !== "ERR_PACKAGE_PATH_NOT_EXPORTED") {
-			throw error;
-		}
-
-		const searchRoots = [
-			path.dirname(fileURLToPath(import.meta.url)),
-			process.cwd(),
-			getAgentDir(),
-		];
-		for (const searchRoot of searchRoots) {
-			const packageDir = findPackageDir(searchRoot, path.join("@earendil-works", "pi-coding-agent"));
-			if (packageDir) {
-				return require(path.join(packageDir, modulePath));
-			}
-		}
-
-		return require(path.join(os.homedir(), ".bun", "install", "global", "node_modules", "@earendil-works", "pi-coding-agent", modulePath));
 	}
 }
 
@@ -107,6 +63,7 @@ export type SubagentModelOption = {
 	value?: string;
 	label: string;
 	description?: string;
+	thinkingLevel?: SubagentThinkingLevel;
 };
 
 export type SubagentThinkingOption = {
@@ -161,7 +118,7 @@ function formatCurrentThinkingLabel(
 }
 
 export function buildSubagentModelOptions(
-	models: Array<{ provider: string; id: string; name?: string }>,
+	models: Array<{ provider: string; id: string; name?: string; thinkingLevel?: SubagentThinkingLevel }>,
 	currentModelId?: string,
 ): SubagentModelOption[] {
 	const options: SubagentModelOption[] = [
@@ -178,10 +135,13 @@ export function buildSubagentModelOptions(
 			continue;
 		}
 		seen.add(value);
+		const name = model.name && model.name !== value ? model.name : undefined;
+		const pinnedThinking = model.thinkingLevel ? `thinking ${model.thinkingLevel}` : undefined;
 		options.push({
 			value,
 			label: value,
-			description: model.name && model.name !== value ? model.name : undefined,
+			description: [name, pinnedThinking].filter(Boolean).join(" · ") || undefined,
+			...(model.thinkingLevel ? { thinkingLevel: model.thinkingLevel } : {}),
 		});
 	}
 
@@ -245,30 +205,6 @@ export function buildSubagentLaunchReviewResult(tasks: ReviewedSubagentTask[]): 
 	};
 }
 
-export function parseSubagentScopedModelPatterns(args: string[]): string[] | undefined {
-	for (let index = 0; index < args.length; index++) {
-		if (args[index] !== "--models") {
-			continue;
-		}
-		const raw = args[index + 1] ?? "";
-		return raw.split(",").map((value) => value.trim()).filter(Boolean);
-	}
-	return undefined;
-}
-
-export function resolveConfiguredSubagentModelPatterns(
-	globalSettings: Record<string, unknown> | null,
-	projectSettings: Record<string, unknown> | null,
-): string[] | undefined {
-	const globalPatterns = Array.isArray(globalSettings?.enabledModels)
-		? globalSettings.enabledModels.filter((value): value is string => typeof value === "string")
-		: undefined;
-	const projectPatterns = Array.isArray(projectSettings?.enabledModels)
-		? projectSettings.enabledModels.filter((value): value is string => typeof value === "string")
-		: undefined;
-	return projectPatterns ?? globalPatterns;
-}
-
 function cycleOption<T extends { value?: unknown }>(options: T[], currentValue: unknown): T | undefined {
 	if (options.length === 0) {
 		return undefined;
@@ -286,65 +222,23 @@ function getSelectedThinkingValue(
 	return task?.thinkingOverride ?? task?.defaultThinking ?? currentThinkingLevel;
 }
 
-async function readSettingsFile(filePath: string): Promise<Record<string, unknown> | null> {
-	try {
-		const contents = await readFile(filePath, "utf8");
-		return JSON.parse(contents) as Record<string, unknown>;
-	} catch {
-		return null;
+function getModelCandidates(
+	ctx: ExtensionContext,
+): Array<{ provider: string; id: string; name?: string; thinkingLevel?: SubagentThinkingLevel }> {
+	const scopedModels = ctx.scopedModels ?? [];
+	if (scopedModels.length > 0) {
+		return scopedModels.map(({ model, thinkingLevel }) => ({
+			provider: model.provider,
+			id: model.id,
+			name: model.name,
+			thinkingLevel: thinkingLevel as SubagentThinkingLevel | undefined,
+		}));
 	}
-}
-
-function getAvailableModels(ctx: ExtensionContext): Array<{ provider: string; id: string; name?: string }> {
-	try {
-		const models = ctx.modelRegistry?.getAvailable?.();
-		return Array.isArray(models)
-			? models.map((model) => ({ provider: model.provider, id: model.id, name: model.name }))
-			: [];
-	} catch {
-		return [];
-	}
-}
-
-async function getScopedModelPatterns(ctx: ExtensionContext): Promise<string[] | undefined> {
-	const cliPatterns = parseSubagentScopedModelPatterns(process.argv.slice(2));
-	if (cliPatterns !== undefined) {
-		return cliPatterns;
-	}
-
-	const [globalSettings, projectSettings] = await Promise.all([
-		readSettingsFile(path.join(getAgentDir(), "settings.json")),
-		isProjectTrusted(ctx)
-			? readSettingsFile(path.join(ctx.cwd, CONFIG_DIR_NAME, "settings.json"))
-			: Promise.resolve(null),
-	]);
-	return resolveConfiguredSubagentModelPatterns(globalSettings, projectSettings);
-}
-
-async function getModelCandidates(ctx: ExtensionContext): Promise<Array<{ provider: string; id: string; name?: string }>> {
-	const scopedPatterns = await getScopedModelPatterns(ctx);
-	if (scopedPatterns && scopedPatterns.length > 0) {
-		try {
-			const { resolveModelScope } = requirePiCodingAgentModule("dist/core/model-resolver.js") as {
-				resolveModelScope: (
-					patterns: string[],
-					modelRegistry: ExtensionContext["modelRegistry"],
-				) => Promise<Array<{ model: { provider: string; id: string; name?: string } }>>;
-			};
-			const scopedModels = await resolveModelScope(scopedPatterns, ctx.modelRegistry);
-			if (scopedModels.length > 0) {
-				return scopedModels.map(({ model }) => ({
-					provider: model.provider,
-					id: model.id,
-					name: model.name,
-				}));
-			}
-		} catch {
-			// Fall back to all available models if scope resolution is unavailable.
-		}
-	}
-
-	return getAvailableModels(ctx);
+	return ctx.modelRegistry.getAvailable().map((model) => ({
+		provider: model.provider,
+		id: model.id,
+		name: model.name,
+	}));
 }
 
 type TuiComponent = {
@@ -633,6 +527,7 @@ class SubagentLaunchReviewComponent implements TuiComponent {
 		}
 
 		current.modelOverride = typeof next.value === "string" ? next.value : undefined;
+		current.thinkingOverride = next.thinkingLevel;
 		this.leaveConfirmation();
 		this.stopConfirmationCountdownForInteraction();
 		this.invalidate();
@@ -979,7 +874,7 @@ export async function runSubagentLaunchReview(
 		return null;
 	}
 
-	const modelOptions = buildSubagentModelOptions(await getModelCandidates(ctx), defaults?.currentModelId);
+	const modelOptions = buildSubagentModelOptions(getModelCandidates(ctx), defaults?.currentModelId);
 	const contextOptions = buildSubagentContextOptions(defaults?.hasForkSource ?? false);
 
 	return ctx.ui.custom<ReviewedSubagentTask[] | null>((tui, theme, _kb, done) => {

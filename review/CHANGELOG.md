@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.14 - 2026-08-06
+
+- Raised the minimum Pi peer version to 0.83.0.
+- Applied Pi’s configured output padding to custom review messages.
+- Enabled preferred strict sampling for review findings and forwarded provider-scoped environment values for summary calls.
+
 ## 0.1.13 - 2026-08-03
 
 - Added timed defaults for starting reviews from an empty branch and selecting uncommitted changes.

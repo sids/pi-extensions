@@ -1,6 +1,6 @@
 {
   "name": "pi-session-paths",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "description": "Treat macOS and Linux home paths as equivalent when finding pi sessions",
   "license": "MIT",
@@ -22,7 +22,7 @@
     ]
   },
   "peerDependencies": {
-    "@earendil-works/pi-coding-agent": ">=0.80.6"
+    "@earendil-works/pi-coding-agent": ">=0.83.0"
   },
   "publishConfig": {
     "registry": "https://registry.npmjs.org/",

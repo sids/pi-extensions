@@ -6,8 +6,6 @@ import {
 	buildSubagentThinkingOptions,
 	createInitialReviewedSubagentTasks,
 	normalizeSubagentCancellationNote,
-	parseSubagentScopedModelPatterns,
-	resolveConfiguredSubagentModelPatterns,
 	runSubagentLaunchReview,
 } from "../launch-tui";
 import type { ReviewedSubagentTask } from "../types";
@@ -16,6 +14,7 @@ const ENTER = "\r";
 const SHIFT_TAB = "\u001b[Z";
 const ESCAPE = "\u001b";
 const CTRL_C = "\u0003";
+const CTRL_P = "\u0010";
 
 type LaunchReviewDefaults = NonNullable<Parameters<typeof runSubagentLaunchReview>[2]>;
 
@@ -32,13 +31,18 @@ function createReviewedTask(overrides: Partial<ReviewedSubagentTask> = {}): Revi
 	};
 }
 
-function createLaunchReviewContext(customHandler: (render: any) => Promise<any>, mode?: string) {
+function createLaunchReviewContext(
+	customHandler: (render: any) => Promise<any>,
+	mode?: string,
+	options: { scopedModels?: any[]; availableModels?: any[] } = {},
+) {
 	return {
 		hasUI: true,
 		...(mode ? { mode } : {}),
 		cwd: "/tmp/project",
+		scopedModels: options.scopedModels ?? [],
 		modelRegistry: {
-			getAvailable: () => [],
+			getAvailable: () => options.availableModels ?? [],
 			find: () => undefined,
 		},
 		ui: {
@@ -47,17 +51,6 @@ function createLaunchReviewContext(customHandler: (render: any) => Promise<any>,
 			},
 		},
 	} as any;
-}
-
-async function withEmptyModelScope<T>(run: () => Promise<T>): Promise<T> {
-	const previousArgv = process.argv;
-	process.argv = ["bun", "test", "--models", ""];
-
-	try {
-		return await run();
-	} finally {
-		process.argv = previousArgv;
-	}
 }
 
 async function runInteractiveLaunchReview(options: {
@@ -69,10 +62,11 @@ async function runInteractiveLaunchReview(options: {
 		fg?: (token: string, text: string) => string;
 		bold?: (text: string) => string;
 	};
+	scopedModels?: any[];
+	availableModels?: any[];
 }): Promise<ReviewedSubagentTask[] | null> {
-	return await withEmptyModelScope(async () => {
-		return await runSubagentLaunchReview(
-			createLaunchReviewContext(async (render) => {
+	return await runSubagentLaunchReview(
+		createLaunchReviewContext(async (render) => {
 				return await new Promise<ReviewedSubagentTask[] | null>((resolve, reject) => {
 					const component = render(
 						{ requestRender: options.requestRender ?? (() => {}), terminal: { rows: 24 } },
@@ -91,11 +85,13 @@ async function runInteractiveLaunchReview(options: {
 						}
 					})();
 				});
+			}, undefined, {
+				scopedModels: options.scopedModels,
+				availableModels: options.availableModels,
 			}),
-			options.tasks ?? [createReviewedTask()],
-			options.defaults,
-		);
-	});
+		options.tasks ?? [createReviewedTask()],
+		options.defaults,
+	);
 }
 
 function delay(ms: number): Promise<void> {
@@ -223,30 +219,6 @@ describe("buildSubagentContextOptions", () => {
 	});
 });
 
-describe("parseSubagentScopedModelPatterns", () => {
-	test("extracts --models values from argv", () => {
-		expect(parseSubagentScopedModelPatterns(["--models", "openai/gpt-5, anthropic/claude-sonnet "])).toEqual([
-			"openai/gpt-5",
-			"anthropic/claude-sonnet",
-		]);
-		expect(parseSubagentScopedModelPatterns(["--print"])).toBeUndefined();
-	});
-});
-
-describe("resolveConfiguredSubagentModelPatterns", () => {
-	test("uses project enabledModels over global settings", () => {
-		expect(
-			resolveConfiguredSubagentModelPatterns(
-				{ enabledModels: ["openai/gpt-5"] },
-				{ enabledModels: ["anthropic/claude-sonnet"] },
-			),
-		).toEqual(["anthropic/claude-sonnet"]);
-		expect(resolveConfiguredSubagentModelPatterns({ enabledModels: ["openai/gpt-5"] }, null)).toEqual([
-			"openai/gpt-5",
-		]);
-	});
-});
-
 describe("buildSubagentLaunchReviewResult", () => {
 	test("counts ready and cancelled tasks while trimming cancellation notes", () => {
 		const result = buildSubagentLaunchReviewResult([
@@ -289,6 +261,39 @@ describe("runSubagentLaunchReview", () => {
 
 		expect(result).toBeNull();
 		expect(customCalled).toBe(false);
+	});
+
+	test("uses ctx.scopedModels and applies a model-pinned thinking level", async () => {
+		const result = await runInteractiveLaunchReview({
+			scopedModels: [
+				{
+					model: { provider: "anthropic", id: "claude-sonnet", name: "Claude Sonnet" },
+					thinkingLevel: "high",
+				},
+			],
+			drive: (component) => {
+				component.handleInput(CTRL_P);
+				component.handleInput(ENTER);
+				component.handleInput(ENTER);
+			},
+		});
+
+		expect(result?.[0]).toMatchObject({
+			modelOverride: "anthropic/claude-sonnet",
+			thinkingOverride: "high",
+		});
+	});
+
+	test("falls back to all available models when the session scope is empty", async () => {
+		const result = await runInteractiveLaunchReview({
+			availableModels: [{ provider: "openai", id: "gpt-5", name: "GPT-5" }],
+			drive: (component) => {
+				component.handleInput(CTRL_P);
+				component.handleInput(ENTER);
+				component.handleInput(ENTER);
+			},
+		});
+		expect(result?.[0]?.modelOverride).toBe("openai/gpt-5");
 	});
 
 	test("cycles thinking from the currently selected effective value", async () => {

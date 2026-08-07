@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.11 - 2026-08-06
+
+- Raised the minimum Pi peer version to 0.83.0.
+
 ## 0.1.10 - 2026-08-03
 
 - Added `Alt+Shift+Tab` to cycle backward through thinking levels supported by the active model.

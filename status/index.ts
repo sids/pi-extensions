@@ -222,11 +222,10 @@ export default function (pi: ExtensionAPI) {
 		if (activeTurnStartedAt !== null) {
 			finalizeActiveTurn(now);
 		}
-		if (activeAgentStartedAt !== null) {
-			finalizeActiveAgent(now);
+		if (activeAgentStartedAt === null) {
+			activeAgentStartedAt = now;
+			lastAgentDurationMs = 0;
 		}
-		activeAgentStartedAt = now;
-		lastAgentDurationMs = 0;
 	};
 
 	const finalizeActiveTurn = (now = Date.now()) => {
@@ -453,6 +452,11 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	pi.on("agent_end", (_event, ctx) => {
+		finalizeActiveTurn();
+		refreshTimingDetails(ctx);
+	});
+
+	pi.on("agent_settled", (_event, ctx) => {
 		finalizeActiveTurn();
 		finalizeActiveAgent();
 		refreshTimingDetails(ctx);

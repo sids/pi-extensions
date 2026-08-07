@@ -99,7 +99,12 @@ describe("summarizeChangesFromSessionHistory", () => {
 				modelRegistry: {
 					getApiKeyAndHeaders: async (requestedModel: any) => {
 						authCalls.push(requestedModel);
-						return { ok: true, apiKey: "api-key", headers: { "x-test": "yes" } };
+						return {
+							ok: true,
+							apiKey: "api-key",
+							headers: { "x-test": "yes" },
+							env: { AWS_PROFILE: "review" },
+						};
 					},
 				},
 				getSystemPrompt: () => "Pi system prompt",
@@ -150,6 +155,7 @@ describe("summarizeChangesFromSessionHistory", () => {
 		expect(completeCalls[0][2]).toEqual({
 			apiKey: "api-key",
 			headers: { "x-test": "yes" },
+			env: { AWS_PROFILE: "review" },
 			maxTokens: 1_000,
 			sessionId: "session-1",
 			signal,

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.8 - 2026-08-06
+
+- Raised the minimum Pi peer version to 0.83.0.
+- Enabled preferred strict JSON-schema sampling for the `web_search` tool.
+
 ## 0.1.7 - 2026-07-29
 
 - Registered primary and fallback Brave Search authentication providers with Pi's `/login` flow.

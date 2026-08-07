@@ -1,3 +1,4 @@
+import { contentText } from "@earendil-works/pi-ai";
 import { completeSimple, type Api, type AssistantMessage, type Model, type UserMessage } from "@earendil-works/pi-ai/compat";
 import {
 	buildSessionContext,
@@ -58,11 +59,7 @@ export function buildSideSummaryPrompt(): string {
 }
 
 export function extractSummaryAssistantText(message: AssistantMessage): string {
-	return message.content
-		.filter((content): content is { type: "text"; text: string } => content.type === "text")
-		.map((content) => content.text)
-		.join("\n")
-		.trim();
+	return contentText(message.content).trim();
 }
 
 export function parseSideSummaryResult(text: string): string | null {
@@ -88,7 +85,7 @@ export function parseSideSummaryResult(text: string): string | null {
 
 async function getModelAuth(ctx: ExtensionContext, model: Model<Api>) {
 	const auth = await ctx.modelRegistry.getApiKeyAndHeaders(model);
-	if (!auth.ok) {
+	if (auth.ok === false) {
 		throw new Error(auth.error);
 	}
 	return auth;

@@ -6,8 +6,10 @@ import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import type { AgentMessage, AgentToolResult } from "@earendil-works/pi-agent-core";
-import { getSupportedThinkingLevels, type Model, type TextContent } from "@earendil-works/pi-ai";
+import { contentText, getSupportedThinkingLevels, type Model } from "@earendil-works/pi-ai";
 import { getAgentDir, type ExtensionAPI, type SessionEntry } from "@earendil-works/pi-coding-agent";
+import type { Component } from "@earendil-works/pi-tui";
+import type { TSchema } from "typebox";
 import {
 	createInitialReviewedSubagentTasks,
 	runSubagentLaunchReview,
@@ -60,7 +62,7 @@ function requirePiTui() {
 
 function createText(text: string) {
 	const { Text } = requirePiTui() as {
-		Text: new (text: string, x: number, y: number) => unknown;
+		Text: new (text: string, x: number, y: number) => Component;
 	};
 	return new Text(text, 0, 0);
 }
@@ -172,11 +174,7 @@ function getAssistantText(message: AgentMessage): string {
 		return "";
 	}
 
-	return message.content
-		.filter((block): block is TextContent => block.type === "text")
-		.map((block) => block.text)
-		.join("\n")
-		.trim();
+	return contentText(message.content).trim();
 }
 
 function extractReferences(text: string): string[] {
@@ -222,11 +220,7 @@ function throwIfSubagentLaunchAborted(signal: AbortSignal | undefined): void {
 }
 
 function getMessageText(message: AgentMessage): string {
-	return message.content
-		.filter((block): block is TextContent => block.type === "text")
-		.map((block) => block.text)
-		.join("\n")
-		.trim();
+	return "content" in message ? contentText(message.content).trim() : "";
 }
 
 export function createSubagentRunId(): string {
@@ -1357,8 +1351,8 @@ function buildProgressTaskFromResult(task: SubagentTaskResult): SubagentTaskProg
 export function registerSubagentTools(
 	pi: ExtensionAPI,
 	dependencies: {
-		subagentsSchema: unknown;
-		steerSubagentSchema: unknown;
+		subagentsSchema: TSchema;
+		steerSubagentSchema: TSchema;
 	},
 ) {
 	if (isSubagentExtensionDisabled()) {
@@ -1997,6 +1991,7 @@ export function registerSubagentTools(
 		promptSnippet: "Launch one or more isolated research subagents when explicitly asked.",
 		promptGuidelines: ["Use subagents only when the user explicitly asks to use subagents or asks for parallel delegated research."],
 		parameters: dependencies.subagentsSchema,
+		constrainedSampling: { type: "json_schema", strict: "prefer" },
 		renderCall(args, theme) {
 			const tasks = (args.tasks as SubagentTask[] | undefined) ?? [];
 			const contextMode = resolveSubagentContextMode(args.context) ?? "fresh";
@@ -2355,6 +2350,7 @@ export function registerSubagentTools(
 		promptSnippet: "Rerun a previous subagent task with additional steering.",
 		promptGuidelines: ["Use steer_subagent only after a subagents run exists and the user asks to refine or rerun one of its tasks."],
 		parameters: dependencies.steerSubagentSchema,
+		constrainedSampling: { type: "json_schema", strict: "prefer" },
 		renderCall(args, theme) {
 			const instruction = summarizeSnippet(args.instruction ?? "", 90);
 			const text = `${theme.fg("toolTitle", theme.bold("steer subagent "))}${theme.fg("accent", `${args.runId}/${args.taskId}`)}\n${theme.fg("muted", instruction)}`;

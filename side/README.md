@@ -30,7 +30,7 @@ The overlay honors pi's configured keybindings for:
 - thinking-level cycling
 - interrupting an active side turn
 
-`PageUp`/`PageDown` scroll the transcript. Global `Ctrl+Shift+S` opens the side chat and toggles its panel without stopping the child. The centered panel tracks 50% of the main terminal height; `Ctrl+Shift+S` also hides the focused panel. `Ctrl+C` or `Ctrl+D` closes and discards the side chat. Side messages and tool activity use pi's standard main-TUI renderers. The active side model and thinking level remain available in the header, but their standard pi shortcuts are intentionally omitted from the panel's shortcut footer. Model and thinking changes affect only the in-memory child.
+`PageUp`/`PageDown` scroll the transcript. Global `Ctrl+Shift+S` opens the side chat and toggles its panel without stopping the child. The centered panel tracks 50% of the main terminal height; `Ctrl+Shift+S` also hides the focused panel. `Ctrl+C` or `Ctrl+D` closes and discards the side chat. Side messages and tool activity use pi's standard main-TUI renderers. The active side model and thinking level remain available in the header, but their standard pi shortcuts are intentionally omitted from the panel's shortcut footer. Model selection and cycling honor the parent session's resolved model scope, including pinned thinking levels; an unscoped parent exposes all authenticated models. Model and thinking changes affect only the in-memory child.
 
 ## Read-only behavior
 

@@ -1,6 +1,6 @@
 {
   "name": "@siddr/pi-diff-review",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "description": "Browser diff review extension for pi",
   "license": "MIT",
@@ -22,7 +22,7 @@
     ]
   },
   "peerDependencies": {
-    "@earendil-works/pi-coding-agent": ">=0.80.6"
+    "@earendil-works/pi-coding-agent": ">=0.83.0"
   },
   "dependencies": {
     "@pierre/diffs": "^1.1.22",

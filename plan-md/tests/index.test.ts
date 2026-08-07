@@ -90,12 +90,15 @@ describe("plan-md prompt injection", () => {
 		expect(setPlanTool?.promptGuidelines).toEqual([
 			"Use set_plan only when the current request calls for creating or revising a concrete implementation plan; never use it for informational questions or discussion-only replies.",
 		]);
+		expect(setPlanTool?.constrainedSampling).toEqual({ type: "json_schema", strict: "prefer" });
 		expect(toolByName.get("request_user_input")?.promptSnippet).toBe(
 			"Ask the user one or more short questions and wait for answers.",
 		);
 		expect(toolByName.get("request_user_input")?.promptGuidelines).toEqual([
 			"Use request_user_input in Plan mode when a short answer from the user is required before writing or revising the plan.",
 		]);
+		expect(toolByName.get("request_user_input")?.constrainedSampling).toEqual({ type: "json_schema", strict: "prefer" });
+		expect(toolByName.get("request_user_input")?.executionMode).toBe("sequential");
 	});
 
 	test("set_plan throws when plan mode is inactive", async () => {
@@ -207,6 +210,19 @@ describe("plan-md prompt injection", () => {
 			fg: (_name: string, text: string) => text,
 			bold: (text: string) => text,
 		} as any;
+
+		const rendered = renderer(
+			{
+				content: "Plan mode instructions",
+				details: {
+					activationId: "plan-current",
+					instructionsPrompt: "Plan prompt",
+				},
+			},
+			{ expanded: true, outputPad: 4 },
+			theme,
+		).render(80).join("\n");
+		expect(rendered).toMatch(/^ {4}Plan prompt/);
 
 		expect(
 			renderer(

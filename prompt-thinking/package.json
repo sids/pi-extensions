@@ -1,6 +1,6 @@
 {
   "name": "@siddr/pi-prompt-thinking",
-  "version": "0.1.10",
+  "version": "0.1.11",
   "type": "module",
   "description": "Thinking level controls for pi prompts and sessions",
   "license": "MIT",
@@ -22,9 +22,9 @@
     ]
   },
   "peerDependencies": {
-    "@earendil-works/pi-ai": ">=0.80.6",
-    "@earendil-works/pi-coding-agent": ">=0.80.6",
-    "@earendil-works/pi-tui": ">=0.80.6"
+    "@earendil-works/pi-ai": ">=0.83.0",
+    "@earendil-works/pi-coding-agent": ">=0.83.0",
+    "@earendil-works/pi-tui": ">=0.83.0"
   },
   "publishConfig": {
     "registry": "https://registry.npmjs.org/",

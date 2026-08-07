@@ -1,6 +1,6 @@
 {
   "name": "@siddr/pi-cache-expiry-warning",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "description": "Prompt cache expiry warning extension for pi",
   "license": "MIT",
@@ -22,8 +22,8 @@
     ]
   },
   "peerDependencies": {
-    "@earendil-works/pi-coding-agent": ">=0.80.6",
-    "@earendil-works/pi-tui": ">=0.80.6"
+    "@earendil-works/pi-coding-agent": ">=0.83.0",
+    "@earendil-works/pi-tui": ">=0.83.0"
   },
   "publishConfig": {
     "registry": "https://registry.npmjs.org/",

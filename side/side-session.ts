@@ -3,10 +3,13 @@ import {
 	createAgentSession,
 	DefaultResourceLoader,
 	getAgentDir,
+	ModelRuntime,
 	SessionManager,
 	SettingsManager,
 	type AgentSession,
+	type AgentSessionEvent,
 	type ExtensionContext,
+	type ScopedModel,
 	type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import type { ParentSessionView } from "./parent-session";
@@ -95,7 +98,7 @@ export class SideSessionController {
 			model: session.model,
 			thinkingLevel: session.thinkingLevel as SideThinkingLevel,
 		};
-		this.unsubscribe = session.subscribe((event) => this.handleEvent(event as any));
+		this.unsubscribe = session.subscribe((event) => this.handleEvent(event));
 	}
 
 	subscribe(listener: () => void): () => void {
@@ -111,7 +114,7 @@ export class SideSessionController {
 		}
 	}
 
-	private handleEvent(event: any): void {
+	private handleEvent(event: AgentSessionEvent): void {
 		switch (event.type) {
 			case "agent_start":
 				this.state.isRunning = true;
@@ -126,7 +129,7 @@ export class SideSessionController {
 					this.state.streamingMessage = event.message;
 				}
 				if (event.assistantMessageEvent?.type === "error") {
-					this.state.statusMessage = event.assistantMessageEvent.error?.message
+					this.state.statusMessage = event.assistantMessageEvent.error?.errorMessage
 						?? event.assistantMessageEvent.reason
 						?? "Side response failed";
 				}
@@ -179,12 +182,21 @@ export class SideSessionController {
 	}
 
 	async getAvailableModels(): Promise<Model<any>[]> {
-		return this.session.modelRegistry.getAvailable();
+		const scopedModels = this.session.scopedModels;
+		return scopedModels.length > 0
+			? scopedModels.map(({ model }) => model)
+			: [...await this.session.modelRuntime.getAvailable()];
 	}
 
 	async setModel(model: Model<any>): Promise<boolean> {
 		try {
 			await this.session.setModel(model);
+			const scopedModel = this.session.scopedModels.find(
+				(entry) => entry.model.provider === model.provider && entry.model.id === model.id,
+			);
+			if (scopedModel?.thinkingLevel) {
+				this.session.setThinkingLevel(scopedModel.thinkingLevel);
+			}
 			this.state.statusMessage = `Using ${model.provider}/${model.id}`;
 			this.notify();
 			return true;
@@ -312,6 +324,46 @@ export class SideSessionController {
 	}
 }
 
+async function createSideModelRuntime(ctx: ExtensionContext): Promise<ModelRuntime> {
+	const modelRuntime = await ModelRuntime.create({ allowModelNetwork: false });
+
+	// Built-ins are already installed by create(). Copy only parent registrations
+	// and overrides so opening side chat does not re-register every built-in.
+	for (const providerId of ctx.modelRegistry.getRegisteredProviderIds()) {
+		const nativeProvider = ctx.modelRegistry.getRegisteredNativeProvider(providerId);
+		if (nativeProvider) {
+			modelRuntime.registerNativeProvider(nativeProvider);
+			continue;
+		}
+		const providerConfig = ctx.modelRegistry.getRegisteredProviderConfig(providerId);
+		if (providerConfig) {
+			modelRuntime.registerProvider(providerId, providerConfig);
+		}
+	}
+	await modelRuntime.refresh({ allowNetwork: false });
+
+	// Runtime-only keys (notably --api-key) are not persisted in auth.json, so
+	// explicitly carry them into the isolated child runtime.
+	const providerIds = new Set(ctx.modelRegistry.getAll().map((model) => model.provider));
+	for (const providerId of providerIds) {
+		if (ctx.modelRegistry.getProviderAuthStatus(providerId).source !== "runtime") {
+			continue;
+		}
+		const resolvedAuth = await ctx.modelRegistry.getProviderAuth(providerId);
+		if (resolvedAuth?.auth.apiKey) {
+			await modelRuntime.setRuntimeApiKey(providerId, resolvedAuth.auth.apiKey, { allowNetwork: false });
+		}
+	}
+	return modelRuntime;
+}
+
+function resolveSideModelScope(ctx: ExtensionContext): ScopedModel[] {
+	if (ctx.scopedModels.length > 0) {
+		return [...ctx.scopedModels];
+	}
+	return ctx.modelRegistry.getAvailable().map((model) => ({ model }));
+}
+
 export async function createSideSession(options: {
 	ctx: ExtensionContext;
 	snapshot: ParentSessionSnapshot;
@@ -343,16 +395,16 @@ export async function createSideSession(options: {
 		false,
 	);
 
-	const availableModels = await options.ctx.modelRegistry.getAvailable();
+	const modelRuntime = await createSideModelRuntime(options.ctx);
+	const scopedModels = resolveSideModelScope(options.ctx);
 	const activeToolNames = ["read", "grep", "find", "ls", ...options.parentTools.map((tool) => tool.name)];
 	const { session } = await createAgentSession({
 		cwd: options.ctx.cwd,
 		agentDir: getAgentDir(),
-		authStorage: options.ctx.modelRegistry.authStorage,
-		modelRegistry: options.ctx.modelRegistry,
+		modelRuntime,
 		model: options.snapshot.model,
 		thinkingLevel: resolveInitialSideThinking(options.mainThinkingLevel),
-		scopedModels: availableModels.map((model) => ({ model })),
+		scopedModels,
 		tools: activeToolNames,
 		customTools: options.parentTools,
 		resourceLoader,

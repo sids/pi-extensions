@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.8 - 2026-08-06
+
+- Raised the minimum Pi peer version to 0.83.0.
+- Forwarded provider-scoped environment values for question extraction model calls.
+- Adopted Pi’s `contentText()` helper for assistant text extraction.
+
 ## 0.1.7 - 2026-07-29
 
 - Switched the preferred question extraction model to GPT-5.6 Luna.

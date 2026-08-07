@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.8 - 2026-08-06
+
+- Raised the minimum Pi peer version to 0.83.0.
+
 ## 0.1.7 - 2026-08-03
 
 - Added an optional 24-hour prompt cache retention setting for supported official OpenAI APIs.

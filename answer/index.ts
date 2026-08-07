@@ -10,6 +10,7 @@
  * 4. Submits the compiled answers when done
  */
 
+import { contentText } from "@earendil-works/pi-ai";
 import { complete, type Model, type Api, type UserMessage } from "@earendil-works/pi-ai/compat";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { BorderedLoader, CONFIG_DIR_NAME, getAgentDir } from "@earendil-works/pi-coding-agent";
@@ -43,7 +44,12 @@ async function selectExtractionModel(
 	currentModel: Model<Api>,
 	modelRegistry: {
 		find: (provider: string, modelId: string) => Model<Api> | undefined;
-		getApiKeyAndHeaders: (model: Model<Api>) => Promise<{ ok: boolean; apiKey?: string; headers?: Record<string, string> }>;
+		getApiKeyAndHeaders: (model: Model<Api>) => Promise<{
+			ok: boolean;
+			apiKey?: string;
+			headers?: Record<string, string>;
+			env?: Record<string, string>;
+		}>;
 	},
 	modelPreferences: { provider: string; id: string }[],
 ): Promise<Model<Api>> {
@@ -141,11 +147,9 @@ export default function (pi: ExtensionAPI) {
 						ctx.ui.notify(`Last assistant message incomplete (${msg.stopReason})`, "error");
 						return;
 					}
-					const textParts = msg.content
-						.filter((c): c is { type: "text"; text: string } => c.type === "text")
-						.map((c) => c.text);
-					if (textParts.length > 0) {
-						lastAssistantText = textParts.join("\n");
+					const text = contentText(msg.content);
+					if (text) {
+						lastAssistantText = text;
 						lastAssistantEntryId = entry.id;
 						break;
 					}
@@ -166,7 +170,7 @@ export default function (pi: ExtensionAPI) {
 
 			const doExtract = async () => {
 				const auth = await ctx.modelRegistry.getApiKeyAndHeaders(extractionModel);
-				if (!auth.ok) {
+				if (auth.ok === false) {
 					throw new Error(auth.error);
 				}
 				const userMessage: UserMessage = {
@@ -178,17 +182,14 @@ export default function (pi: ExtensionAPI) {
 				const response = await complete(
 					extractionModel,
 					{ systemPrompt, messages: [userMessage] },
-					{ apiKey: auth.apiKey, headers: auth.headers, signal: loader.signal },
+					{ apiKey: auth.apiKey, headers: auth.headers, env: auth.env, signal: loader.signal },
 				);
 
 				if (response.stopReason === "aborted") {
 					return null;
 				}
 
-				const responseText = response.content
-					.filter((c): c is { type: "text"; text: string } => c.type === "text")
-					.map((c) => c.text)
-					.join("\n");
+				const responseText = contentText(response.content);
 
 				return parseExtractionResult(responseText);
 			};

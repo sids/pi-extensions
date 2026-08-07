@@ -549,7 +549,7 @@ describe("cmux-status extension", () => {
 			waiting: false,
 		});
 		await flushAsyncWork();
-		await harness.emit("agent_end");
+		await harness.emit("agent_settled");
 
 		expect(harness.getWorkspaceStatusText(statusKey)).toBe("π build: Ready");
 		expect(harness.transportCalls.filter((call) => call.method === "notify")).toEqual([
@@ -631,6 +631,9 @@ describe("cmux-status extension", () => {
 		await harness.emit("session_start");
 		await harness.emit("agent_start");
 		await harness.emit("agent_end");
+		expect(harness.getWorkspaceStatusText(statusKey)).toBe("⠋ π build: Working");
+		await harness.emit("agent_start");
+		await harness.emit("agent_settled");
 
 		expect(harness.getWorkspaceStatusText(statusKey)).toBe("π build: Ready");
 		expect(getActiveIntervalCount()).toBe(0);
@@ -721,7 +724,7 @@ describe("cmux-status extension", () => {
 			waiting: false,
 		});
 		await flushAsyncWork();
-		await harness.emit("agent_end");
+		await harness.emit("agent_settled");
 
 		expect(harness.getWorkspaceStatusText(statusKey)).toBe("π build: Ready");
 		expect(harness.execCalls.filter((call) => call.command === "cmux" && call.args[0] === "notify").length).toBe(1);
@@ -739,7 +742,7 @@ describe("cmux-status extension", () => {
 		expect(getActiveIntervalCount()).toBe(1);
 
 		await tickIntervals(2);
-		await harness.emit("agent_end");
+		await harness.emit("agent_settled");
 
 		expect(getActiveIntervalCount()).toBe(0);
 		expect(harness.execCalls.filter((call) => call.command === "cmux" && call.args[0] === "set-status")).toEqual([
@@ -784,7 +787,7 @@ describe("cmux-status extension", () => {
 		const startPromise = harness.emit("agent_start");
 		await flushAsyncWork();
 		expect(harness.getBlockedSetStatusCount()).toBe(1);
-		const endPromise = harness.emit("agent_end");
+		const endPromise = harness.emit("agent_settled");
 		await flushAsyncWork();
 		expect(harness.getWorkspaceStatusText(statusKey)).toBe("π - Ready");
 

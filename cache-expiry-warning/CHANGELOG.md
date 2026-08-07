@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.1 - 2026-08-06
+
+- Raised the minimum Pi peer version to 0.83.0.
+
 ## 0.1.0 - 2026-08-02
 
 - Added an above-editor warning when an observed prompt cache expires between turns.

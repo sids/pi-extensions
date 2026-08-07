@@ -144,12 +144,12 @@ async function fetchBraveResults(
 ): Promise<WebSearchItem[]> {
 	let result = await requestBraveResults(query, count, apiKey, signal);
 	const isRateLimited =
-		!result.ok && (result.status === 429 || result.errorCode === "RATE_LIMITED");
+		result.ok === false && (result.status === 429 || result.errorCode === "RATE_LIMITED");
 	if (isRateLimited && fallbackApiKey && fallbackApiKey !== apiKey) {
 		result = await requestBraveResults(query, count, fallbackApiKey, signal);
 	}
 
-	if (!result.ok) {
+	if (result.ok === false) {
 		const detail = result.errorDetail ?? result.errorText;
 		throw new Error(
 			`Brave Search API error (${result.status} ${result.statusText}): ${detail}`,
@@ -333,6 +333,7 @@ export default function (pi: ExtensionAPI) {
 		promptSnippet: "Search the web for titles, URLs, and result snippets.",
 		promptGuidelines: ["Use web_search when current or external information is needed and the user has not provided a specific URL."],
 		parameters: webSearchSchema,
+		constrainedSampling: { type: "json_schema", strict: "prefer" },
 		renderCall: (args, theme) => {
 			const queries = resolveQueries(args);
 			const count = resolveCount(args, queries.length || 1);

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.11 - 2026-08-06
+
+- Raised the minimum Pi peer version to 0.83.0.
+- Measured one continuous agent interval through retries, compaction, and queued continuations until `agent_settled`.
+
 ## 0.1.10 - 2026-08-03
 
 - Moved session, repository, and pull-request context above the editor while keeping model, thinking, context usage, and timing below it.

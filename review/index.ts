@@ -19,15 +19,15 @@ export default function (pi: ExtensionAPI) {
 	const stateManager = createReviewModeStateManager(pi);
 	const lifecycle = new ReviewLifecycleController();
 
-	pi.registerMessageRenderer(REVIEW_SUMMARY_ENTRY_TYPE, (message, _options, theme) => {
-		const box = new Box(1, 0, (segment) => theme.bg("customMessageBg", segment));
+	pi.registerMessageRenderer(REVIEW_SUMMARY_ENTRY_TYPE, (message, { outputPad }, theme) => {
+		const box = new Box(outputPad, 0, (segment) => theme.bg("customMessageBg", segment));
 		box.addChild(new Text(String(message.content ?? ""), 0, 0));
 		return box;
 	});
 
-	pi.registerMessageRenderer(REVIEW_CHANGE_SUMMARY_ENTRY_TYPE, (message, { expanded }, theme) => {
+	pi.registerMessageRenderer(REVIEW_CHANGE_SUMMARY_ENTRY_TYPE, (message, { expanded, outputPad }, theme) => {
 		const renderInMessageBox = (text: string) => {
-			const box = new Box(1, 0, (segment) => theme.bg("customMessageBg", segment));
+			const box = new Box(outputPad, 0, (segment) => theme.bg("customMessageBg", segment));
 			box.addChild(new Text(text, 0, 0));
 			return box;
 		};
@@ -48,7 +48,7 @@ export default function (pi: ExtensionAPI) {
 		return renderInMessageBox(lines.join("\n"));
 	});
 
-	pi.registerMessageRenderer(REVIEW_PROMPT_ENTRY_TYPE, (message, { expanded }, theme) => {
+	pi.registerMessageRenderer(REVIEW_PROMPT_ENTRY_TYPE, (message, { expanded, outputPad }, theme) => {
 		const state = stateManager.getState();
 		const details = message.details as ReviewPromptDetails | undefined;
 		if (!state.active) {
@@ -63,7 +63,7 @@ export default function (pi: ExtensionAPI) {
 		}
 
 		const renderInMessageBox = (text: string) => {
-			const box = new Box(1, 0, (segment) => theme.bg("customMessageBg", segment));
+			const box = new Box(outputPad, 0, (segment) => theme.bg("customMessageBg", segment));
 			box.addChild(new Text(text, 0, 0));
 			return box;
 		};

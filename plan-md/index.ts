@@ -40,7 +40,7 @@ const PLAN_MODE_EXIT_ENTRY_TYPE = "plan-md:exit";
 export default function (pi: ExtensionAPI) {
 	const stateManager = createPlanModeStateManager(pi);
 
-	pi.registerMessageRenderer(PLAN_MODE_PROMPT_ENTRY_TYPE, (message, { expanded }, theme) => {
+	pi.registerMessageRenderer(PLAN_MODE_PROMPT_ENTRY_TYPE, (message, { expanded, outputPad }, theme) => {
 		const state = stateManager.getState();
 		const details = message.details as PlanModePromptDetails | undefined;
 		if (!state.active) {
@@ -54,7 +54,7 @@ export default function (pi: ExtensionAPI) {
 			return undefined;
 		}
 
-		const render = (text: string) => new Text(text, 1, 0, (segment) => theme.bg("customMessageBg", segment));
+		const render = (text: string) => new Text(text, outputPad, 0, (segment) => theme.bg("customMessageBg", segment));
 		const prompt = details?.instructionsPrompt ?? String(message.content ?? "");
 
 		if (!expanded) {
@@ -72,8 +72,8 @@ export default function (pi: ExtensionAPI) {
 		return render(prompt);
 	});
 
-	pi.registerMessageRenderer(PLAN_MODE_EXIT_ENTRY_TYPE, (message, { expanded }, theme) => {
-		const render = (text: string) => new Text(text, 1, 0, (segment) => theme.bg("customMessageBg", segment));
+	pi.registerMessageRenderer(PLAN_MODE_EXIT_ENTRY_TYPE, (message, { expanded, outputPad }, theme) => {
+		const render = (text: string) => new Text(text, outputPad, 0, (segment) => theme.bg("customMessageBg", segment));
 		const details = message.details as PlanModeExitDetails | undefined;
 		const title = String(message.content || "Plan mode ended.");
 		const lines = [theme.fg("accent", theme.bold(title))];
@@ -108,6 +108,7 @@ export default function (pi: ExtensionAPI) {
 			"Use set_plan only when the current request calls for creating or revising a concrete implementation plan; never use it for informational questions or discussion-only replies.",
 		],
 		parameters: SetPlanSchema,
+		constrainedSampling: { type: "json_schema", strict: "prefer" },
 		renderCall(args, theme) {
 			const preview = summarizeSnippet(String(args.plan ?? ""), 90);
 			return new Text(

@@ -138,6 +138,7 @@ type RegisteredTool = {
 	description?: string;
 	promptSnippet?: string;
 	promptGuidelines?: string[];
+	constrainedSampling?: unknown;
 	execute: (
 		toolCallId: string,
 		params: any,
@@ -442,6 +443,8 @@ describe("subagents tool", () => {
 		expect(tools.steer_subagent.promptGuidelines).toEqual([
 			"Use steer_subagent only after a subagents run exists and the user asks to refine or rerun one of its tasks.",
 		]);
+		expect(tools.subagents.constrainedSampling).toEqual({ type: "json_schema", strict: "prefer" });
+		expect(tools.steer_subagent.constrainedSampling).toEqual({ type: "json_schema", strict: "prefer" });
 		expect([...shortcuts.keys()]).toEqual(["ctrl+shift+o"]);
 	});
 

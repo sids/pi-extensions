@@ -1,3 +1,4 @@
+import { contentText } from "@earendil-works/pi-ai";
 import { completeSimple, type Api, type AssistantMessage, type Model, type UserMessage } from "@earendil-works/pi-ai/compat";
 import {
 	buildSessionContext,
@@ -11,6 +12,7 @@ const FALLBACK_SYSTEM_PROMPT = "You are a helpful coding assistant.";
 export type ModelAuth = {
 	apiKey?: string;
 	headers?: Record<string, string>;
+	env?: Record<string, string>;
 };
 
 type SummarizeDependencies = {
@@ -37,11 +39,7 @@ export function buildSessionChangeSummaryPrompt(): string {
 }
 
 export function extractAssistantText(message: AssistantMessage): string {
-	return message.content
-		.filter((content): content is { type: "text"; text: string } => content.type === "text")
-		.map((content) => content.text)
-		.join("\n")
-		.trim();
+	return contentText(message.content).trim();
 }
 
 export function parseChangeSummaryResult(text: string): string | null {
@@ -80,6 +78,7 @@ async function getModelAuth(ctx: ExtensionContext, model: Model<Api>): Promise<M
 			ok: boolean;
 			apiKey?: string;
 			headers?: Record<string, string>;
+			env?: Record<string, string>;
 			error?: string;
 		}>;
 		getApiKey?: (model: Model<Api>) => Promise<string | undefined>;
@@ -90,7 +89,7 @@ async function getModelAuth(ctx: ExtensionContext, model: Model<Api>): Promise<M
 		if (!auth.ok) {
 			throw new Error(auth.error ?? `No API key available for ${model.provider}/${model.id}`);
 		}
-		return { apiKey: auth.apiKey, headers: auth.headers };
+		return { apiKey: auth.apiKey, headers: auth.headers, env: auth.env };
 	}
 
 	const apiKey = await registry.getApiKey?.(model);
@@ -138,6 +137,7 @@ export async function summarizeChangesFromSessionHistory(
 		{
 			apiKey: auth.apiKey,
 			headers: auth.headers,
+			env: auth.env,
 			maxTokens: 1_000,
 			sessionId: ctx.sessionManager.getSessionId(),
 			signal: dependencies.signal ?? ctx.signal,

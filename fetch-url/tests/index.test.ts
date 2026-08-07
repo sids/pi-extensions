@@ -7,11 +7,11 @@ afterEach(() => {
 
 describe("fetch-url extension", () => {
 	test("registers fetch_url with a prompt snippet", () => {
-		let tool: { name: string; promptSnippet?: string; promptGuidelines?: string[] } | undefined;
+		let tool: { name: string; promptSnippet?: string; promptGuidelines?: string[]; constrainedSampling?: unknown } | undefined;
 
 		fetchUrlExtension(
 			{
-				registerTool(candidate: { name: string; promptSnippet?: string; promptGuidelines?: string[] }) {
+				registerTool(candidate: { name: string; promptSnippet?: string; promptGuidelines?: string[]; constrainedSampling?: unknown }) {
 					tool = candidate;
 				},
 			} as any,
@@ -24,6 +24,7 @@ describe("fetch-url extension", () => {
 		expect(tool?.promptGuidelines).toEqual([
 			"Use fetch_url when the user asks to inspect a URL or when web content is needed from a known URL.",
 		]);
+		expect(tool?.constrainedSampling).toEqual({ type: "json_schema", strict: "prefer" });
 	});
 
 	test("passes the tool abort signal to fetch", async () => {

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.16 - 2026-08-06
+
+- Raised the minimum Pi peer version to 0.83.0.
+- Applied Pi’s configured output padding to custom plan messages.
+- Enabled preferred strict tool sampling and serialized interactive `request_user_input` calls.
+
 ## 0.1.15 - 2026-07-29
 
 - Avoided persisting plans for informational or advice-only requests.

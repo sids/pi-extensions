@@ -7,7 +7,7 @@ afterEach(() => {
 
 describe("web-search extension", () => {
 	test("registers Brave providers and web_search prompt metadata", () => {
-		let tool: { name: string; promptSnippet?: string; promptGuidelines?: string[] } | undefined;
+		let tool: { name: string; promptSnippet?: string; promptGuidelines?: string[]; constrainedSampling?: unknown } | undefined;
 		const providers: Array<{ id: string; config: { name?: string; apiKey?: string } }> = [];
 
 		webSearchExtension(
@@ -16,7 +16,7 @@ describe("web-search extension", () => {
 				registerProvider(id: string, config: { name?: string; apiKey?: string }) {
 					providers.push({ id, config });
 				},
-				registerTool(candidate: { name: string; promptSnippet?: string; promptGuidelines?: string[] }) {
+				registerTool(candidate: { name: string; promptSnippet?: string; promptGuidelines?: string[]; constrainedSampling?: unknown }) {
 					tool = candidate;
 				},
 			} as any,
@@ -40,6 +40,7 @@ describe("web-search extension", () => {
 		expect(tool?.promptGuidelines).toEqual([
 			"Use web_search when current or external information is needed and the user has not provided a specific URL.",
 		]);
+		expect(tool?.constrainedSampling).toEqual({ type: "json_schema", strict: "prefer" });
 	});
 
 	test("prefills the provider login command during setup", () => {

@@ -1,6 +1,6 @@
 {
   "name": "@siddr/pi-fetch-url",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "type": "module",
   "description": "Readable content fetch tool extension for pi",
   "license": "MIT",
@@ -22,8 +22,8 @@
     ]
   },
   "peerDependencies": {
-    "@earendil-works/pi-coding-agent": ">=0.80.6",
-    "@earendil-works/pi-tui": ">=0.80.6",
+    "@earendil-works/pi-coding-agent": ">=0.83.0",
+    "@earendil-works/pi-tui": ">=0.83.0",
     "typebox": "*"
   },
   "dependencies": {

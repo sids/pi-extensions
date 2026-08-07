@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.9 - 2026-08-06
+
+- Raised the minimum Pi peer version to 0.83.0.
+- Replaced manual CLI/settings scope reconstruction with `ctx.scopedModels`, including pinned thinking levels.
+- Enabled preferred strict JSON-schema sampling for subagent tools and adopted `contentText()`.
+
 ## 0.1.8 - 2026-07-29
 
 - Added `max` thinking-level inheritance, validation, model clamping, and launch controls.

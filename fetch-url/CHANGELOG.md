@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.9 - 2026-08-06
+
+- Raised the minimum Pi peer version to 0.83.0.
+- Enabled preferred strict JSON-schema sampling for the `fetch_url` tool.
+
 ## 0.1.8 - 2026-07-29
 
 - Added tool guidance for choosing `fetch_url` when content is needed from a known URL.

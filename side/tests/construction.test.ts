@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
 	loaderOptions: [] as any[],
 	settings: [] as any[],
 	managers: [] as any[],
+	runtimes: [] as any[],
 }));
 
 vi.mock("@earendil-works/pi-coding-agent", async (importOriginal) => {
@@ -46,6 +47,22 @@ vi.mock("@earendil-works/pi-coding-agent", async (importOriginal) => {
 				return manager;
 			},
 		},
+		ModelRuntime: {
+			create: async (options: any) => {
+				const runtime: any = {
+					options,
+					providers: [] as any[],
+					providerConfigs: [] as any[],
+					runtimeKeys: [] as any[],
+					registerNativeProvider(provider: any) { this.providers.push(provider); },
+					registerProvider(providerId: string, config: any) { this.providerConfigs.push([providerId, config]); },
+					refresh: vi.fn(async () => undefined),
+				};
+				runtime.setRuntimeApiKey = vi.fn(async (...args: any[]) => { runtime.runtimeKeys.push(args); });
+				mocks.runtimes.push(runtime);
+				return runtime;
+			},
+		},
 		createAgentSession: async (options: any) => {
 			mocks.createCalls.push(options);
 			return {
@@ -54,7 +71,8 @@ vi.mock("@earendil-works/pi-coding-agent", async (importOriginal) => {
 					isStreaming: false,
 					model: options.model,
 					thinkingLevel: options.thinkingLevel,
-					modelRegistry: options.modelRegistry,
+					modelRuntime: options.modelRuntime,
+					scopedModels: options.scopedModels,
 					subscribe: () => () => undefined,
 					dispose: vi.fn(),
 				},
@@ -71,15 +89,33 @@ describe("createSideSession", () => {
 		mocks.loaderOptions.length = 0;
 		mocks.settings.length = 0;
 		mocks.managers.length = 0;
+		mocks.runtimes.length = 0;
 		const parentTools = [{ name: "main_session_status" }] as any;
 		const model = { provider: "test", id: "model" } as any;
+		const nativeProvider = { id: "custom-native", name: "Custom native" };
+		const providerConfig = { name: "Custom config", baseUrl: "https://example.test" };
 		const registry = {
-			authStorage: { name: "shared-auth" },
-			getAvailable: async () => [model],
+			getAll: () => [model],
+			getAvailable: () => [model],
+			getRegisteredProviderIds: () => ["custom-native", "custom-config"],
+			getRegisteredNativeProvider: (providerId: string) =>
+				providerId === "custom-native" ? nativeProvider : undefined,
+			getRegisteredProviderConfig: (providerId: string) =>
+				providerId === "custom-config" ? providerConfig : undefined,
+			getProviderAuthStatus: (providerId: string) => ({
+				configured: true,
+				source: providerId === "test" ? "runtime" : "environment",
+			}),
+			getProviderAuth: async (providerId: string) =>
+				providerId === "test" ? { auth: { apiKey: "runtime-key" } } : undefined,
 		};
 		const parentView = { dispose: vi.fn() } as any;
 		const controller = await createSideSession({
-			ctx: { cwd: "/tmp/project", modelRegistry: registry } as any,
+			ctx: {
+				cwd: "/tmp/project",
+				modelRegistry: registry,
+				scopedModels: [{ model, thinkingLevel: "high" }],
+			} as any,
 			snapshot: {
 				sessionId: "parent",
 				sessionFile: "/tmp/parent.jsonl",
@@ -108,8 +144,14 @@ describe("createSideSession", () => {
 			thinkingLevel: "medium",
 			tools: ["read", "grep", "find", "ls", "main_session_status"],
 			customTools: parentTools,
-			authStorage: registry.authStorage,
+			modelRuntime: mocks.runtimes[0],
+			scopedModels: [{ model, thinkingLevel: "high" }],
 		});
+		expect(mocks.runtimes[0].providers).toEqual([nativeProvider]);
+		expect(mocks.runtimes[0].providerConfigs).toEqual([["custom-config", providerConfig]]);
+		expect(mocks.runtimes[0].runtimeKeys).toEqual([["test", "runtime-key", { allowNetwork: false }]]);
+		expect(mocks.runtimes[0].refresh).toHaveBeenCalledTimes(1);
+		expect(mocks.runtimes[0].refresh).toHaveBeenCalledWith({ allowNetwork: false });
 		expect(mocks.managers[0].options).toEqual({ parentSession: "/tmp/parent.jsonl" });
 		const hiddenContext = mocks.managers[0].messages[0];
 		expect(hiddenContext[0]).toBe("side:boundary");

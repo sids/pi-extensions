@@ -241,6 +241,31 @@ describe("status extension", () => {
 		}
 	});
 
+	test("keeps one agent timer across low-level continuations until agent_settled", async () => {
+		const originalDateNow = Date.now;
+		let now = 0;
+		Date.now = () => now;
+		const harness = createHarness();
+		const ctx = harness.createCtx("/tmp/status-project");
+
+		try {
+			await harness.emit("session_start", {}, ctx);
+			await harness.emit("agent_start", {}, ctx);
+			now = 2 * 60_000;
+			await harness.emit("agent_end", {}, ctx);
+			expect(normalizeLine(harness.renderLatestWidget()[0] ?? "")).toContain("2m agent");
+
+			now = 3 * 60_000;
+			await harness.emit("agent_start", {}, ctx);
+			now = 5 * 60_000;
+			await harness.emit("agent_settled", {}, ctx);
+			expect(normalizeLine(harness.renderLatestWidget()[0] ?? "")).toContain("5m agent");
+		} finally {
+			await harness.emit("session_shutdown", {}, ctx);
+			Date.now = originalDateNow;
+		}
+	});
+
 	test("re-renders with openai-params indicators inside the thinking parens", async () => {
 		const harness = createHarness();
 		const ctx = harness.createCtx("/tmp/status-project");

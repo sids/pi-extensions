@@ -257,13 +257,15 @@ describe("review change summary renderer", () => {
 			content: ["line 1", "line 2", "line 3", "line 4", "line 5"].join("\n"),
 		};
 
-		const collapsed = renderer(message, { expanded: false }, theme).render(120).join("\n");
+		const collapsed = renderer(message, { expanded: false, outputPad: 3 }, theme).render(120).join("\n");
 		expect(collapsed).toContain("line 1");
 		expect(collapsed).toContain("line 4");
 		expect(collapsed).not.toContain("line 5");
 		expect(collapsed).toContain("to expand");
 
-		const expanded = renderer(message, { expanded: true }, theme).render(120).join("\n");
+		expect(collapsed.split("\n")[0]).toMatch(/^ {3}line 1/);
+
+		const expanded = renderer(message, { expanded: true, outputPad: 3 }, theme).render(120).join("\n");
 		expect(expanded).toContain("line 5");
 		expect(expanded).not.toContain("to expand");
 	});

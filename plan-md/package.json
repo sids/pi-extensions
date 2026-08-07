@@ -1,6 +1,6 @@
 {
   "name": "pi-plan-md",
-  "version": "0.1.15",
+  "version": "0.1.16",
   "type": "module",
   "description": "Branch-based planning workflow extension for pi",
   "license": "MIT",
@@ -22,9 +22,9 @@
     ]
   },
   "peerDependencies": {
-    "@earendil-works/pi-agent-core": ">=0.80.6",
-    "@earendil-works/pi-coding-agent": ">=0.80.6",
-    "@earendil-works/pi-tui": ">=0.80.6",
+    "@earendil-works/pi-agent-core": ">=0.83.0",
+    "@earendil-works/pi-coding-agent": ">=0.83.0",
+    "@earendil-works/pi-tui": ">=0.83.0",
     "typebox": "*"
   },
   "dependencies": {

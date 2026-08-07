@@ -3,6 +3,8 @@ import os from "node:os";
 import path from "node:path";
 import type { AgentToolResult } from "@earendil-works/pi-agent-core";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { Component } from "@earendil-works/pi-tui";
+import type { TSchema } from "typebox";
 import { QnATuiComponent, type QnAResponse, type QnAResult } from "@siddr/pi-shared-qna";
 import { isTuiMode } from "@siddr/pi-shared-qna/extension-mode";
 import type {
@@ -32,7 +34,7 @@ function requirePiTui() {
 
 function createText(text: string) {
 	const { Text } = requirePiTui() as {
-		Text: new (text: string, x: number, y: number) => unknown;
+		Text: new (text: string, x: number, y: number) => Component;
 	};
 	return new Text(text, 0, 0);
 }
@@ -154,7 +156,7 @@ export function registerRequestUserInputTool(
 	pi: ExtensionAPI,
 	dependencies: {
 		getState: () => PlanModeState;
-		requestUserInputSchema: unknown;
+		requestUserInputSchema: TSchema;
 	},
 ) {
 	pi.registerTool({
@@ -167,6 +169,8 @@ export function registerRequestUserInputTool(
 			"Use request_user_input in Plan mode when a short answer from the user is required before writing or revising the plan.",
 		],
 		parameters: dependencies.requestUserInputSchema,
+		constrainedSampling: { type: "json_schema", strict: "prefer" },
+		executionMode: "sequential",
 		renderCall(args, theme) {
 			const questions = ((args.questions as RequestUserInputQuestion[] | undefined) ?? []).length;
 			const label = `${questions} question${questions === 1 ? "" : "s"}`;

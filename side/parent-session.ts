@@ -316,7 +316,8 @@ export function createParentSessionTools(view: ParentSessionView): ToolDefinitio
 			name: "main_session_status",
 			label: "Main session status",
 			description: "Report whether the live main chat changed after the side-chat summary. Use this when current parent state matters.",
-			parameters: Type.Object({}),
+			parameters: Type.Object({}, { additionalProperties: false }),
+			constrainedSampling: { type: "json_schema", strict: "prefer" },
 			async execute() {
 				return toolResult(view.status());
 			},
@@ -325,10 +326,14 @@ export function createParentSessionTools(view: ParentSessionView): ToolDefinitio
 			name: "main_session_updates",
 			label: "Main session updates",
 			description: "Read finalized messages and tool activity added to the live main chat after a stable cursor.",
-			parameters: Type.Object({
-				after: Type.Optional(Type.String()),
-				limit: Type.Optional(Type.Number({ minimum: 1, maximum: MAX_UPDATE_ENTRIES })),
-			}),
+			parameters: Type.Object(
+				{
+					after: Type.Optional(Type.String()),
+					limit: Type.Optional(Type.Number({ minimum: 1, maximum: MAX_UPDATE_ENTRIES })),
+				},
+				{ additionalProperties: false },
+			),
+			constrainedSampling: { type: "json_schema", strict: "prefer" },
 			async execute(_id, params: any) {
 				const result = view.updates(params.after, params.limit);
 				return truncatedToolResult(
@@ -346,11 +351,15 @@ export function createParentSessionTools(view: ParentSessionView): ToolDefinitio
 			name: "main_session_search",
 			label: "Search main session",
 			description: "Search finalized text on the main chat's current active branch and return entry IDs and snippets.",
-			parameters: Type.Object({
-				query: Type.String({ minLength: 1 }),
-				roles: Type.Optional(Type.Array(RoleSchema)),
-				limit: Type.Optional(Type.Number({ minimum: 1, maximum: MAX_SEARCH_RESULTS })),
-			}),
+			parameters: Type.Object(
+				{
+					query: Type.String({ minLength: 1 }),
+					roles: Type.Optional(Type.Array(RoleSchema)),
+					limit: Type.Optional(Type.Number({ minimum: 1, maximum: MAX_SEARCH_RESULTS })),
+				},
+				{ additionalProperties: false },
+			),
+			constrainedSampling: { type: "json_schema", strict: "prefer" },
 			async execute(_id, params: any) {
 				return toolResult(view.search(params.query, params.roles, params.limit));
 			},
@@ -359,9 +368,13 @@ export function createParentSessionTools(view: ParentSessionView): ToolDefinitio
 			name: "main_session_read",
 			label: "Read main session entries",
 			description: "Read exact sanitized content for bounded entry IDs on the main chat's current active branch.",
-			parameters: Type.Object({
-				entryIds: Type.Array(Type.String(), { minItems: 1, maxItems: MAX_READ_ENTRIES }),
-			}),
+			parameters: Type.Object(
+				{
+					entryIds: Type.Array(Type.String(), { minItems: 1, maxItems: MAX_READ_ENTRIES }),
+				},
+				{ additionalProperties: false },
+			),
+			constrainedSampling: { type: "json_schema", strict: "prefer" },
 			async execute(_id, params: any) {
 				const result = view.read(params.entryIds);
 				return truncatedToolResult({ missing: result.missing, limited: result.limited }, result.entries);
@@ -371,10 +384,14 @@ export function createParentSessionTools(view: ParentSessionView): ToolDefinitio
 			name: "main_session_send_message",
 			label: "Send message to main chat",
 			description: "After the side-chat user explicitly asks to affect the main chat, send the exact message as steer or followUp. Never call this proactively.",
-			parameters: Type.Object({
-				message: Type.String({ minLength: 1 }),
-				mode: DeliverySchema,
-			}),
+			parameters: Type.Object(
+				{
+					message: Type.String({ minLength: 1 }),
+					mode: DeliverySchema,
+				},
+				{ additionalProperties: false },
+			),
+			constrainedSampling: { type: "json_schema", strict: "prefer" },
 			async execute(_id, params: any) {
 				return toolResult(await view.sendMessage(params.message, params.mode));
 			},

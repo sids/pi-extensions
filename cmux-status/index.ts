@@ -306,7 +306,7 @@ export function createCmuxStatusExtension(createTransport: (options: CreateCmuxT
 			await updateCmuxStatus(ctx);
 		});
 
-		pi.on("agent_end", async (_event, ctx) => {
+		pi.on("agent_settled", async (_event, ctx) => {
 			rememberCtx(ctx);
 			agentRunning = false;
 			activeToolCallIds = new Set<string>();

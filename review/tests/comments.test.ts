@@ -73,6 +73,7 @@ describe("registerAddReviewCommentTool", () => {
 					execute: (toolCallId: string, params: any, signal: AbortSignal | undefined, onUpdate: any, ctx: any) => Promise<any>;
 					promptSnippet?: string;
 					promptGuidelines?: string[];
+					constrainedSampling?: unknown;
 			  }
 			| undefined;
 		const appended: Array<{ type: string; data: any }> = [];
@@ -100,6 +101,7 @@ describe("registerAddReviewCommentTool", () => {
 		expect(registeredTool.promptGuidelines).toEqual([
 			"Use add_review_comment in Review mode to record each concrete finding instead of only listing it in assistant text.",
 		]);
+		expect(registeredTool.constrainedSampling).toEqual({ type: "json_schema", strict: "prefer" });
 
 		const result = await registeredTool.execute(
 			"call-1",

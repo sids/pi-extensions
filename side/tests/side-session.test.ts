@@ -34,7 +34,8 @@ function createControllerHarness() {
 		},
 		model: { provider: "a", id: "one" },
 		thinkingLevel: "medium",
-		modelRegistry: { getAvailable: async () => [{ provider: "a", id: "one" }] },
+		modelRuntime: { getAvailable: async () => [{ provider: "a", id: "one" }, { provider: "b", id: "two" }] },
+		scopedModels: [{ model: { provider: "a", id: "one" }, thinkingLevel: "high" }],
 		subscribe: (listener: (event: any) => void) => {
 			eventListener = listener;
 			return vi.fn();
@@ -110,7 +111,7 @@ describe("SideSessionController", () => {
 		const streamingMessage = {
 			role: "assistant",
 			content: [{ type: "text", text: "hello" }],
-			stopReason: "stop",
+			stopReason: "pending",
 		};
 		harness.emit({
 			type: "message_update",
@@ -143,6 +144,23 @@ describe("SideSessionController", () => {
 			message: { role: "assistant", content: [{ type: "text", text: "answer" }], stopReason: "stop" },
 		});
 		expect(harness.controller.state.streamingMessage).toBeUndefined();
+	});
+
+	test("uses the child session scope for model selection", async () => {
+		const harness = createControllerHarness();
+		expect(await harness.controller.getAvailableModels()).toEqual([{ provider: "a", id: "one" }]);
+	});
+
+	test("applies a scoped thinking pin when selecting a model directly", async () => {
+		const harness = createControllerHarness();
+		harness.session.scopedModels = [
+			...harness.session.scopedModels,
+			{ model: { provider: "b", id: "two" }, thinkingLevel: "high" },
+		];
+
+		expect(await harness.controller.setModel({ provider: "b", id: "two" } as any)).toBe(true);
+		expect(harness.session.model).toMatchObject({ provider: "b", id: "two" });
+		expect(harness.session.thinkingLevel).toBe("high");
 	});
 
 	test("changes only child model/thinking and disposes idempotently", async () => {

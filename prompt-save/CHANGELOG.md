@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.7 - 2026-08-06
+
+- Raised the minimum Pi peer version to 0.83.0.
+
 ## 0.1.6 - 2026-07-29
 
 - Limited editor access, shortcuts, and the saved-prompt picker to TUI sessions.

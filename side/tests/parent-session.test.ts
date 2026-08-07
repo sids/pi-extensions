@@ -142,5 +142,9 @@ describe("ParentSessionView", () => {
 			"main_session_read",
 			"main_session_send_message",
 		]);
+		for (const tool of tools) {
+			expect(tool.constrainedSampling).toEqual({ type: "json_schema", strict: "prefer" });
+			expect(tool.parameters.additionalProperties).toBe(false);
+		}
 	});
 });

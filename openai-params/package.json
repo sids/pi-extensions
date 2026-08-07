@@ -1,6 +1,6 @@
 {
   "name": "@siddr/pi-openai-params",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "type": "module",
   "description": "OpenAI fast mode, long cache, and verbosity settings for pi",
   "license": "MIT",
@@ -22,9 +22,9 @@
     ]
   },
   "peerDependencies": {
-    "@earendil-works/pi-ai": ">=0.80.6",
-    "@earendil-works/pi-coding-agent": ">=0.80.6",
-    "@earendil-works/pi-tui": ">=0.80.6"
+    "@earendil-works/pi-ai": ">=0.83.0",
+    "@earendil-works/pi-coding-agent": ">=0.83.0",
+    "@earendil-works/pi-tui": ">=0.83.0"
   },
   "dependencies": {
     "@siddr/pi-shared-qna": "workspace:^"

@@ -1,6 +1,6 @@
 {
   "name": "@siddr/pi-review",
-  "version": "0.1.13",
+  "version": "0.1.14",
   "type": "module",
   "description": "Interactive review mode extension for pi",
   "license": "MIT",
@@ -22,10 +22,10 @@
     ]
   },
   "peerDependencies": {
-    "@earendil-works/pi-agent-core": ">=0.80.6",
-    "@earendil-works/pi-ai": ">=0.80.6",
-    "@earendil-works/pi-coding-agent": ">=0.80.6",
-    "@earendil-works/pi-tui": ">=0.80.6",
+    "@earendil-works/pi-agent-core": ">=0.83.0",
+    "@earendil-works/pi-ai": ">=0.83.0",
+    "@earendil-works/pi-coding-agent": ">=0.83.0",
+    "@earendil-works/pi-tui": ">=0.83.0",
     "typebox": "*"
   },
   "dependencies": {
