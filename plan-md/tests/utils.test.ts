@@ -48,4 +48,9 @@ describe("buildImplementationPrefill", () => {
 		expect(prefill).toContain("Plan file: /tmp/plan.md");
 		expect(prefill).toContain("\nImplement the approved plan in this file.");
 	});
+
+	test("includes browser approval notes when provided", () => {
+		const prefill = buildImplementationPrefill("/tmp/plan.md", "Keep the migration backwards compatible.");
+		expect(prefill).toContain("Approval notes:\nKeep the migration backwards compatible.");
+	});
 });

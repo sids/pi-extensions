@@ -1,10 +1,12 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { AgentToolResult } from "@earendil-works/pi-agent-core";
-import { keyHint, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { keyHint, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
-import { PLAN_MODE_PROMPT_ENTRY_TYPE, registerPlanModeCommand } from "./flow";
+import { isTuiMode } from "@siddr/pi-shared-qna/extension-mode";
+import { exitPlanMode, PLAN_MODE_PROMPT_ENTRY_TYPE, registerPlanModeCommand } from "./flow";
 import { resolveActivePlanFilePath } from "./plan-files";
+import { reviewPlanInBrowser } from "./plan-review";
 import { loadPlanModePrompt } from "./prompts";
 import { registerRequestUserInputTool } from "./request-user-input";
 import { RequestUserInputSchema, SetPlanSchema } from "./schemas";
@@ -23,6 +25,8 @@ function summarizeSnippet(text: string, maxLength: number = 120): string {
 
 interface SetPlanDetails {
 	plan: string;
+	approved?: boolean;
+	feedback?: string;
 }
 
 interface PlanModeExitDetails {
@@ -35,10 +39,102 @@ interface PlanModePromptDetails {
 	instructionsPrompt: string;
 }
 
-const PLAN_MODE_EXIT_ENTRY_TYPE = "plan-md:exit";
+interface PlanReviewFeedbackEntry {
+	planFilePath: string;
+	feedback: string;
+}
 
-export default function (pi: ExtensionAPI) {
+interface PendingPlanReview {
+	planFilePath: string;
+	plan: string;
+	sessionId: string;
+}
+
+type SchedulePlanReview = (review: () => Promise<void>) => void;
+
+const PLAN_MODE_EXIT_ENTRY_TYPE = "plan-md:exit";
+const PLAN_REVIEW_FEEDBACK_ENTRY_TYPE = "plan-md:review-feedback";
+
+export type PlanMdExtensionDependencies = {
+	reviewPlanInBrowser: typeof reviewPlanInBrowser;
+	schedulePlanReview: SchedulePlanReview;
+};
+
+function schedulePlanReview(review: () => Promise<void>): void {
+	setTimeout(() => {
+		void review();
+	}, 0);
+}
+
+export default function (pi: ExtensionAPI, overrides: Partial<PlanMdExtensionDependencies> = {}) {
+	const dependencies = { reviewPlanInBrowser, schedulePlanReview, ...overrides } satisfies PlanMdExtensionDependencies;
 	const stateManager = createPlanModeStateManager(pi);
+	let pendingPlanReview: PendingPlanReview | undefined;
+	let planReviewRunning = false;
+	const onPlanModeExited = ({ planFilePath, planText }: PlanModeExitDetails) => {
+		pi.sendMessage({
+			customType: PLAN_MODE_EXIT_ENTRY_TYPE,
+			content: "Plan mode ended.",
+			display: true,
+			details: {
+				planFilePath,
+				planText,
+			},
+		});
+	};
+	const isCurrentPlanReview = (ctx: ExtensionContext, review: PendingPlanReview) => {
+		const state = stateManager.getState();
+		return state.active
+			&& state.planFilePath === review.planFilePath
+			&& ctx.sessionManager.getSessionId() === review.sessionId;
+	};
+	const runPlanReview = async (ctx: ExtensionContext, pendingReview: PendingPlanReview) => {
+		try {
+			if (!isCurrentPlanReview(ctx, pendingReview)) {
+				return;
+			}
+
+			const review = await dependencies.reviewPlanInBrowser(ctx, pendingReview.plan);
+			if (!isCurrentPlanReview(ctx, pendingReview)) {
+				return;
+			}
+
+			const feedback = review.feedback?.trim();
+			if (!review.approved) {
+				const reviewFeedback = feedback || "Plan rejected. Please revise it.";
+				pi.appendEntry(PLAN_REVIEW_FEEDBACK_ENTRY_TYPE, {
+					planFilePath: pendingReview.planFilePath,
+					feedback: reviewFeedback,
+				} satisfies PlanReviewFeedbackEntry);
+				if (ctx.isIdle()) {
+					pi.sendUserMessage(reviewFeedback);
+				} else {
+					pi.sendUserMessage(reviewFeedback, { deliverAs: "followUp" });
+				}
+				return;
+			}
+
+			stateManager.setState(ctx, {
+				...stateManager.getState(),
+				approvalFeedback: feedback,
+			});
+			await exitPlanMode(ctx, stateManager, "stay-current", onPlanModeExited);
+		} catch (error) {
+			const message = error instanceof Error ? error.message : "Failed to open plan review.";
+			ctx.ui.notify(message, "error");
+		} finally {
+			planReviewRunning = false;
+		}
+	};
+	const schedulePendingPlanReview = (ctx: ExtensionContext) => {
+		if (planReviewRunning || !pendingPlanReview) {
+			return;
+		}
+		const review = pendingPlanReview;
+		pendingPlanReview = undefined;
+		planReviewRunning = true;
+		dependencies.schedulePlanReview(() => runPlanReview(ctx, review));
+	};
 
 	pi.registerMessageRenderer(PLAN_MODE_PROMPT_ENTRY_TYPE, (message, { expanded, outputPad }, theme) => {
 		const state = stateManager.getState();
@@ -72,6 +168,20 @@ export default function (pi: ExtensionAPI) {
 		return render(prompt);
 	});
 
+	pi.registerEntryRenderer(PLAN_REVIEW_FEEDBACK_ENTRY_TYPE, (entry, _options, theme) => {
+		const details = entry.data as PlanReviewFeedbackEntry | undefined;
+		const feedback = details?.feedback?.trim();
+		if (!feedback) {
+			return new Text("", 0, 0);
+		}
+		return new Text(
+			`${theme.fg("warning", theme.bold("Plan review requested changes"))}\n${feedback}`,
+			0,
+			0,
+			(segment) => theme.bg("customMessageBg", segment),
+		);
+	});
+
 	pi.registerMessageRenderer(PLAN_MODE_EXIT_ENTRY_TYPE, (message, { expanded, outputPad }, theme) => {
 		const render = (text: string) => new Text(text, outputPad, 0, (segment) => theme.bg("customMessageBg", segment));
 		const details = message.details as PlanModeExitDetails | undefined;
@@ -102,10 +212,10 @@ export default function (pi: ExtensionAPI) {
 		name: "set_plan",
 		label: "set_plan",
 		description:
-			"Persist the full latest implementation plan only when the current request calls for creating or revising one.",
-		promptSnippet: "Persist a complete implementation plan when the current request calls for one.",
+			"Persist the full latest implementation plan and queue browser review for after the current turn when the request calls for creating or revising one.",
+		promptSnippet: "Persist a complete implementation plan for browser review after the current turn.",
 		promptGuidelines: [
-			"Use set_plan only when the current request calls for creating or revising a concrete implementation plan; never use it for informational questions or discussion-only replies.",
+			"Use set_plan only when the current request calls for creating or revising a concrete implementation plan. After calling it, finish the response and wait for browser review; if review requests changes, revise the plan and call set_plan again.",
 		],
 		parameters: SetPlanSchema,
 		constrainedSampling: { type: "json_schema", strict: "prefer" },
@@ -128,15 +238,21 @@ export default function (pi: ExtensionAPI) {
 				return new Text(text?.type === "text" ? text.text : "(no output)", 0, 0);
 			}
 
+			const status = details.approved === true
+				? theme.fg("success", "Plan approved.")
+				: details.approved === false
+					? theme.fg("warning", "Plan changes requested.")
+					: theme.fg("success", "Plan written.");
 			if (!expanded) {
 				return new Text(
-					`${theme.fg("success", "Plan written.")}\n${theme.fg("dim", keyHint("app.tools.expand", "to view plan"))}`,
+					`${status}\n${theme.fg("dim", keyHint("app.tools.expand", "to view plan"))}`,
 					0,
 					0,
 				);
 			}
 
-			return new Text(`${theme.fg("success", "Plan written.")}\n${details.plan}`, 0, 0);
+			const feedback = details.feedback?.trim();
+			return new Text(`${status}\n${details.plan}${feedback ? `\n\nReview feedback:\n${feedback}` : ""}`, 0, 0);
 		},
 		async execute(_toolCallId, params: { plan: string }, _signal, _onUpdate, ctx): Promise<AgentToolResult<SetPlanDetails>> {
 			if (!stateManager.getState().active) {
@@ -156,17 +272,30 @@ export default function (pi: ExtensionAPI) {
 			await mkdir(path.dirname(planFilePath), { recursive: true });
 			await writeFile(planFilePath, `${plan}\n`, "utf8");
 
-			if (stateManager.getState().planFilePath !== planFilePath) {
-				stateManager.setState(ctx, {
-					...stateManager.getState(),
-					planFilePath,
-				});
+			stateManager.setState(ctx, {
+				...stateManager.getState(),
+				planFilePath,
+				approvalFeedback: undefined,
+			});
+
+			if (!isTuiMode(ctx)) {
+				return {
+					content: [{ type: "text", text: "Plan written. Browser review is only available in TUI mode." }],
+					details: { plan },
+				};
 			}
+
+			pendingPlanReview = {
+				planFilePath,
+				plan,
+				sessionId: ctx.sessionManager.getSessionId(),
+			};
 			return {
-				content: [{ type: "text", text: "Plan written." }],
-				details: {
-					plan,
-				},
+				content: [{
+					type: "text",
+					text: "Plan written. Finish this response; browser review will open after the turn ends.",
+				}],
+				details: { plan },
 			};
 		},
 	});
@@ -178,17 +307,11 @@ export default function (pi: ExtensionAPI) {
 
 	registerPlanModeCommand(pi, {
 		stateManager,
-		onPlanModeExited: ({ planFilePath, planText }) => {
-			pi.sendMessage({
-				customType: PLAN_MODE_EXIT_ENTRY_TYPE,
-				content: "Plan mode ended.",
-				display: true,
-				details: {
-					planFilePath,
-					planText,
-				},
-			});
-		},
+		onPlanModeExited,
+	});
+
+	pi.on("agent_settled", async (_event, ctx) => {
+		schedulePendingPlanReview(ctx);
 	});
 
 	pi.on("before_agent_start", async (_event, ctx) => {

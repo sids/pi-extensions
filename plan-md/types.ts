@@ -7,6 +7,7 @@ export type PlanModeState = {
 	activationId?: string;
 	promptPending?: boolean;
 	activeToolsBeforePlanMode?: string[];
+	approvalFeedback?: string;
 };
 
 export type RequestUserInputOption = {

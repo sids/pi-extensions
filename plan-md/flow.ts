@@ -32,7 +32,7 @@ async function sendPlanModePromptMessage(pi: ExtensionAPI, activationId?: string
 	});
 }
 
-type PlanModeStateManager = {
+export type PlanModeStateManager = {
 	getState: () => PlanModeState;
 	setState: (ctx: ExtensionContext, nextState: PlanModeState) => void;
 	startPlanMode: (
@@ -44,12 +44,12 @@ type PlanModeStateManager = {
 	) => void;
 };
 
-type PlanModeExitSummary = {
+export type PlanModeExitSummary = {
 	planFilePath: string;
 	planText?: string;
 };
 
-type PlanModeEndAction = "exit" | "stay-current";
+export type PlanModeEndAction = "exit" | "stay-current";
 
 type MutableSessionManager = ExtensionContext["sessionManager"] & {
 	branch?: (entryId: string) => void;
@@ -387,7 +387,7 @@ async function updateActivePlanFileLocation(
 	};
 }
 
-async function exitPlanMode(
+export async function exitPlanMode(
 	ctx: ExtensionContext,
 	stateManager: PlanModeStateManager,
 	endAction: PlanModeEndAction,
@@ -424,7 +424,7 @@ async function exitPlanMode(
 	});
 	const planText = (await readPlanFile(planFilePath))?.trim();
 	if (planText) {
-		ctx.ui.setEditorText(buildImplementationPrefill(planFilePath));
+		ctx.ui.setEditorText(buildImplementationPrefill(planFilePath, activeState.approvalFeedback));
 	}
 
 	onPlanModeExited?.({

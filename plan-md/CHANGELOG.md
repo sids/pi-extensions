@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- Opened each saved plan in Plannotator after the model turn completes, keeping the final response above the review URL.
+- Exited plan mode directly on the current planning branch after browser approval.
+- Preserved approval notes in the implementation prompt when plan mode exits.
+- Styled printed review URLs as underlined accent text and added a Tailscale URL in explicit remote mode.
+- Displayed requested plan changes persistently in the Pi transcript.
+
 ## 0.1.17 - 2026-08-07
 
 - Disabled strict sampling for `request_user_input` because question options are intentionally optional, while retaining strict sampling for `set_plan`.

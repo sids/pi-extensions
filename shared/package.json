@@ -10,6 +10,7 @@
     "./session-editor-component": "./session-editor-component.ts",
     "./project-trust": "./project-trust.ts",
     "./extension-mode": "./extension-mode.ts",
+    "./plannotator-url": "./plannotator-url.ts",
     "./system-prompt-diagnostic": "./system-prompt-diagnostic.ts"
   },
   "files": [
@@ -17,6 +18,7 @@
     "session-editor-component.ts",
     "project-trust.ts",
     "extension-mode.ts",
+    "plannotator-url.ts",
     "system-prompt-diagnostic.ts",
     "README.md",
     "CHANGELOG.md"

@@ -156,6 +156,7 @@ describe("/plan-md exit flow", () => {
 			originLeafId: "origin-leaf",
 			planFilePath,
 			lastPlanLeafId: undefined,
+			approvalFeedback: "Keep the public API backwards compatible.",
 		};
 		const setStateCalls: any[] = [];
 		const setEditorTextCalls: string[] = [];
@@ -206,7 +207,7 @@ describe("/plan-md exit flow", () => {
 			planFilePath,
 			lastPlanLeafId: "planning-leaf",
 		});
-		expect(setEditorTextCalls).toEqual([`Plan file: ${planFilePath}\nImplement the approved plan in this file. Keep changes focused, update tests, and summarize what was implemented.`]);
+		expect(setEditorTextCalls).toEqual([`Plan file: ${planFilePath}\nImplement the approved plan in this file. Keep changes focused, update tests, and summarize what was implemented.\n\nApproval notes:\nKeep the public API backwards compatible.`]);
 	});
 });
 

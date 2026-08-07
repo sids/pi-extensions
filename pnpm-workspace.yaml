@@ -29,10 +29,16 @@ allowBuilds:
   '@google/genai': true
   esbuild: true
   koffi: true
+  node-pty: true
   protobufjs: true
 
 onlyBuiltDependencies:
   - '@google/genai'
   - esbuild
   - koffi
+  - node-pty
   - protobufjs
+
+peerDependencyRules:
+  allowedVersions:
+    '@pierre/theme': '2'

@@ -48,9 +48,10 @@ export function findDuplicateId(ids: string[]): string | null {
 	return null;
 }
 
-export function buildImplementationPrefill(planPath?: string): string {
-	if (planPath) {
-		return `Plan file: ${planPath}\nImplement the approved plan in this file. Keep changes focused, update tests, and summarize what was implemented.`;
-	}
-	return "Implement the approved plan step by step. Keep changes focused, update tests, and summarize what was implemented.";
+export function buildImplementationPrefill(planPath?: string, approvalFeedback?: string): string {
+	const instruction = planPath
+		? `Plan file: ${planPath}\nImplement the approved plan in this file. Keep changes focused, update tests, and summarize what was implemented.`
+		: "Implement the approved plan step by step. Keep changes focused, update tests, and summarize what was implemented.";
+	const notes = approvalFeedback?.trim();
+	return notes ? `${instruction}\n\nApproval notes:\n${notes}` : instruction;
 }

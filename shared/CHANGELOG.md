@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Added shared Plannotator URL styling and Tailscale host discovery helpers.
+
 ## 0.1.7 - 2026-08-06
 
 - Raised the minimum Pi peer version to 0.83.0.

@@ -43,7 +43,15 @@ pi install npm:pi-plan-md
 Plan mode temporarily restricts active tools to planning-safe tools while active, adds:
 
 - `request_user_input` — ask clarifying questions with optional choices and optional freeform answers
-- `set_plan` — overwrite the active plan file with the complete latest plan text
+- `set_plan` — overwrite the active plan file with the complete latest plan text, then queue it for review in Plannotator
+
+When `set_plan` runs in interactive mode, the current model turn finishes before Plannotator opens. This keeps the model's final response visible above the review URL. After a decision:
+
+- Approval immediately exits plan mode on the current planning branch and prefills the implementation prompt.
+- Approval notes are included in the implementation prompt after plan mode exits.
+- Requested changes are displayed persistently in the transcript and sent directly to the agent, which revises the plan and calls `set_plan` again.
+
+Plannotator is included as a runtime dependency; it does not need to be installed as a separate pi extension. Browser launching follows Plannotator configuration, including `PLANNOTATOR_BROWSER`, `PLANNOTATOR_REMOTE`, and `PLANNOTATOR_PORT`. Printed review URLs use the accent color and underline styling. With `PLANNOTATOR_REMOTE=1`, the extension also reads `tailscale status --json` and prints a Tailscale URL when a host is available.
 
 When plan mode ends, the previously active tool list is restored.
 
@@ -64,6 +72,7 @@ That adds `subagents` and `steer_subagent` everywhere, including during plan mod
 - Plan files are kept after exiting so planning can be resumed later.
 - Entering plan mode posts a visible `Plan mode instructions` message once and injects the hidden plan-mode prompt for the next agent turn.
 - Informational questions and discussion-only turns are answered without writing the plan file; `set_plan` is reserved for requests that call for creating or revising an implementation plan.
+- Outside TUI mode (RPC, JSON, or print), `set_plan` still writes the plan but skips browser review.
 - After session compaction, plan mode reposts the visible instructions and reinjects the hidden plan-mode prompt for the next agent turn.
 - The default plan-mode prompt is stored in `plan-md/prompts/PLAN.prompt.md`.
 - You can override that prompt globally by creating `~/.pi/agent/PLAN.prompt.md`.

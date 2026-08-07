@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- Replaced the bundled diff viewer and local server with Plannotator's browser code review.
+- Removed the cmux and Glimpse launch picker; browser launching now follows Plannotator configuration.
+- Styled printed review URLs as underlined accent text and added a Tailscale URL in explicit remote mode.
+- Forced Git-backed targets to remain on Plannotator's Git provider in colocated repositories.
+- Preserved staged and untracked files when reviewing an unborn Git repository.
+- Sent requested-change browser review feedback directly to the agent instead of prefilling the editor.
+- Closed approved reviews without sending a message to the agent.
+
 ## 0.1.2 - 2026-08-07
 
 - Migrated local dependency locking from Bun to the repository pnpm workspace.

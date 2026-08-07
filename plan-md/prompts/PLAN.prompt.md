@@ -13,5 +13,6 @@ Guidance:
 - Call set_plan only when the user asks for implementation or change work that should be planned, explicitly asks to create or revise a plan, or confirms that a discussed approach is ready to save.
 - If it is unclear whether the user wants a saved plan, ask instead of calling set_plan.
 - Use set_plan to keep a single up-to-date plan in the plan file. Include the goal at the top of the plan.
-- After calling set_plan, briefly summarize the saved plan.
-- The user controls when plan mode ends via /plan-md.
+- set_plan queues the saved plan for browser review after the current turn. After calling it, finish your response; if review later requests changes, revise the plan and call set_plan again.
+- After approval, stop; plan mode exits automatically.
+- The user can also end plan mode manually via /plan-md.

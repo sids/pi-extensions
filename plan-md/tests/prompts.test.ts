@@ -85,15 +85,17 @@ describe("loadPlanModePrompt", () => {
 		expect(prompt).toContain("If it is unclear whether the user wants a saved plan, ask instead of calling set_plan.");
 	});
 
-	test("bundled prompt tells the model to summarize after saving the plan and not talk about exiting", async () => {
+	test("bundled prompt explains post-turn browser review and automatic exit after approval", async () => {
 		const paths = await createPromptPaths();
 		const prompt = await loadPlanModePrompt({
 			agentDirPath: paths.agentDirPath,
 			bundledPromptPath: fileURLToPath(new URL("../prompts/PLAN.prompt.md", import.meta.url)),
 		});
 
-		expect(prompt).toContain("After calling set_plan, briefly summarize the saved plan.");
-		expect(prompt).toContain("The user controls when plan mode ends via /plan-md.");
+		expect(prompt).toContain("set_plan queues the saved plan for browser review after the current turn.");
+		expect(prompt).toContain("After calling it, finish your response;");
+		expect(prompt).toContain("if review later requests changes, revise the plan and call set_plan again.");
+		expect(prompt).toContain("After approval, stop; plan mode exits automatically.");
 	});
 
 	test("bundled prompt only mentions optional subagents", async () => {
