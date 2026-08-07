@@ -132,7 +132,7 @@ describe("ParentSessionView", () => {
 		expect(await harness.view.sendMessage("stale", "followUp")).toMatchObject({ status: "stale" });
 	});
 
-	test("exposes strict bridge tool definitions", () => {
+	test("uses strict sampling only for compatible bridge tool definitions", () => {
 		const harness = createHarness();
 		const tools = createParentSessionTools(harness.view);
 		expect(tools.map((tool) => tool.name)).toEqual([
@@ -142,8 +142,14 @@ describe("ParentSessionView", () => {
 			"main_session_read",
 			"main_session_send_message",
 		]);
+		expect(tools.map((tool) => tool.constrainedSampling)).toEqual([
+			false,
+			false,
+			false,
+			{ type: "json_schema", strict: "prefer" },
+			{ type: "json_schema", strict: "prefer" },
+		]);
 		for (const tool of tools) {
-			expect(tool.constrainedSampling).toEqual({ type: "json_schema", strict: "prefer" });
 			expect(tool.parameters.additionalProperties).toBe(false);
 		}
 	});

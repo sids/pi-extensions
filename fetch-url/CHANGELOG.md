@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.10 - 2026-08-07
+
+- Disabled strict sampling for the optional `raw` and `format` parameters to keep `fetch_url` compatible with OpenAI Codex tool schemas.
+
 ## 0.1.9 - 2026-08-06
 
 - Raised the minimum Pi peer version to 0.83.0.

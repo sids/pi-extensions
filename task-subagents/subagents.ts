@@ -1991,7 +1991,7 @@ export function registerSubagentTools(
 		promptSnippet: "Launch one or more isolated research subagents when explicitly asked.",
 		promptGuidelines: ["Use subagents only when the user explicitly asks to use subagents or asks for parallel delegated research."],
 		parameters: dependencies.subagentsSchema,
-		constrainedSampling: { type: "json_schema", strict: "prefer" },
+		constrainedSampling: false,
 		renderCall(args, theme) {
 			const tasks = (args.tasks as SubagentTask[] | undefined) ?? [];
 			const contextMode = resolveSubagentContextMode(args.context) ?? "fresh";

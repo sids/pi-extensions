@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.17 - 2026-08-07
+
+- Disabled strict sampling for `request_user_input` because question options are intentionally optional, while retaining strict sampling for `set_plan`.
+
 ## 0.1.16 - 2026-08-06
 
 - Raised the minimum Pi peer version to 0.83.0.

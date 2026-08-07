@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.9 - 2026-08-07
+
+- Routed extraction calls through Pi's model runtime for Pi 0.84 provider and authentication compatibility.
+
 ## 0.1.8 - 2026-08-06
 
 - Raised the minimum Pi peer version to 0.83.0.

@@ -79,7 +79,7 @@ export default function (pi: ExtensionAPI) {
 		promptSnippet: "Fetch a URL and return extracted markdown, HTML, or raw content.",
 		promptGuidelines: ["Use fetch_url when the user asks to inspect a URL or when web content is needed from a known URL."],
 		parameters: fetchUrlSchema,
-		constrainedSampling: { type: "json_schema", strict: "prefer" },
+		constrainedSampling: false,
 		renderCall: (args, theme) => {
 			const format = args.raw ? "raw" : args.format ?? "markdown";
 			const url = args.url ?? "(missing url)";

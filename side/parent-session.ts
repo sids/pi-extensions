@@ -317,7 +317,7 @@ export function createParentSessionTools(view: ParentSessionView): ToolDefinitio
 			label: "Main session status",
 			description: "Report whether the live main chat changed after the side-chat summary. Use this when current parent state matters.",
 			parameters: Type.Object({}, { additionalProperties: false }),
-			constrainedSampling: { type: "json_schema", strict: "prefer" },
+			constrainedSampling: false,
 			async execute() {
 				return toolResult(view.status());
 			},
@@ -333,7 +333,7 @@ export function createParentSessionTools(view: ParentSessionView): ToolDefinitio
 				},
 				{ additionalProperties: false },
 			),
-			constrainedSampling: { type: "json_schema", strict: "prefer" },
+			constrainedSampling: false,
 			async execute(_id, params: any) {
 				const result = view.updates(params.after, params.limit);
 				return truncatedToolResult(
@@ -359,7 +359,7 @@ export function createParentSessionTools(view: ParentSessionView): ToolDefinitio
 				},
 				{ additionalProperties: false },
 			),
-			constrainedSampling: { type: "json_schema", strict: "prefer" },
+			constrainedSampling: false,
 			async execute(_id, params: any) {
 				return toolResult(view.search(params.query, params.roles, params.limit));
 			},

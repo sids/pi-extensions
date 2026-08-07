@@ -24,7 +24,7 @@ describe("fetch-url extension", () => {
 		expect(tool?.promptGuidelines).toEqual([
 			"Use fetch_url when the user asks to inspect a URL or when web content is needed from a known URL.",
 		]);
-		expect(tool?.constrainedSampling).toEqual({ type: "json_schema", strict: "prefer" });
+		expect(tool?.constrainedSampling).toBe(false);
 	});
 
 	test("passes the tool abort signal to fetch", async () => {

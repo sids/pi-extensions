@@ -333,7 +333,7 @@ export default function (pi: ExtensionAPI) {
 		promptSnippet: "Search the web for titles, URLs, and result snippets.",
 		promptGuidelines: ["Use web_search when current or external information is needed and the user has not provided a specific URL."],
 		parameters: webSearchSchema,
-		constrainedSampling: { type: "json_schema", strict: "prefer" },
+		constrainedSampling: false,
 		renderCall: (args, theme) => {
 			const queries = resolveQueries(args);
 			const count = resolveCount(args, queries.length || 1);

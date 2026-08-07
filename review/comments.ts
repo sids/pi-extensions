@@ -155,7 +155,7 @@ export function registerAddReviewCommentTool(
 			"Use add_review_comment in Review mode to record each concrete finding instead of only listing it in assistant text.",
 		],
 		parameters: dependencies.addReviewCommentSchema,
-		constrainedSampling: { type: "json_schema", strict: "prefer" },
+		constrainedSampling: false,
 		renderCall(args, theme) {
 			const priority = normalizeReviewPriority(args.priority) ?? "P?";
 			return createText(

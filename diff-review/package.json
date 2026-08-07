@@ -1,6 +1,6 @@
 {
   "name": "@siddr/pi-diff-review",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "type": "module",
   "description": "Browser diff review extension for pi",
   "license": "MIT",

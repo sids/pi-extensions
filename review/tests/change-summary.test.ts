@@ -86,10 +86,9 @@ describe("buildSessionChangeSummaryPrompt", () => {
 });
 
 describe("summarizeChangesFromSessionHistory", () => {
-	test("uses source branch history, current model/auth, session cache, abort signal, and omits reasoning", async () => {
+	test("uses source branch history, the model runtime, session cache, abort signal, and omits reasoning", async () => {
 		const model = createModel();
 		const signal = new AbortController().signal;
-		const authCalls: any[] = [];
 		const completeCalls: any[] = [];
 
 		const summary = await summarizeChangesFromSessionHistory(
@@ -97,14 +96,19 @@ describe("summarizeChangesFromSessionHistory", () => {
 				cwd: "/tmp/project",
 				model,
 				modelRegistry: {
-					getApiKeyAndHeaders: async (requestedModel: any) => {
-						authCalls.push(requestedModel);
+					complete: async (...args: any[]) => {
+						completeCalls.push(args);
 						return {
-							ok: true,
-							apiKey: "api-key",
-							headers: { "x-test": "yes" },
-							env: { AWS_PROFILE: "review" },
-						};
+							role: "assistant",
+							content: [
+								{ type: "thinking", thinking: "hidden" },
+								{
+									type: "text",
+									text: JSON.stringify({ summary: "Intent: make review startup easier to understand." }),
+								},
+							],
+							stopReason: "stop",
+						} as any;
 					},
 				},
 				getSystemPrompt: () => "Pi system prompt",
@@ -119,25 +123,10 @@ describe("summarizeChangesFromSessionHistory", () => {
 			{
 				now: () => 123,
 				signal,
-				complete: async (...args: any[]) => {
-					completeCalls.push(args);
-					return {
-						role: "assistant",
-						content: [
-							{ type: "thinking", thinking: "hidden" },
-							{
-								type: "text",
-								text: JSON.stringify({ summary: "Intent: make review startup easier to understand." }),
-							},
-						],
-						stopReason: "stop",
-					} as any;
-				},
 			},
 		);
 
 		expect(summary).toBe("# Summary of changes\n\nIntent: make review startup easier to understand.");
-		expect(authCalls).toEqual([model]);
 		expect(completeCalls).toHaveLength(1);
 		expect(completeCalls[0][0]).toBe(model);
 		expect(completeCalls[0][1].systemPrompt).toBe("Pi system prompt");
@@ -153,9 +142,6 @@ describe("summarizeChangesFromSessionHistory", () => {
 			timestamp: 123,
 		});
 		expect(completeCalls[0][2]).toEqual({
-			apiKey: "api-key",
-			headers: { "x-test": "yes" },
-			env: { AWS_PROFILE: "review" },
 			maxTokens: 1_000,
 			sessionId: "session-1",
 			signal,
@@ -172,7 +158,12 @@ describe("summarizeChangesFromSessionHistory", () => {
 					cwd: "/tmp/project",
 					model,
 					modelRegistry: {
-						getApiKeyAndHeaders: async () => ({ ok: true, apiKey: "api-key" }),
+						complete: async () => ({
+							role: "assistant",
+							content: [],
+							stopReason: "error",
+							errorMessage: "Instructions are required",
+						}) as any,
 					},
 					getSystemPrompt: () => "Pi system prompt",
 					sessionManager: {
@@ -183,14 +174,6 @@ describe("summarizeChangesFromSessionHistory", () => {
 					},
 				} as any,
 				"assistant-1",
-				{
-					complete: async () => ({
-						role: "assistant",
-						content: [],
-						stopReason: "error",
-						errorMessage: "Instructions are required",
-					}) as any,
-				},
 			),
 		).rejects.toThrow("Instructions are required");
 	});

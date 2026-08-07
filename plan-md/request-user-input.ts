@@ -169,7 +169,7 @@ export function registerRequestUserInputTool(
 			"Use request_user_input in Plan mode when a short answer from the user is required before writing or revising the plan.",
 		],
 		parameters: dependencies.requestUserInputSchema,
-		constrainedSampling: { type: "json_schema", strict: "prefer" },
+		constrainedSampling: false,
 		executionMode: "sequential",
 		renderCall(args, theme) {
 			const questions = ((args.questions as RequestUserInputQuestion[] | undefined) ?? []).length;

@@ -56,7 +56,7 @@ vi.mock("@earendil-works/pi-coding-agent", async (importOriginal) => {
 					runtimeKeys: [] as any[],
 					registerNativeProvider(provider: any) { this.providers.push(provider); },
 					registerProvider(providerId: string, config: any) { this.providerConfigs.push([providerId, config]); },
-					refresh: vi.fn(async () => undefined),
+					refresh: vi.fn(async () => ({ aborted: false, errors: new Map() })),
 				};
 				runtime.setRuntimeApiKey = vi.fn(async (...args: any[]) => { runtime.runtimeKeys.push(args); });
 				mocks.runtimes.push(runtime);
@@ -149,7 +149,7 @@ describe("createSideSession", () => {
 		});
 		expect(mocks.runtimes[0].providers).toEqual([nativeProvider]);
 		expect(mocks.runtimes[0].providerConfigs).toEqual([["custom-config", providerConfig]]);
-		expect(mocks.runtimes[0].runtimeKeys).toEqual([["test", "runtime-key", { allowNetwork: false }]]);
+		expect(mocks.runtimes[0].runtimeKeys).toEqual([["test", "runtime-key"]]);
 		expect(mocks.runtimes[0].refresh).toHaveBeenCalledTimes(1);
 		expect(mocks.runtimes[0].refresh).toHaveBeenCalledWith({ allowNetwork: false });
 		expect(mocks.managers[0].options).toEqual({ parentSession: "/tmp/parent.jsonl" });

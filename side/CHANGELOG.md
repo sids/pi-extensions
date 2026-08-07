@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.2 - 2026-08-07
+
+- Raised the minimum Pi peer version to 0.84.0.
+- Routed parent summaries through Pi's model runtime and updated child runtime authentication and catalog refresh handling for Pi 0.84.
+- Limited strict sampling to parent bridge tools whose schemas require every parameter.
+
 ## 0.1.1 - 2026-08-06
 
 - Raised the minimum Pi peer version to 0.83.0.

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.9 - 2026-08-07
+
+- Disabled strict sampling for optional search parameters to keep `web_search` compatible with OpenAI Codex tool schemas.
+
 ## 0.1.8 - 2026-08-06
 
 - Raised the minimum Pi peer version to 0.83.0.

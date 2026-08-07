@@ -97,7 +97,7 @@ describe("plan-md prompt injection", () => {
 		expect(toolByName.get("request_user_input")?.promptGuidelines).toEqual([
 			"Use request_user_input in Plan mode when a short answer from the user is required before writing or revising the plan.",
 		]);
-		expect(toolByName.get("request_user_input")?.constrainedSampling).toEqual({ type: "json_schema", strict: "prefer" });
+		expect(toolByName.get("request_user_input")?.constrainedSampling).toBe(false);
 		expect(toolByName.get("request_user_input")?.executionMode).toBe("sequential");
 	});
 

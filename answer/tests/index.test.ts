@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { CONFIG_DIR_NAME, getAgentDir } from "@earendil-works/pi-coding-agent";
-import { getAnswerSettingsPaths, loadAnswerSettings } from "../index";
+import { extractQuestions, getAnswerSettingsPaths, loadAnswerSettings } from "../index";
 
 const cleanupPaths: string[] = [];
 const originalAgentDir = process.env.PI_CODING_AGENT_DIR;
@@ -33,6 +33,39 @@ function createCtx(cwd: string, projectTrusted: boolean) {
 		},
 	} as any;
 }
+
+describe("extractQuestions", () => {
+	test("dispatches extraction through the model registry", async () => {
+		const calls: any[] = [];
+		const signal = new AbortController().signal;
+		const model = { provider: "custom", id: "extractor", api: "custom-api" } as any;
+		const result = await extractQuestions(
+			{
+				complete: async (...args: any[]) => {
+					calls.push(args);
+					return {
+						role: "assistant",
+						content: [{ type: "text", text: '{"questions":[{"question":"Choose one?"}]}' }],
+						stopReason: "stop",
+					} as any;
+				},
+			} as any,
+			model,
+			"Extract questions",
+			"Which option should we use?",
+			signal,
+		);
+
+		expect(result).toEqual({ questions: [{ id: "choose_one", question: "Choose one?" }] });
+		expect(calls).toHaveLength(1);
+		expect(calls[0][0]).toBe(model);
+		expect(calls[0][1]).toMatchObject({
+			systemPrompt: "Extract questions",
+			messages: [{ role: "user", content: [{ type: "text", text: "Which option should we use?" }] }],
+		});
+		expect(calls[0][2]).toEqual({ signal });
+	});
+});
 
 describe("getAnswerSettingsPaths", () => {
 	test("uses pi's configured agent dir for the global settings path", () => {

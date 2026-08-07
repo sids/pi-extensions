@@ -1,5 +1,5 @@
 import { contentText } from "@earendil-works/pi-ai";
-import { completeSimple, type Api, type AssistantMessage, type Model, type UserMessage } from "@earendil-works/pi-ai/compat";
+import { type Api, type AssistantMessage, type Model, type UserMessage } from "@earendil-works/pi-ai/compat";
 import {
 	buildSessionContext,
 	convertToLlm,
@@ -9,14 +9,8 @@ import {
 
 const FALLBACK_SYSTEM_PROMPT = "You are a helpful coding assistant.";
 
-export type ModelAuth = {
-	apiKey?: string;
-	headers?: Record<string, string>;
-	env?: Record<string, string>;
-};
-
 type SummarizeDependencies = {
-	complete?: typeof completeSimple;
+	complete?: ExtensionContext["modelRegistry"]["complete"];
 	now?: () => number;
 	signal?: AbortSignal;
 };
@@ -72,33 +66,6 @@ export function formatChangeSummary(summary: string): string {
 	return `# Summary of changes\n\n${withoutGeneratedHeading}`;
 }
 
-async function getModelAuth(ctx: ExtensionContext, model: Model<Api>): Promise<ModelAuth> {
-	const registry = ctx.modelRegistry as unknown as {
-		getApiKeyAndHeaders?: (model: Model<Api>) => Promise<{
-			ok: boolean;
-			apiKey?: string;
-			headers?: Record<string, string>;
-			env?: Record<string, string>;
-			error?: string;
-		}>;
-		getApiKey?: (model: Model<Api>) => Promise<string | undefined>;
-	};
-
-	if (registry.getApiKeyAndHeaders) {
-		const auth = await registry.getApiKeyAndHeaders(model);
-		if (!auth.ok) {
-			throw new Error(auth.error ?? `No API key available for ${model.provider}/${model.id}`);
-		}
-		return { apiKey: auth.apiKey, headers: auth.headers, env: auth.env };
-	}
-
-	const apiKey = await registry.getApiKey?.(model);
-	if (!apiKey) {
-		throw new Error(`No API key available for ${model.provider}/${model.id}`);
-	}
-	return { apiKey };
-}
-
 function buildSourceBranchMessages(ctx: ExtensionContext, sourceLeafId: string | undefined) {
 	if (sourceLeafId && !ctx.sessionManager.getEntry(sourceLeafId)) {
 		return [];
@@ -125,24 +92,23 @@ export async function summarizeChangesFromSessionHistory(
 		return null;
 	}
 
-	const auth = await getModelAuth(ctx, model);
 	const userMessage: UserMessage = {
 		role: "user",
 		content: [{ type: "text", text: buildSessionChangeSummaryPrompt() }],
 		timestamp: dependencies.now?.() ?? Date.now(),
 	};
-	const completion = await (dependencies.complete ?? completeSimple)(
-		model,
-		{ systemPrompt: ctx.getSystemPrompt().trim() || FALLBACK_SYSTEM_PROMPT, messages: [...messages, userMessage] },
-		{
-			apiKey: auth.apiKey,
-			headers: auth.headers,
-			env: auth.env,
-			maxTokens: 1_000,
-			sessionId: ctx.sessionManager.getSessionId(),
-			signal: dependencies.signal ?? ctx.signal,
-		},
-	);
+	const context = {
+		systemPrompt: ctx.getSystemPrompt().trim() || FALLBACK_SYSTEM_PROMPT,
+		messages: [...messages, userMessage],
+	};
+	const options = {
+		maxTokens: 1_000,
+		sessionId: ctx.sessionManager.getSessionId(),
+		signal: dependencies.signal ?? ctx.signal,
+	};
+	const completion = dependencies.complete
+		? await dependencies.complete(model, context, options)
+		: await ctx.modelRegistry.complete(model, context, options);
 	if (completion.stopReason === "error" || completion.stopReason === "aborted") {
 		throw new Error(completion.errorMessage ?? `Summary completion ${completion.stopReason}`);
 	}

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.15 - 2026-08-07
+
+- Routed review summary calls through Pi's model runtime for Pi 0.84 provider and authentication compatibility.
+- Disabled strict sampling for review findings because source references and line-range ends are intentionally optional.
+
 ## 0.1.14 - 2026-08-06
 
 - Raised the minimum Pi peer version to 0.83.0.

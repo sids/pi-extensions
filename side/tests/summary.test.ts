@@ -47,24 +47,20 @@ describe("side summary", () => {
 		};
 		const summary = await summarizeParentSnapshot(
 			{
-				modelRegistry: { getApiKeyAndHeaders: async () => ({ ok: true, apiKey: "key", headers: { x: "y" }, env: { A: "B" } }) },
+				modelRegistry: {
+					complete: async (...args: any[]) => {
+						calls.push(args);
+						return { role: "assistant", content: [{ type: "text", text: '{"summary":"Useful context"}' }], stopReason: "stop" } as any;
+					},
+				},
 			} as any,
 			snapshot,
-			{
-				now: () => 42,
-				complete: async (...args: any[]) => {
-					calls.push(args);
-					return { role: "assistant", content: [{ type: "text", text: '{"summary":"Useful context"}' }], stopReason: "stop" } as any;
-				},
-			},
+			{ now: () => 42 },
 		);
 		expect(summary).toBe("Useful context");
 		expect(JSON.stringify(calls[0][1].messages)).toContain("captured");
 		expect(JSON.stringify(calls[0][1].messages)).not.toContain('"other"');
 		expect(calls[0][2]).toMatchObject({
-			apiKey: "key",
-			headers: { x: "y" },
-			env: { A: "B" },
 			maxTokens: SIDE_SUMMARY_MAX_TOKENS,
 			sessionId: "session-1",
 		});
@@ -90,9 +86,12 @@ describe("side summary", () => {
 		};
 		await expect(
 			summarizeParentSnapshot(
-				{ modelRegistry: { getApiKeyAndHeaders: async () => ({ ok: true, apiKey: "key" }) } } as any,
+				{
+					modelRegistry: {
+						complete: async () => ({ role: "assistant", content: [], stopReason: "error", errorMessage: "failed" }) as any,
+					},
+				} as any,
 				base,
-				{ complete: async () => ({ role: "assistant", content: [], stopReason: "error", errorMessage: "failed" }) as any },
 			),
 		).rejects.toThrow("failed");
 		expect(await summarizeParentSnapshot({} as any, { ...base, leafId: "missing" })).toBeNull();

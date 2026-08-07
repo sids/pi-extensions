@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.2 - 2026-08-07
+
+- Migrated local dependency locking from Bun to the repository pnpm workspace.
+
 ## 0.1.1 - 2026-08-06
 
 - Raised the minimum Pi peer version to 0.83.0.

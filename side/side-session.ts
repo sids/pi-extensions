@@ -340,8 +340,6 @@ async function createSideModelRuntime(ctx: ExtensionContext): Promise<ModelRunti
 			modelRuntime.registerProvider(providerId, providerConfig);
 		}
 	}
-	await modelRuntime.refresh({ allowNetwork: false });
-
 	// Runtime-only keys (notably --api-key) are not persisted in auth.json, so
 	// explicitly carry them into the isolated child runtime.
 	const providerIds = new Set(ctx.modelRegistry.getAll().map((model) => model.provider));
@@ -351,7 +349,14 @@ async function createSideModelRuntime(ctx: ExtensionContext): Promise<ModelRunti
 		}
 		const resolvedAuth = await ctx.modelRegistry.getProviderAuth(providerId);
 		if (resolvedAuth?.auth.apiKey) {
-			await modelRuntime.setRuntimeApiKey(providerId, resolvedAuth.auth.apiKey, { allowNetwork: false });
+			await modelRuntime.setRuntimeApiKey(providerId, resolvedAuth.auth.apiKey);
+		}
+	}
+
+	const refreshResult = await modelRuntime.refresh({ allowNetwork: false });
+	for (const [providerId, error] of refreshResult.errors) {
+		if (ctx.hasUI) {
+			ctx.ui.notify(`Could not restore side-chat models for ${providerId}: ${error.message}`, "warning");
 		}
 	}
 	return modelRuntime;

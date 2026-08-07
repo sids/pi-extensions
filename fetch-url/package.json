@@ -1,6 +1,6 @@
 {
   "name": "@siddr/pi-fetch-url",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "type": "module",
   "description": "Readable content fetch tool extension for pi",
   "license": "MIT",

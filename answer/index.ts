@@ -11,7 +11,7 @@
  */
 
 import { contentText } from "@earendil-works/pi-ai";
-import { complete, type Model, type Api, type UserMessage } from "@earendil-works/pi-ai/compat";
+import { type Model, type Api, type UserMessage } from "@earendil-works/pi-ai/compat";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { BorderedLoader, CONFIG_DIR_NAME, getAgentDir } from "@earendil-works/pi-coding-agent";
 import { isTuiMode } from "@siddr/pi-shared-qna/extension-mode";
@@ -40,32 +40,44 @@ import {
 /**
  * Prefer configured extraction models, otherwise fallback to the current model.
  */
-async function selectExtractionModel(
+function selectExtractionModel(
 	currentModel: Model<Api>,
-	modelRegistry: {
-		find: (provider: string, modelId: string) => Model<Api> | undefined;
-		getApiKeyAndHeaders: (model: Model<Api>) => Promise<{
-			ok: boolean;
-			apiKey?: string;
-			headers?: Record<string, string>;
-			env?: Record<string, string>;
-		}>;
-	},
+	modelRegistry: Pick<ExtensionContext["modelRegistry"], "find" | "hasConfiguredAuth">,
 	modelPreferences: { provider: string; id: string }[],
-): Promise<Model<Api>> {
+): Model<Api> {
 	for (const preference of modelPreferences) {
 		const model = modelRegistry.find(preference.provider, preference.id);
-		if (!model) {
-			continue;
-		}
-
-		const auth = await modelRegistry.getApiKeyAndHeaders(model);
-		if (auth.ok) {
+		if (model && modelRegistry.hasConfiguredAuth(model)) {
 			return model;
 		}
 	}
 
 	return currentModel;
+}
+
+export async function extractQuestions(
+	modelRegistry: Pick<ExtensionContext["modelRegistry"], "complete">,
+	model: Model<Api>,
+	systemPrompt: string,
+	assistantText: string,
+	signal: AbortSignal,
+): Promise<ExtractionResult | null> {
+	const userMessage: UserMessage = {
+		role: "user",
+		content: [{ type: "text", text: assistantText }],
+		timestamp: Date.now(),
+	};
+	const response = await modelRegistry.complete(
+		model,
+		{ systemPrompt, messages: [userMessage] },
+		{ signal },
+	);
+
+	if (response.stopReason === "aborted") {
+		return null;
+	}
+
+	return parseExtractionResult(contentText(response.content));
 }
 
 async function readSettingsFile(
@@ -162,37 +174,19 @@ export default function (pi: ExtensionAPI) {
 			return;
 		}
 
-		const extractionModel = await selectExtractionModel(ctx.model, ctx.modelRegistry, modelPreferences);
+		const extractionModel = selectExtractionModel(ctx.model, ctx.modelRegistry, modelPreferences);
 
 		const extractionResult = await ctx.ui.custom<ExtractionResult | null>((tui, theme, _kb, done) => {
 			const loader = new BorderedLoader(tui, theme, `Extracting questions using ${extractionModel.id}...`);
 			loader.onAbort = () => done(null);
 
-			const doExtract = async () => {
-				const auth = await ctx.modelRegistry.getApiKeyAndHeaders(extractionModel);
-				if (auth.ok === false) {
-					throw new Error(auth.error);
-				}
-				const userMessage: UserMessage = {
-					role: "user",
-					content: [{ type: "text", text: lastAssistantText! }],
-					timestamp: Date.now(),
-				};
-
-				const response = await complete(
-					extractionModel,
-					{ systemPrompt, messages: [userMessage] },
-					{ apiKey: auth.apiKey, headers: auth.headers, env: auth.env, signal: loader.signal },
-				);
-
-				if (response.stopReason === "aborted") {
-					return null;
-				}
-
-				const responseText = contentText(response.content);
-
-				return parseExtractionResult(responseText);
-			};
+			const doExtract = () => extractQuestions(
+				ctx.modelRegistry,
+				extractionModel,
+				systemPrompt,
+				lastAssistantText!,
+				loader.signal,
+			);
 
 			doExtract()
 				.then(done)

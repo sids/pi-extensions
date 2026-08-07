@@ -1,5 +1,5 @@
 import { contentText } from "@earendil-works/pi-ai";
-import { completeSimple, type Api, type AssistantMessage, type Model, type UserMessage } from "@earendil-works/pi-ai/compat";
+import { type Api, type AssistantMessage, type Model, type UserMessage } from "@earendil-works/pi-ai/compat";
 import {
 	buildSessionContext,
 	convertToLlm,
@@ -22,7 +22,7 @@ export interface ParentSessionSnapshot {
 }
 
 type SummaryDependencies = {
-	complete?: typeof completeSimple;
+	complete?: ExtensionContext["modelRegistry"]["complete"];
 	now?: () => number;
 	signal?: AbortSignal;
 };
@@ -83,14 +83,6 @@ export function parseSideSummaryResult(text: string): string | null {
 	}
 }
 
-async function getModelAuth(ctx: ExtensionContext, model: Model<Api>) {
-	const auth = await ctx.modelRegistry.getApiKeyAndHeaders(model);
-	if (auth.ok === false) {
-		throw new Error(auth.error);
-	}
-	return auth;
-}
-
 export async function summarizeParentSnapshot(
 	ctx: ExtensionContext,
 	snapshot: ParentSessionSnapshot,
@@ -110,27 +102,23 @@ export async function summarizeParentSnapshot(
 		return null;
 	}
 
-	const auth = await getModelAuth(ctx, snapshot.model);
 	const prompt: UserMessage = {
 		role: "user",
 		content: [{ type: "text", text: buildSideSummaryPrompt() }],
 		timestamp: dependencies.now?.() ?? Date.now(),
 	};
-	const response = await (dependencies.complete ?? completeSimple)(
-		snapshot.model,
-		{
-			systemPrompt: snapshot.systemPrompt.trim() || FALLBACK_SYSTEM_PROMPT,
-			messages: [...messages, prompt],
-		},
-		{
-			apiKey: auth.apiKey,
-			headers: auth.headers,
-			env: auth.env,
-			maxTokens: SIDE_SUMMARY_MAX_TOKENS,
-			sessionId: snapshot.sessionId,
-			signal: dependencies.signal,
-		},
-	);
+	const requestContext = {
+		systemPrompt: snapshot.systemPrompt.trim() || FALLBACK_SYSTEM_PROMPT,
+		messages: [...messages, prompt],
+	};
+	const requestOptions = {
+		maxTokens: SIDE_SUMMARY_MAX_TOKENS,
+		sessionId: snapshot.sessionId,
+		signal: dependencies.signal,
+	};
+	const response = dependencies.complete
+		? await dependencies.complete(snapshot.model, requestContext, requestOptions)
+		: await ctx.modelRegistry.complete(snapshot.model, requestContext, requestOptions);
 	if (response.stopReason === "error" || response.stopReason === "aborted") {
 		throw new Error(response.errorMessage ?? `Summary completion ${response.stopReason}`);
 	}

@@ -40,7 +40,7 @@ describe("web-search extension", () => {
 		expect(tool?.promptGuidelines).toEqual([
 			"Use web_search when current or external information is needed and the user has not provided a specific URL.",
 		]);
-		expect(tool?.constrainedSampling).toEqual({ type: "json_schema", strict: "prefer" });
+		expect(tool?.constrainedSampling).toBe(false);
 	});
 
 	test("prefills the provider login command during setup", () => {
