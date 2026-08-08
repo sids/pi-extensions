@@ -26,11 +26,10 @@ function createHarness(
 	const handlers = new Map<string, Handler[]>();
 	const appendedEntries: Array<{ customType: string; data: any }> = [];
 	const sentMessages: any[] = [];
-	const sentUserMessages: Array<{ message: string; options?: unknown }> = [];
+	const sentMessageCalls: Array<{ message: any; options?: unknown }> = [];
 	const editorValues: string[] = [];
 	const scheduledReviews: Array<() => Promise<void>> = [];
 	const tools: any[] = [];
-	const entryRenderers = new Map<string, any>();
 	const messageRenderers = new Map<string, any>();
 	let activeTools: string[] = [];
 
@@ -53,19 +52,14 @@ function createHarness(
 		registerMessageRenderer(customType: string, renderer: any) {
 			messageRenderers.set(customType, renderer);
 		},
-		registerEntryRenderer(customType: string, renderer: any) {
-			entryRenderers.set(customType, renderer);
-		},
 		registerTool(tool: any) {
 			tools.push(tool);
 		},
 		registerCommand() {},
 		registerShortcut() {},
-		sendMessage(message: any) {
+		sendMessage(message: any, sendOptions?: unknown) {
 			sentMessages.push(message);
-		},
-		sendUserMessage(message: string, sendOptions?: unknown) {
-			sentUserMessages.push({ message, options: sendOptions });
+			sentMessageCalls.push({ message, options: sendOptions });
 		},
 	} as any;
 
@@ -114,10 +108,9 @@ function createHarness(
 			await review();
 		},
 		appendedEntries,
-		entryRenderers,
 		messageRenderers,
 		sentMessages,
-		sentUserMessages,
+		sentMessageCalls,
 		editorValues,
 		scheduledReviews,
 		tools,
@@ -182,7 +175,7 @@ describe("plan-md prompt injection", () => {
 		const tempDir = mkdtempSync(path.join(os.tmpdir(), "plan-md-review-"));
 		tempDirs.push(tempDir);
 		const planFilePath = path.join(tempDir, "session.plan.md");
-		const reviewCalls: Array<{ plan: string; signal?: AbortSignal }> = [];
+		const reviewCalls: string[] = [];
 		const entries = [{
 			type: "custom",
 			customType: "plan-md:state",
@@ -191,19 +184,17 @@ describe("plan-md prompt injection", () => {
 		const harness = createHarness(entries, {
 			cwd: tempDir,
 			hasUI: true,
-			reviewPlanInBrowser: async (_ctx, plan, signal) => {
-				reviewCalls.push({ plan, signal });
+			reviewPlanInBrowser: async (_ctx, plan) => {
+				reviewCalls.push(plan);
 				return { approved: true, feedback: "Keep compatibility." };
 			},
 		});
 		await harness.emit("session_start");
 		const setPlanTool = harness.tools.find((tool) => tool.name === "set_plan");
-		const signal = new AbortController().signal;
-
 		const result = await setPlanTool.execute(
 			"call-1",
 			{ plan: "# Goal\n\n- Step 1" },
-			signal,
+			undefined,
 			undefined,
 			harness.ctx,
 		);
@@ -221,7 +212,7 @@ describe("plan-md prompt injection", () => {
 		expect(harness.scheduledReviews).toHaveLength(1);
 		await harness.runScheduledReview();
 
-		expect(reviewCalls).toEqual([{ plan: "# Goal\n\n- Step 1", signal: undefined }]);
+		expect(reviewCalls).toEqual(["# Goal\n\n- Step 1"]);
 		expect(harness.appendedEntries.at(-1)?.data).toMatchObject({
 			active: false,
 			lastPlanLeafId: "planning-leaf",
@@ -247,7 +238,7 @@ describe("plan-md prompt injection", () => {
 		const harness = createHarness(entries, {
 			cwd: tempDir,
 			hasUI: true,
-			reviewPlanInBrowser: async () => ({ approved: false, feedback: "Add rollback steps." }),
+			reviewPlanInBrowser: async () => ({ approved: false, feedback: "> Add rollback steps." }),
 		});
 		await harness.emit("session_start");
 		const setPlanTool = harness.tools.find((tool) => tool.name === "set_plan");
@@ -262,33 +253,15 @@ describe("plan-md prompt injection", () => {
 
 		expect(result.content[0]?.text).toContain("browser review will open after the turn ends");
 		expect(result.details).toEqual({ plan: "# Goal\n\n- Step 1" });
-		expect(harness.sentUserMessages).toEqual([]);
+		expect(harness.sentMessageCalls).toEqual([]);
 
 		await harness.emit("agent_settled");
 		await harness.runScheduledReview();
 
-		expect(harness.sentUserMessages).toEqual([
-			{ message: "Add rollback steps.", options: undefined },
-		]);
-		expect(harness.appendedEntries).toContainEqual({
-			customType: "plan-md:review-feedback",
-			data: {
-				planFilePath,
-				feedback: "Add rollback steps.",
-			},
-		});
-		const feedbackRenderer = harness.entryRenderers.get("plan-md:review-feedback");
-		const renderedFeedback = feedbackRenderer(
-			{ data: { planFilePath, feedback: "Add rollback steps." } },
-			{},
-			{
-				bg: (_name: string, text: string) => text,
-				fg: (_name: string, text: string) => text,
-				bold: (text: string) => text,
-			},
-		).render(80).join("\n");
-		expect(renderedFeedback).toContain("Plan review requested changes");
-		expect(renderedFeedback).toContain("Add rollback steps.");
+		expect(harness.sentMessageCalls).toEqual([{
+			message: expect.objectContaining({ content: "> Add rollback steps." }),
+			options: { triggerTurn: true },
+		}]);
 		expect(
 			harness.appendedEntries
 				.filter((entry) => entry.customType === "plan-md:state")

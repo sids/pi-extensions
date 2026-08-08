@@ -1,5 +1,6 @@
 packages:
   - shared
+  - annotate
   - answer
   - cache-expiry-warning
   - cmux-status

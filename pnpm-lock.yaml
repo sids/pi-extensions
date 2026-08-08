@@ -33,6 +33,18 @@ importers:
         specifier: ^4.0.14
         version: 4.1.6(@opentelemetry/api@1.9.0)(@types/node@25.7.0)(jsdom@24.1.3)(vite@8.0.12(@types/node@25.7.0)(jiti@2.7.0)(yaml@2.9.0))
 
+  annotate:
+    dependencies:
+      '@earendil-works/pi-coding-agent':
+        specifier: 0.84.0
+        version: 0.84.0(ws@8.20.1)(zod@4.4.3)
+      '@plannotator/pi-extension':
+        specifier: ^0.26.2
+        version: 0.26.2(@earendil-works/pi-coding-agent@0.84.0(ws@8.20.1)(zod@4.4.3))(@shikijs/themes@3.23.0)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
+      '@siddr/pi-shared-qna':
+        specifier: workspace:^
+        version: link:../shared
+
   answer:
     dependencies:
       '@earendil-works/pi-ai':
@@ -200,6 +212,9 @@ importers:
 
   shared:
     dependencies:
+      '@earendil-works/pi-coding-agent':
+        specifier: 0.84.0
+        version: 0.84.0(ws@8.20.1)(zod@4.4.3)
       '@earendil-works/pi-tui':
         specifier: 0.84.0
         version: 0.84.0

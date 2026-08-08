@@ -9,6 +9,7 @@
 - Preserved staged and untracked files when reviewing an unborn Git repository.
 - Sent requested-change browser review feedback directly to the agent instead of prefilling the editor.
 - Closed approved reviews without sending a message to the agent.
+- Rendered feedback readably while preserving the original Markdown sent to the agent.
 
 ## 0.1.2 - 2026-08-07
 

@@ -19,7 +19,7 @@ function createHarness(options?: {
 	const notifications: Array<{ message: string; level?: string }> = [];
 	const openCalls: any[] = [];
 	const unbornOpenCalls: string[] = [];
-	const sentUserMessages: Array<{ message: string; options?: unknown }> = [];
+	const sentMessages: Array<{ message: any; options?: unknown }> = [];
 
 	const getResult = () => {
 		if (options?.openError) {
@@ -44,8 +44,9 @@ function createHarness(options?: {
 		registerCommand(name: string, command: { handler: Handler }) {
 			commands.set(name, command.handler);
 		},
-		sendUserMessage(message: string, sendOptions?: unknown) {
-			sentUserMessages.push({ message, options: sendOptions });
+		registerMessageRenderer() {},
+		sendMessage(message: any, sendOptions?: unknown) {
+			sentMessages.push({ message, options: sendOptions });
 		},
 	} as any;
 	const ctx = {
@@ -70,7 +71,7 @@ function createHarness(options?: {
 		notifications,
 		openCalls,
 		unbornOpenCalls,
-		sentUserMessages,
+		sentMessages,
 	};
 }
 
@@ -101,22 +102,36 @@ describe("diff-review extension", () => {
 		await harness.run("uncommitted");
 
 		expect(harness.openCalls).toEqual([{ cwd: "/tmp/project", diffType: "uncommitted", vcsType: "git" }]);
-		expect(harness.sentUserMessages).toEqual([
-			{ message: "Please fix the error handling.", options: undefined },
-		]);
+		expect(harness.sentMessages).toEqual([{
+			message: expect.objectContaining({ content: "Please fix the error handling." }),
+			options: { triggerTurn: true },
+		}]);
 		expect(harness.notifications).toContainEqual({
 			message: "Sent review feedback to the agent.",
 			level: "info",
 		});
 	});
 
+	test("preserves raw Plannotator feedback for the agent", async () => {
+		const harness = createHarness({
+			result: { approved: false, feedback: "# Review Feedback\n\n> Fix the error handling." },
+		});
+		await harness.run("uncommitted");
+
+		expect(harness.sentMessages).toEqual([{
+			message: expect.objectContaining({ content: "# Review Feedback\n\n> Fix the error handling." }),
+			options: { triggerTurn: true },
+		}]);
+	});
+
 	test("queues feedback as a follow-up when the agent is busy", async () => {
 		const harness = createHarness({ isIdle: false });
 		await harness.run("uncommitted");
 
-		expect(harness.sentUserMessages).toEqual([
-			{ message: "Please fix the error handling.", options: { deliverAs: "followUp" } },
-		]);
+		expect(harness.sentMessages).toEqual([{
+			message: expect.objectContaining({ content: "Please fix the error handling." }),
+			options: { deliverAs: "followUp" },
+		}]);
 	});
 
 	test("uses the preserved unborn-repository review when HEAD is missing", async () => {
@@ -130,14 +145,14 @@ describe("diff-review extension", () => {
 	test("does not send anything when the review is approved", async () => {
 		const harness = createHarness({ result: { approved: true, feedback: "Optional approval note." } });
 		await harness.run();
-		expect(harness.sentUserMessages).toEqual([]);
+		expect(harness.sentMessages).toEqual([]);
 		expect(harness.notifications).toContainEqual({ message: "Diff review approved.", level: "info" });
 	});
 
 	test("does not send feedback when the browser is closed", async () => {
 		const harness = createHarness({ result: { approved: false, exit: true } });
 		await harness.run();
-		expect(harness.sentUserMessages).toEqual([]);
+		expect(harness.sentMessages).toEqual([]);
 		expect(harness.notifications).toContainEqual({ message: "Diff review closed.", level: "info" });
 	});
 

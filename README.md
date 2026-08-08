@@ -6,6 +6,7 @@ A collection of pi extensions. Each extension lives in its own directory with it
 
 ## Repository layout
 
+- [`annotate/`](annotate/) – Plannotator feedback for the latest assistant message
 - [`plan-md/`](plan-md/) – Branch-based planning workflow with persisted plan files and Plannotator browser review
 - [`task-subagents/`](task-subagents/) – Standalone `subagents` / `steer_subagent` delegation tools with recursion disabled in spawned child sessions
 - [`diff-review/`](diff-review/) – Plannotator browser diff review with feedback sent directly to the agent

@@ -6,7 +6,7 @@
 - Exited plan mode directly on the current planning branch after browser approval.
 - Preserved approval notes in the implementation prompt when plan mode exits.
 - Styled printed review URLs as underlined accent text and added a Tailscale URL in explicit remote mode.
-- Displayed requested plan changes persistently in the Pi transcript.
+- Displayed requested plan changes persistently and rendered model feedback without dim blockquote styling.
 
 ## 0.1.17 - 2026-08-07
 

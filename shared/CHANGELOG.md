@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Added shared Plannotator URL styling and Tailscale host discovery helpers.
+- Added shared Plannotator decision handling and custom feedback rendering that preserves raw model input while avoiding dim blockquote styling.
 
 ## 0.1.7 - 2026-08-06
 

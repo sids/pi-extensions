@@ -3,7 +3,11 @@ const path = require("node:path");
 
 const rootDir = path.resolve(__dirname, "..");
 const rootPackageJsonPath = path.join(rootDir, "package.json");
-const packageDirs = ["answer", "fetch-url", "web-search", "status", "tool-display", "plan-md", "task-subagents", "review", "side", "mention-skills", "prompt-thinking", "session-paths", "herdr-integration", "shared"];
+const ignoredDirs = new Set([".git", ".pi", "node_modules"]);
+const packageDirs = fs
+	.readdirSync(rootDir, { withFileTypes: true })
+	.filter((entry) => entry.isDirectory() && !ignoredDirs.has(entry.name) && fs.existsSync(path.join(rootDir, entry.name, "package.json")))
+	.map((entry) => entry.name);
 
 function readJson(filePath) {
 	return JSON.parse(fs.readFileSync(filePath, "utf8"));

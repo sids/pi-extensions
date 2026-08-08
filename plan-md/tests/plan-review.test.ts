@@ -16,19 +16,17 @@ function createContext() {
 
 describe("reviewPlanInBrowser", () => {
 	test("returns the Plannotator decision", async () => {
-		const calls: Array<{ plan: string; signal?: AbortSignal }> = [];
-		const signal = new AbortController().signal;
+		const calls: string[] = [];
 		const result = await reviewPlanInBrowser(
 			createContext(),
 			"# Plan\n\n- Step one",
-			signal,
-			async (_ctx, plan, receivedSignal) => {
-				calls.push({ plan, signal: receivedSignal });
+			async (_ctx, plan) => {
+				calls.push(plan);
 				return { approved: false, feedback: "Add tests" };
 			},
 		);
 
-		expect(calls).toEqual([{ plan: "# Plan\n\n- Step one", signal }]);
+		expect(calls).toEqual(["# Plan\n\n- Step one"]);
 		expect(result).toEqual({ approved: false, feedback: "Add tests" });
 	});
 
@@ -37,7 +35,6 @@ describe("reviewPlanInBrowser", () => {
 			reviewPlanInBrowser(
 				createContext(),
 				"# Plan",
-				undefined,
 				async () => {
 					throw new Error("browser unavailable");
 				},

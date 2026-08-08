@@ -1,5 +1,9 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { openCodeReview } from "@plannotator/pi-extension/plannotator-events.ts";
+import {
+	handlePlannotatorDecision,
+	registerPlannotatorFeedbackRenderer,
+} from "@siddr/pi-shared-qna/plannotator-feedback";
 import { preparePlannotatorContext } from "@siddr/pi-shared-qna/plannotator-url";
 import { hasHeadCommit, isGitRepository } from "./git";
 import { resolveDiffTargetFromArgs } from "./target-selector";
@@ -63,6 +67,7 @@ export function createDiffReviewExtension(overrides: Partial<DiffReviewExtension
 	const dependencies = { ...createDefaultDependencies(), ...overrides } satisfies DiffReviewExtensionDependencies;
 
 	return function (pi: ExtensionAPI) {
+		registerPlannotatorFeedbackRenderer(pi);
 		pi.registerCommand(REVIEW_COMMAND, {
 			description: "Open a Plannotator browser diff review",
 			handler: async (args, ctx) => {
@@ -86,28 +91,14 @@ export function createDiffReviewExtension(overrides: Partial<DiffReviewExtension
 					const result = reviewOptions.diffType === "uncommitted" && !(await dependencies.hasHeadCommit(pi, ctx.cwd))
 						? await dependencies.openUnbornRepoReview(pi, plannotatorCtx, ctx.cwd)
 						: await dependencies.openCodeReview(plannotatorCtx, reviewOptions);
-					if (result.exit) {
-						notify(ctx, "Diff review closed.");
-						return;
-					}
-
-					if (result.approved) {
-						notify(ctx, "Diff review approved.");
-						return;
-					}
-
-					const feedback = result.feedback?.trim();
-					if (!feedback) {
-						notify(ctx, "Diff review closed without feedback.");
-						return;
-					}
-
-					if (ctx.isIdle()) {
-						pi.sendUserMessage(feedback);
-					} else {
-						pi.sendUserMessage(feedback, { deliverAs: "followUp" });
-					}
-					notify(ctx, "Sent review feedback to the agent.", "info");
+					await handlePlannotatorDecision(pi, ctx, result, {
+						notifications: {
+							approved: "Diff review approved.",
+							closed: "Diff review closed.",
+							empty: "Diff review closed without feedback.",
+							sent: "Sent review feedback to the agent.",
+						},
+					});
 				} catch (error) {
 					const message = error instanceof Error ? error.message : "Failed to open the diff review.";
 					notify(ctx, message, "error");

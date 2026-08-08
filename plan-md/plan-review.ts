@@ -13,18 +13,16 @@ export type PlanReviewDecision = {
 export type OpenPlanReview = (
 	ctx: ExtensionContext,
 	plan: string,
-	signal?: AbortSignal,
 ) => Promise<PlanReviewDecision>;
 
 export async function reviewPlanInBrowser(
 	ctx: ExtensionContext,
 	plan: string,
-	signal?: AbortSignal,
 	openReview: OpenPlanReview = openPlanReviewBrowser,
 ): Promise<PlanReviewDecision> {
 	try {
 		const plannotatorCtx = await preparePlannotatorContext(ctx);
-		return await openReview(plannotatorCtx, plan, signal);
+		return await openReview(plannotatorCtx, plan);
 	} catch (error) {
 		throw new Error(`Failed to open plan review: ${getStartupErrorMessage(error)}`);
 	}

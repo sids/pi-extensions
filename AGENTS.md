@@ -2,11 +2,18 @@
 
 ## Project overview
 
-This repository contains the **answer**, **cache-expiry-warning**, **fetch-url**, **web-search**, **status**, **plan-md**, **task-subagents**, **review**, **side**, **mention-skills**, **session-paths**, and **herdr-integration** pi extensions.
+This repository contains the **annotate**, **answer**, **diff-review**, **cache-expiry-warning**, **fetch-url**, **web-search**, **status**, **plan-md**, **task-subagents**, **review**, **side**, **mention-skills**, **session-paths**, and **herdr-integration** pi extensions.
 
 ## Key files
 
-- `package.json`: npm workspace manifest for local linking of `shared`, `answer`, and `plan-md`
+- `package.json`: npm workspace manifest for local linking of workspace packages
+- `annotate/index.ts`: Extension entry point and `/annotate` workflow
+- `annotate/README.md`: Usage docs
+- `annotate/tests/index.test.ts`: Unit tests
+- `diff-review/index.ts`: Extension entry point and `/diff-review` workflow
+- `diff-review/unborn-review.ts`: Unborn Git repository review support
+- `diff-review/README.md`: Usage docs
+- `diff-review/tests/*.test.ts`: Unit tests
 - `answer/index.ts`: Extension entry point
 - `answer/qna-adapter.ts`: Draft state + compiled answer helpers
 - `answer/utils.ts`: Shared helpers and settings parsing
@@ -71,6 +78,8 @@ This repository contains the **answer**, **cache-expiry-warning**, **fetch-url**
 - `herdr-integration/README.md`: Usage docs
 - `herdr-integration/tests/*.test.ts`: Unit tests
 - `shared/qna-tui.ts`: Shared Q&A TUI component
+- `shared/plannotator-feedback.ts`: Shared Plannotator decision handling and feedback rendering
+- `shared/plannotator-url.ts`: Shared Plannotator URL styling and remote URL helpers
 - `shared/package.json`: npm package manifest for `@siddr/pi-shared-qna`
 - `shared/README.md`: shared package usage notes
 
@@ -88,6 +97,8 @@ This repository contains the **answer**, **cache-expiry-warning**, **fetch-url**
 - Always run tests after making changes.
 - Run tests with:
   ```bash
+  pnpm test -- annotate/tests/*.test.ts
+  pnpm test -- diff-review/tests/*.test.ts
   pnpm test -- answer/tests/utils.test.ts
   pnpm test -- answer/tests/qna-adapter.test.ts
   pnpm test -- cache-expiry-warning/tests/*.test.ts

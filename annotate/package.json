@@ -1,0 +1,43 @@
+{
+  "name": "@siddr/pi-annotate",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Plannotator feedback for the last pi assistant message",
+  "license": "MIT",
+  "keywords": [
+    "pi-package"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sids/pi-extensions.git",
+    "directory": "annotate"
+  },
+  "bugs": {
+    "url": "https://github.com/sids/pi-extensions/issues"
+  },
+  "homepage": "https://github.com/sids/pi-extensions/tree/main/annotate#readme",
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  },
+  "files": [
+    "index.ts",
+    "README.md",
+    "CHANGELOG.md"
+  ],
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": ">=0.83.0"
+  },
+  "dependencies": {
+    "@plannotator/pi-extension": "^0.26.2",
+    "@siddr/pi-shared-qna": "workspace:^"
+  },
+  "scripts": {
+    "test": "vitest run tests/*.test.ts"
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/",
+    "access": "public"
+  }
+}

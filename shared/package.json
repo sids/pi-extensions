@@ -10,6 +10,7 @@
     "./session-editor-component": "./session-editor-component.ts",
     "./project-trust": "./project-trust.ts",
     "./extension-mode": "./extension-mode.ts",
+    "./plannotator-feedback": "./plannotator-feedback.ts",
     "./plannotator-url": "./plannotator-url.ts",
     "./system-prompt-diagnostic": "./system-prompt-diagnostic.ts"
   },
@@ -18,6 +19,7 @@
     "session-editor-component.ts",
     "project-trust.ts",
     "extension-mode.ts",
+    "plannotator-feedback.ts",
     "plannotator-url.ts",
     "system-prompt-diagnostic.ts",
     "README.md",
@@ -33,6 +35,7 @@
   },
   "homepage": "https://github.com/sids/pi-extensions/tree/main/shared#readme",
   "peerDependencies": {
+    "@earendil-works/pi-coding-agent": ">=0.83.0",
     "@earendil-works/pi-tui": ">=0.83.0"
   },
   "publishConfig": {
