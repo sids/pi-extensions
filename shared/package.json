@@ -2,7 +2,7 @@
   "name": "@siddr/pi-shared-qna",
   "version": "0.1.7",
   "type": "module",
-  "description": "Shared TUI helpers for siddr pi extensions",
+  "description": "Shared helpers for siddr pi extensions",
   "license": "MIT",
   "main": "./qna-tui.ts",
   "exports": {
@@ -12,7 +12,9 @@
     "./extension-mode": "./extension-mode.ts",
     "./plannotator-feedback": "./plannotator-feedback.ts",
     "./plannotator-url": "./plannotator-url.ts",
-    "./system-prompt-diagnostic": "./system-prompt-diagnostic.ts"
+    "./system-prompt-diagnostic": "./system-prompt-diagnostic.ts",
+    "./diff-target": "./diff-target.ts",
+    "./git-patch": "./git-patch.ts"
   },
   "files": [
     "qna-tui.ts",
@@ -22,6 +24,8 @@
     "plannotator-feedback.ts",
     "plannotator-url.ts",
     "system-prompt-diagnostic.ts",
+    "diff-target.ts",
+    "git-patch.ts",
     "README.md",
     "CHANGELOG.md"
   ],

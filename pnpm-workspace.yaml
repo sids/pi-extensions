@@ -5,6 +5,7 @@ packages:
   - cache-expiry-warning
   - cmux-status
   - diff-review
+  - diff-meat
   - fetch-url
   - herdr-integration
   - mention-skills

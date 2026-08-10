@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { parseDiffTargetArgs, resolveDiffTargetFromArgs } from "../target-selector";
+import { parseDiffTargetArgs, resolveDiffTargetFromArgs } from "@siddr/pi-shared-qna/diff-target";
 
 describe("parseDiffTargetArgs", () => {
 	test("parses supported direct args", () => {

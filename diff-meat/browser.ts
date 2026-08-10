@@ -1,15 +1,11 @@
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { buildUnbornFilesPatch } from "@siddr/pi-shared-qna/git-patch";
-import type { CodeReviewResult } from "./index";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { CodeReviewResult, PreparedDiff, ReadingDiff } from "./types";
 
-export function buildUnbornRepoPatch(pi: ExtensionAPI, cwd: string): Promise<string> {
-	return buildUnbornFilesPatch(pi, cwd);
-}
-
-export async function openUnbornRepoReview(
-	pi: ExtensionAPI,
+export async function openReadingDiffReview(
 	ctx: ExtensionContext,
 	cwd: string,
+	prepared: PreparedDiff,
+	reading: ReadingDiff,
 ): Promise<CodeReviewResult> {
 	const [serverModule, browserRuntime, browserModule] = await Promise.all([
 		import("@plannotator/pi-extension/server.ts"),
@@ -21,13 +17,13 @@ export async function openUnbornRepoReview(
 		throw new Error("Plannotator code review browser is unavailable in this session.");
 	}
 
-	const rawPatch = await buildUnbornRepoPatch(pi, cwd);
+	const gitRef = reading.summary || `${prepared.gitRef} reading diff`;
 	const server = await browserModule.startServerWithSelfPreemption(() => serverModule.startReviewServer({
-		rawPatch,
-		gitRef: "Uncommitted changes",
+		rawPatch: reading.rawPatch,
+		gitRef,
 		htmlContent,
 		origin: "pi",
-		diffType: "uncommitted",
+		diffType: prepared.diffType,
 		agentCwd: cwd,
 	}));
 	const session = browserModule.startBrowserDecisionSession(server, ctx, server.waitForDecision);

@@ -2,7 +2,7 @@
 
 ## Project overview
 
-This repository contains the **annotate**, **answer**, **diff-review**, **cache-expiry-warning**, **fetch-url**, **web-search**, **status**, **plan-md**, **task-subagents**, **review**, **side**, **mention-skills**, **session-paths**, and **herdr-integration** pi extensions.
+This repository contains the **annotate**, **answer**, **diff-review**, **diff-meat**, **cache-expiry-warning**, **fetch-url**, **web-search**, **status**, **plan-md**, **task-subagents**, **review**, **side**, **mention-skills**, **session-paths**, and **herdr-integration** pi extensions.
 
 ## Key files
 
@@ -14,6 +14,14 @@ This repository contains the **annotate**, **answer**, **diff-review**, **cache-
 - `diff-review/unborn-review.ts`: Unborn Git repository review support
 - `diff-review/README.md`: Usage docs
 - `diff-review/tests/*.test.ts`: Unit tests
+- `diff-meat/index.ts`: Extension entry point, cancellable generation, and `/diff-meat` workflow
+- `diff-meat/meat.ts`: Cached reading-diff orchestration
+- `diff-meat/patch.ts`: Unified-diff parsing, edit-plan validation, and source-coordinate rendering
+- `diff-meat/planner.ts`: Model tools, token chunking, source inspection, and global pass
+- `diff-meat/config.ts`: Model, reasoning, retention, chunk, source-tool, and cache settings
+- `diff-meat/context.ts`: Text-only conversation and commit-message context for abridgement
+- `diff-meat/README.md`: Usage docs
+- `diff-meat/tests/*.test.ts`: Unit tests
 - `answer/index.ts`: Extension entry point
 - `answer/qna-adapter.ts`: Draft state + compiled answer helpers
 - `answer/utils.ts`: Shared helpers and settings parsing
@@ -80,6 +88,8 @@ This repository contains the **annotate**, **answer**, **diff-review**, **cache-
 - `shared/qna-tui.ts`: Shared Q&A TUI component
 - `shared/plannotator-feedback.ts`: Shared Plannotator decision handling and feedback rendering
 - `shared/plannotator-url.ts`: Shared Plannotator URL styling and remote URL helpers
+- `shared/diff-target.ts`: Shared Git diff target parsing and selection
+- `shared/git-patch.ts`: Shared untracked and unborn repository patch synthesis
 - `shared/package.json`: npm package manifest for `@siddr/pi-shared-qna`
 - `shared/README.md`: shared package usage notes
 
@@ -99,6 +109,7 @@ This repository contains the **annotate**, **answer**, **diff-review**, **cache-
   ```bash
   pnpm test -- annotate/tests/*.test.ts
   pnpm test -- diff-review/tests/*.test.ts
+  pnpm test -- diff-meat/tests/*.test.ts
   pnpm test -- answer/tests/utils.test.ts
   pnpm test -- answer/tests/qna-adapter.test.ts
   pnpm test -- cache-expiry-warning/tests/*.test.ts

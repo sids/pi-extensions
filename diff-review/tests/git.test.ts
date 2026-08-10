@@ -10,7 +10,7 @@ import {
 	getRecentCommits,
 	hasWorkingTreeChanges,
 	isGitRepository,
-} from "../git";
+} from "@siddr/pi-shared-qna/diff-target";
 
 const tempDirs: string[] = [];
 

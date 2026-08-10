@@ -11,3 +11,5 @@ Shared helpers used by siddr pi extensions.
 - `@siddr/pi-shared-qna/plannotator-feedback`: shared Plannotator decision handling, model delivery, and readable feedback rendering.
 - `@siddr/pi-shared-qna/plannotator-url`: Plannotator URL styling and Tailscale host discovery helpers.
 - `@siddr/pi-shared-qna/system-prompt-diagnostic`: helper to summarize loaded context files and skills from `ctx.getSystemPromptOptions()`.
+- `@siddr/pi-shared-qna/diff-target`: shared Git diff-target parsing, discovery, and interactive selection.
+- `@siddr/pi-shared-qna/git-patch`: shared untracked-file patch synthesis, including binary and unborn-repository files.

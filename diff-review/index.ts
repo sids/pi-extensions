@@ -4,10 +4,13 @@ import {
 	handlePlannotatorDecision,
 	registerPlannotatorFeedbackRenderer,
 } from "@siddr/pi-shared-qna/plannotator-feedback";
+import {
+	hasHeadCommit,
+	isGitRepository,
+	resolveDiffTargetFromArgs,
+	type DiffTarget,
+} from "@siddr/pi-shared-qna/diff-target";
 import { preparePlannotatorContext } from "@siddr/pi-shared-qna/plannotator-url";
-import { hasHeadCommit, isGitRepository } from "./git";
-import { resolveDiffTargetFromArgs } from "./target-selector";
-import type { DiffTarget } from "./types";
 import { openUnbornRepoReview } from "./unborn-review";
 
 export type CodeReviewResult = {

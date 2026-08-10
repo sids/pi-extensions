@@ -3,7 +3,7 @@ import {
 	buildCodeReviewOptions,
 	createDiffReviewExtension,
 } from "../index";
-import type { DiffTarget } from "../types";
+import type { DiffTarget } from "@siddr/pi-shared-qna/diff-target";
 
 type Handler = (args: string, ctx: any) => Promise<void>;
 
