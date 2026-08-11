@@ -21,6 +21,7 @@ export type { CodeReviewResult } from "./types";
 export type DiffMeatExtensionDependencies = {
 	isGitRepository: typeof isGitRepository;
 	resolveDiffTargetFromArgs: typeof resolveDiffTargetFromArgs;
+	preparePlannotatorContext: (ctx: ExtensionContext) => Promise<ExtensionContext>;
 	prepareDiff: typeof prepareDiff;
 	buildDiffContext: typeof buildDiffContext;
 	loadConfig: () => DiffMeatConfig;
@@ -54,6 +55,7 @@ function createDefaultDependencies(): DiffMeatExtensionDependencies {
 	return {
 		isGitRepository,
 		resolveDiffTargetFromArgs,
+		preparePlannotatorContext,
 		prepareDiff,
 		buildDiffContext,
 		loadConfig: loadDiffMeatConfig,
@@ -110,11 +112,25 @@ export function createDiffMeatExtension(overrides: Partial<DiffMeatExtensionDepe
 	const dependencies = { ...createDefaultDependencies(), ...overrides } satisfies DiffMeatExtensionDependencies;
 
 	return function (pi: ExtensionAPI) {
-		registerPlannotatorFeedbackRenderer(pi);
-		pi.registerCommand(COMMAND, {
-			description: "Abridge a diff into a source-anchored reading diff and review it in Plannotator",
-			handler: async (args, ctx) => {
-				if (!ctx.hasUI) return;
+		const openReview = async (ctx: ExtensionContext, prepared: PreparedDiff, reading: ReadingDiff) => {
+			try {
+				const plannotatorCtx = await dependencies.preparePlannotatorContext(ctx);
+				const result = await dependencies.openReadingDiffReview(plannotatorCtx, prepared.repoRoot, prepared, reading);
+				await handlePlannotatorDecision(pi, ctx, result, {
+					delivery: "steer",
+					notifications: {
+						approved: "Reading diff approved.",
+						closed: "Reading diff review closed.",
+						empty: "Reading diff review closed without feedback.",
+						sent: "Sent reading diff feedback to the agent.",
+					},
+				});
+			} catch (error) {
+				notify(ctx, error instanceof Error ? error.message : "Failed to open the reading diff.", "error");
+			}
+		};
+		const prepareReview = async (args: string, ctx: ExtensionContext) => {
+			try {
 				if (!(await dependencies.isGitRepository(pi, ctx.cwd))) {
 					notify(ctx, "This command only works inside a git repository.", "error");
 					return;
@@ -123,46 +139,44 @@ export function createDiffMeatExtension(overrides: Partial<DiffMeatExtensionDepe
 				const target = await dependencies.resolveDiffTargetFromArgs(pi, ctx, args);
 				if (!target) return;
 
-				try {
-					const config = dependencies.loadConfig();
-					const prepared = await dependencies.prepareDiff(pi, ctx.cwd, target);
-					const taskContext = await dependencies.buildDiffContext(pi, ctx, prepared.repoRoot, target);
-					const outcome = await runAbridgement(pi, ctx, prepared, taskContext, config, dependencies.abridgeDiff);
-					ctx.ui.setStatus(STATUS, undefined);
-					if (outcome.status === "cancelled") {
-						notify(ctx, "Diff abridgement cancelled.", "info");
-						return;
-					}
-					if (outcome.status === "failed") throw outcome.error;
-					const reading = outcome.reading;
-					if (!reading.rawPatch.trim()) {
-						notify(ctx, reading.summary || "No review-worthy changes remained after abridging.", "info");
-						return;
-					}
-
-					const retention = reading.totalSections === 0 ? 0 : Math.round(reading.keptSections / reading.totalSections * 100);
-					const usage = `${reading.usage.input.toLocaleString()} input / ${reading.usage.output.toLocaleString()} output tokens`;
-					notify(
-						ctx,
-						reading.fromCache
-							? `Reading diff loaded from cache · ${reading.keptSections}/${reading.totalSections} sections (${retention}%).`
-							: `Reading diff keeps ${reading.keptSections}/${reading.totalSections} sections (${retention}%) · ${usage}.`,
-						"info",
-					);
-					const plannotatorCtx = await preparePlannotatorContext(ctx);
-					const result = await dependencies.openReadingDiffReview(plannotatorCtx, prepared.repoRoot, prepared, reading);
-					await handlePlannotatorDecision(pi, ctx, result, {
-						notifications: {
-							approved: "Reading diff approved.",
-							closed: "Reading diff review closed.",
-							empty: "Reading diff review closed without feedback.",
-							sent: "Sent reading diff feedback to the agent.",
-						},
-					});
-				} catch (error) {
-					ctx.ui.setStatus(STATUS, undefined);
-					notify(ctx, error instanceof Error ? error.message : "Failed to open the reading diff.", "error");
+				const config = dependencies.loadConfig();
+				const prepared = await dependencies.prepareDiff(pi, ctx.cwd, target);
+				const taskContext = await dependencies.buildDiffContext(pi, ctx, prepared.repoRoot, target);
+				const outcome = await runAbridgement(pi, ctx, prepared, taskContext, config, dependencies.abridgeDiff);
+				ctx.ui.setStatus(STATUS, undefined);
+				if (outcome.status === "cancelled") {
+					notify(ctx, "Diff abridgement cancelled.", "info");
+					return;
 				}
+				if (outcome.status === "failed") throw outcome.error;
+				const reading = outcome.reading;
+				if (!reading.rawPatch.trim()) {
+					notify(ctx, reading.summary || "No review-worthy changes remained after abridging.", "info");
+					return;
+				}
+
+				const retention = reading.totalSections === 0 ? 0 : Math.round(reading.keptSections / reading.totalSections * 100);
+				const usage = `${reading.usage.input.toLocaleString()} input / ${reading.usage.output.toLocaleString()} output tokens`;
+				notify(
+					ctx,
+					reading.fromCache
+						? `Reading diff loaded from cache · ${reading.keptSections}/${reading.totalSections} sections (${retention}%).`
+						: `Reading diff keeps ${reading.keptSections}/${reading.totalSections} sections (${retention}%) · ${usage}.`,
+					"info",
+				);
+				void openReview(ctx, prepared, reading);
+			} catch (error) {
+				ctx.ui.setStatus(STATUS, undefined);
+				notify(ctx, error instanceof Error ? error.message : "Failed to prepare the reading diff.", "error");
+			}
+		};
+
+		registerPlannotatorFeedbackRenderer(pi);
+		pi.registerCommand(COMMAND, {
+			description: "Abridge a diff into a source-anchored reading diff and review it in Plannotator",
+			handler: async (args, ctx) => {
+				if (!ctx.hasUI) return;
+				await prepareReview(args, ctx);
 			},
 		});
 	};

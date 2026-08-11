@@ -5,13 +5,14 @@ import {
 } from "../index";
 import type { DiffTarget } from "@siddr/pi-shared-qna/diff-target";
 
-type Handler = (args: string, ctx: any) => Promise<void>;
+type ReviewResult = { approved: boolean; feedback?: string; exit?: boolean };
+type Handler = (args: string, ctx: any) => void | Promise<void>;
 
 function createHarness(options?: {
 	isGitRepository?: boolean;
 	hasHeadCommit?: boolean;
 	target?: DiffTarget | null;
-	result?: { approved: boolean; feedback?: string; exit?: boolean };
+	result?: ReviewResult | Promise<ReviewResult>;
 	openError?: Error;
 	isIdle?: boolean;
 }) {
@@ -31,6 +32,7 @@ function createHarness(options?: {
 		isGitRepository: async () => options?.isGitRepository ?? true,
 		hasHeadCommit: async () => options?.hasHeadCommit ?? true,
 		resolveDiffTargetFromArgs: async () => options?.target ?? { type: "uncommitted" },
+		preparePlannotatorContext: async (ctx) => ctx,
 		openCodeReview: async (_ctx, reviewOptions) => {
 			openCalls.push(reviewOptions);
 			return getResult();
@@ -67,6 +69,7 @@ function createHarness(options?: {
 				throw new Error("Missing /diff-review handler");
 			}
 			await handler(args, ctx);
+			await new Promise<void>((resolve) => setImmediate(resolve));
 		},
 		notifications,
 		openCalls,
@@ -104,7 +107,7 @@ describe("diff-review extension", () => {
 		expect(harness.openCalls).toEqual([{ cwd: "/tmp/project", diffType: "uncommitted", vcsType: "git" }]);
 		expect(harness.sentMessages).toEqual([{
 			message: expect.objectContaining({ content: "Please fix the error handling." }),
-			options: { triggerTurn: true },
+			options: { deliverAs: "steer", triggerTurn: true },
 		}]);
 		expect(harness.notifications).toContainEqual({
 			message: "Sent review feedback to the agent.",
@@ -120,17 +123,38 @@ describe("diff-review extension", () => {
 
 		expect(harness.sentMessages).toEqual([{
 			message: expect.objectContaining({ content: "# Review Feedback\n\n> Fix the error handling." }),
-			options: { triggerTurn: true },
+			options: { deliverAs: "steer", triggerTurn: true },
 		}]);
 	});
 
-	test("queues feedback as a follow-up when the agent is busy", async () => {
+	test("sends feedback as steering when the agent is busy", async () => {
 		const harness = createHarness({ isIdle: false });
 		await harness.run("uncommitted");
 
 		expect(harness.sentMessages).toEqual([{
 			message: expect.objectContaining({ content: "Please fix the error handling." }),
-			options: { deliverAs: "followUp" },
+			options: { deliverAs: "steer", triggerTurn: true },
+		}]);
+	});
+
+	test("returns control to pi while the browser review remains open", async () => {
+		let resolveReview!: (result: ReviewResult) => void;
+		const result = new Promise<ReviewResult>((resolve) => {
+			resolveReview = resolve;
+		});
+		const harness = createHarness({ result });
+
+		await harness.run("uncommitted");
+
+		expect(harness.openCalls).toEqual([{ cwd: "/tmp/project", diffType: "uncommitted", vcsType: "git" }]);
+		expect(harness.sentMessages).toEqual([]);
+
+		resolveReview({ approved: false, feedback: "Please fix this asynchronously." });
+		await new Promise<void>((resolve) => setImmediate(resolve));
+
+		expect(harness.sentMessages).toEqual([{
+			message: expect.objectContaining({ content: "Please fix this asynchronously." }),
+			options: { deliverAs: "steer", triggerTurn: true },
 		}]);
 	});
 

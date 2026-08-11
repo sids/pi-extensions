@@ -3,7 +3,8 @@ import { createDiffMeatExtension } from "../index";
 import { loadDiffMeatConfig } from "../config";
 import type { PreparedDiff, ReadingDiff } from "../types";
 
-type Handler = (args: string, ctx: any) => Promise<void>;
+type ReviewResult = { approved: boolean; feedback?: string; exit?: boolean };
+type Handler = (args: string, ctx: any) => void | Promise<void>;
 
 const prepared: PreparedDiff = {
 	rawPatch: "diff --git a/a b/a\n@@ -1 +1 @@\n-old\n+new\n",
@@ -22,9 +23,10 @@ const reading: ReadingDiff = {
 
 function createHarness(options: {
 	isGitRepository?: boolean;
-	reading?: ReadingDiff;
-	result?: { approved: boolean; feedback?: string; exit?: boolean };
+	reading?: ReadingDiff | Promise<ReadingDiff>;
+	result?: ReviewResult | Promise<ReviewResult>;
 	error?: Error;
+	isIdle?: boolean;
 } = {}) {
 	const commands = new Map<string, Handler>();
 	const notifications: Array<{ message: string; level?: string }> = [];
@@ -35,6 +37,7 @@ function createHarness(options: {
 	const extension = createDiffMeatExtension({
 		isGitRepository: async () => options.isGitRepository ?? true,
 		resolveDiffTargetFromArgs: async () => ({ type: "uncommitted" }),
+		preparePlannotatorContext: async (ctx) => ctx,
 		loadConfig: () => loadDiffMeatConfig({ DIFF_MEAT_CACHE: "0" }),
 		prepareDiff: async () => {
 			if (options.error) throw options.error;
@@ -67,7 +70,7 @@ function createHarness(options: {
 		hasUI: true,
 		mode: "rpc",
 		cwd: "/repo",
-		isIdle: () => true,
+		isIdle: () => options.isIdle ?? true,
 		ui: {
 			notify: (message: string, level?: string) => notifications.push({ message, level }),
 			setStatus: (_key: string, value: string | undefined) => statuses.push(value),
@@ -79,11 +82,17 @@ function createHarness(options: {
 	} as any;
 	extension(pi);
 
+	const start = async (args = "") => {
+		const handler = commands.get("diff-meat");
+		if (!handler) throw new Error("Missing /diff-meat handler");
+		await handler(args, ctx);
+	};
+
 	return {
+		start,
 		async run(args = "") {
-			const handler = commands.get("diff-meat");
-			if (!handler) throw new Error("Missing /diff-meat handler");
-			await handler(args, ctx);
+			await start(args);
+			await new Promise<void>((resolve) => setImmediate(resolve));
 		},
 		notifications,
 		statuses,
@@ -107,7 +116,52 @@ describe("diff-meat extension", () => {
 		});
 		expect(harness.sentMessages).toEqual([{
 			message: expect.objectContaining({ content: "Keep another hunk." }),
-			options: { triggerTurn: true },
+			options: { deliverAs: "steer", triggerTurn: true },
+		}]);
+	});
+
+	test("keeps diff abridgement blocking", async () => {
+		let resolveReading!: (result: ReadingDiff) => void;
+		const pendingReading = new Promise<ReadingDiff>((resolve) => {
+			resolveReading = resolve;
+		});
+		const harness = createHarness({ reading: pendingReading });
+		let completed = false;
+
+		const run = harness.start("uncommitted").then(() => {
+			completed = true;
+		});
+		await new Promise<void>((resolve) => setImmediate(resolve));
+
+		expect(completed).toBe(false);
+		expect(harness.openCalls).toEqual([]);
+
+		resolveReading(reading);
+		await run;
+		await new Promise<void>((resolve) => setImmediate(resolve));
+
+		expect(completed).toBe(true);
+		expect(harness.openCalls).toEqual([{ cwd: "/repo", prepared, reading }]);
+	});
+
+	test("returns control to pi while the browser review remains open", async () => {
+		let resolveReview!: (result: ReviewResult) => void;
+		const result = new Promise<ReviewResult>((resolve) => {
+			resolveReview = resolve;
+		});
+		const harness = createHarness({ result, isIdle: false });
+
+		await harness.run("uncommitted");
+
+		expect(harness.openCalls).toEqual([{ cwd: "/repo", prepared, reading }]);
+		expect(harness.sentMessages).toEqual([]);
+
+		resolveReview({ approved: false, feedback: "Keep this reading focused." });
+		await new Promise<void>((resolve) => setImmediate(resolve));
+
+		expect(harness.sentMessages).toEqual([{
+			message: expect.objectContaining({ content: "Keep this reading focused." }),
+			options: { deliverAs: "steer", triggerTurn: true },
 		}]);
 	});
 

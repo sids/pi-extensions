@@ -30,7 +30,7 @@ If you omit args and the working tree has uncommitted changes, the extension rev
 
 ## Review behavior
 
-Plannotator provides the diff viewer, file navigation, annotations, approval flow, and browser server. Requested-change feedback is sent directly to the agent. Approval closes the review without sending a message.
+Plannotator provides the diff viewer, file navigation, annotations, approval flow, and browser server. The browser review runs asynchronously, so pi remains responsive while it is open. Requested-change feedback can be submitted at any time and is sent directly to the agent as steering. Approval closes the review without sending a message.
 
 Browser launching follows Plannotator configuration, including the `PLANNOTATOR_BROWSER`, `PLANNOTATOR_REMOTE`, and `PLANNOTATOR_PORT` environment variables. Printed review URLs use the accent color and underline styling. With `PLANNOTATOR_REMOTE=1`, the extension also reads `tailscale status --json` and prints a Tailscale URL when a host is available.
 

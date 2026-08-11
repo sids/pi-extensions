@@ -47,7 +47,7 @@ For trusted projects, the model can selectively use confined, read-only `read_fi
 
 Results are cached by patch, conversation or commit context, model, reasoning level, retention policy, source-inspection mode, and abridgement protocol. The cache is stored under `$XDG_CACHE_HOME/pi-diff-meat` or `~/.cache/pi-diff-meat`.
 
-Plannotator provides the browser, annotations, approval flow, and feedback handoff to the agent. Browser launching follows `PLANNOTATOR_BROWSER`, `PLANNOTATOR_REMOTE`, and `PLANNOTATOR_PORT`.
+Plannotator provides the browser, annotations, approval flow, and feedback handoff to the agent. Diff abridgement remains a blocking, cancellable generation step. Once it completes, the Plannotator review runs asynchronously so pi remains responsive while the browser is open. Requested changes can be submitted at any time and are sent to the agent as steering. Browser launching follows `PLANNOTATOR_BROWSER`, `PLANNOTATOR_REMOTE`, and `PLANNOTATOR_PORT`.
 
 ## Configuration
 

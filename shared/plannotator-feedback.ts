@@ -20,6 +20,7 @@ export type PlannotatorDecisionOptions = {
 		empty?: string;
 		sent?: string;
 	};
+	delivery?: "steer" | "followUp";
 	onApproved?: (feedback: string) => void | Promise<void>;
 };
 
@@ -46,7 +47,12 @@ export function registerPlannotatorFeedbackRenderer(pi: ExtensionAPI): void {
 	});
 }
 
-function sendFeedback(pi: ExtensionAPI, ctx: ExtensionContext, feedback: string): void {
+function sendFeedback(
+	pi: ExtensionAPI,
+	ctx: ExtensionContext,
+	feedback: string,
+	delivery?: "steer" | "followUp",
+): void {
 	const message = {
 		customType: PLANNOTATOR_FEEDBACK_MESSAGE_TYPE,
 		content: feedback,
@@ -54,7 +60,9 @@ function sendFeedback(pi: ExtensionAPI, ctx: ExtensionContext, feedback: string)
 	};
 	pi.sendMessage(
 		message,
-		ctx.isIdle() ? { triggerTurn: true } : { deliverAs: "followUp" },
+		delivery
+			? { deliverAs: delivery, triggerTurn: true }
+			: ctx.isIdle() ? { triggerTurn: true } : { deliverAs: "followUp" },
 	);
 }
 
@@ -85,6 +93,6 @@ export async function handlePlannotatorDecision(
 		return;
 	}
 
-	sendFeedback(pi, ctx, feedback);
+	sendFeedback(pi, ctx, feedback, options.delivery);
 	notify(ctx, options.notifications?.sent);
 }

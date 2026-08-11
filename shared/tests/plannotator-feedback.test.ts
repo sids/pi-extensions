@@ -90,6 +90,22 @@ describe("Plannotator decision handling", () => {
 		});
 	});
 
+	test("uses an explicit feedback delivery mode regardless of agent state", async () => {
+		const harness = createHarness(false);
+
+		await handlePlannotatorDecision(
+			harness.pi,
+			harness.ctx,
+			{ feedback: "Steer the active agent" },
+			{ delivery: "steer" },
+		);
+
+		expect(harness.sentMessages[0]).toMatchObject({
+			message: { content: "Steer the active agent" },
+			options: { deliverAs: "steer", triggerTurn: true },
+		});
+	});
+
 	test("does not send approval notes", async () => {
 		const harness = createHarness();
 		const approved: string[] = [];

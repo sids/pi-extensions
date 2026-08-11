@@ -101,6 +101,7 @@ export default function (pi: ExtensionAPI, overrides: Partial<PlanMdExtensionDep
 				? { ...review, feedback: "Plan rejected. Please revise it." }
 				: review;
 			await handlePlannotatorDecision(pi, ctx, decision, {
+				delivery: "steer",
 				onApproved: async (feedback) => {
 					stateManager.setState(ctx, {
 						...stateManager.getState(),

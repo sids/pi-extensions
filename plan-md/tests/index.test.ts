@@ -21,6 +21,7 @@ function createHarness(
 		hasUI?: boolean;
 		mode?: string;
 		reviewPlanInBrowser?: (...args: any[]) => Promise<{ approved: boolean; feedback?: string }>;
+		isIdle?: boolean;
 	} = {},
 ) {
 	const handlers = new Map<string, Handler[]>();
@@ -72,7 +73,7 @@ function createHarness(
 		hasUI: options.hasUI ?? false,
 		mode: options.mode,
 		cwd: options.cwd ?? "/tmp",
-		isIdle: () => true,
+		isIdle: () => options.isIdle ?? true,
 		ui: {
 			notify() {},
 			setWidget() {},
@@ -238,6 +239,7 @@ describe("plan-md prompt injection", () => {
 		const harness = createHarness(entries, {
 			cwd: tempDir,
 			hasUI: true,
+			isIdle: false,
 			reviewPlanInBrowser: async () => ({ approved: false, feedback: "> Add rollback steps." }),
 		});
 		await harness.emit("session_start");
@@ -260,7 +262,7 @@ describe("plan-md prompt injection", () => {
 
 		expect(harness.sentMessageCalls).toEqual([{
 			message: expect.objectContaining({ content: "> Add rollback steps." }),
-			options: { triggerTurn: true },
+			options: { deliverAs: "steer", triggerTurn: true },
 		}]);
 		expect(
 			harness.appendedEntries

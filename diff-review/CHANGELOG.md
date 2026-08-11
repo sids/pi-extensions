@@ -10,6 +10,7 @@
 - Sent requested-change browser review feedback directly to the agent instead of prefilling the editor.
 - Closed approved reviews without sending a message to the agent.
 - Rendered feedback readably while preserving the original Markdown sent to the agent.
+- Kept pi responsive while browser reviews are open and delivered submitted feedback as steering.
 
 ## 0.1.2 - 2026-08-07
 

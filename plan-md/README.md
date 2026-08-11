@@ -49,7 +49,8 @@ When `set_plan` runs in interactive mode, the current model turn finishes before
 
 - Approval immediately exits plan mode on the current planning branch and prefills the implementation prompt.
 - Approval notes are included in the implementation prompt after plan mode exits.
-- Requested changes are displayed persistently in the transcript and sent directly to the agent, which revises the plan and calls `set_plan` again.
+- The browser review runs asynchronously, so pi remains responsive while it is open.
+- Requested changes can be submitted at any time, are displayed persistently in the transcript, and are sent to the agent as steering so it can revise the plan and call `set_plan` again.
 
 Plannotator is included as a runtime dependency; it does not need to be installed as a separate pi extension. Browser launching follows Plannotator configuration, including `PLANNOTATOR_BROWSER`, `PLANNOTATOR_REMOTE`, and `PLANNOTATOR_PORT`. Printed review URLs use the accent color and underline styling. With `PLANNOTATOR_REMOTE=1`, the extension also reads `tailscale status --json` and prints a Tailscale URL when a host is available.
 
