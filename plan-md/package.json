@@ -28,7 +28,7 @@
     "typebox": "*"
   },
   "dependencies": {
-    "@plannotator/pi-extension": "^0.26.2",
+    "@plannotator/pi-extension": "^0.27.3",
     "@siddr/pi-shared-qna": "workspace:^"
   },
   "publishConfig": {
