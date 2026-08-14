@@ -1,12 +1,23 @@
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type {
 	ExtensionAPI,
 	ExtensionCommandContext,
 } from "@earendil-works/pi-coding-agent";
-import { describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test } from "vitest";
 import {
 	createAnnotateExtension,
 	type AnnotationDecision,
 } from "../index";
+
+const tempDirs: string[] = [];
+
+afterEach(async () => {
+	while (tempDirs.length > 0) {
+		await rm(tempDirs.pop()!, { recursive: true, force: true });
+	}
+});
 
 type CommandHandler = (args: string, ctx: ExtensionCommandContext) => Promise<void> | void;
 type ShutdownHandler = () => Promise<void> | void;
@@ -54,7 +65,7 @@ function createHarness(options: {
 	let shutdownHandler: ShutdownHandler | undefined;
 	let sessionId = "session-1";
 	const decision = deferred<AnnotationDecision>();
-	const openedMessages: string[] = [];
+	const openedRequests: Array<{ kind: string; message?: string; filePath?: string; folderPath?: string }> = [];
 	const notifications: Array<{ message: string; level?: string }> = [];
 	const sentMessages: SentMessageCall[] = [];
 	let waitForIdleCalls = 0;
@@ -62,8 +73,8 @@ function createHarness(options: {
 	const entries = options.entries ?? [assistantEntry("The latest response.")];
 	let leafId = (entries.at(-1) as { id?: string } | undefined)?.id ?? null;
 	const extension = createAnnotateExtension({
-		startAnnotation: async (_ctx, message) => {
-			openedMessages.push(message);
+		startAnnotation: async (_ctx, request) => {
+			openedRequests.push(request);
 			if (options.startError) {
 				throw options.startError;
 			}
@@ -114,11 +125,11 @@ function createHarness(options: {
 	extension(pi as unknown as ExtensionAPI);
 
 	return {
-		async run() {
+		async run(args = "") {
 			if (!handler) {
 				throw new Error("Missing /annotate handler");
 			}
-			await handler("", ctx);
+			await handler(args, ctx);
 		},
 		resolveDecision(result: AnnotationDecision) {
 			decision.resolve(result);
@@ -139,7 +150,7 @@ function createHarness(options: {
 			await shutdownHandler();
 			await settleBackgroundWork();
 		},
-		openedMessages,
+		openedRequests,
 		notifications,
 		sentMessages,
 		get waitForIdleCalls() {
@@ -157,7 +168,11 @@ describe("annotate extension", () => {
 		await harness.run();
 
 		expect(harness.waitForIdleCalls).toBe(1);
-		expect(harness.openedMessages).toEqual(["The latest response."]);
+		expect(harness.openedRequests).toEqual([{
+			kind: "message",
+			message: "The latest response.",
+			assistantEntryId: "assistant-The latest response.",
+		}]);
 		expect(harness.sentMessages).toEqual([]);
 
 		const feedback = "# Message Feedback\n\n> Please clarify this.\n> > Preserve my nested quote.";
@@ -264,7 +279,7 @@ describe("annotate extension", () => {
 		const harness = createHarness({ entries: [] });
 		await harness.run();
 
-		expect(harness.openedMessages).toEqual([]);
+		expect(harness.openedRequests).toEqual([]);
 		expect(harness.notifications).toContainEqual({
 			message: "No assistant message found in this session.",
 			level: "error",
@@ -276,11 +291,43 @@ describe("annotate extension", () => {
 		await harness.run();
 
 		expect(harness.waitForIdleCalls).toBe(0);
-		expect(harness.openedMessages).toEqual([]);
+		expect(harness.openedRequests).toEqual([]);
 		expect(harness.notifications).toContainEqual({
 			message: "Annotation is only available in TUI mode.",
 			level: "error",
 		});
+	});
+
+	test("opens a file and sends feedback with its path", async () => {
+		const dir = await mkdtemp(join(tmpdir(), "pi-annotate-file-"));
+		tempDirs.push(dir);
+		const filePath = join(dir, "notes.md");
+		await writeFile(filePath, "# Notes\n", "utf8");
+		const harness = createHarness();
+
+		await harness.run(filePath);
+		expect(harness.openedRequests).toEqual([{
+			kind: "file",
+			filePath,
+			markdown: "# Notes\n",
+		}]);
+		harness.resolveDecision({ feedback: "Clarify this section." });
+		await settleBackgroundWork();
+
+		expect(harness.sentMessages[0]?.message.content).toContain(`File: ${filePath}`);
+		expect(harness.sentMessages[0]?.message.content).toContain("Clarify this section.");
+	});
+
+	test("opens a folder containing annotatable files", async () => {
+		const dir = await mkdtemp(join(tmpdir(), "pi-annotate-folder-"));
+		tempDirs.push(dir);
+		await mkdir(join(dir, "docs"));
+		await writeFile(join(dir, "docs", "notes.md"), "# Notes\n", "utf8");
+		const harness = createHarness();
+
+		await harness.run(dir);
+
+		expect(harness.openedRequests).toEqual([{ kind: "folder", folderPath: dir }]);
 	});
 
 	test("reports browser startup failures", async () => {

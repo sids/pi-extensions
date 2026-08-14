@@ -14,9 +14,13 @@ Plannotator is included as a runtime dependency and does not need to be installe
 
 ```text
 /annotate
+/annotate path/to/file.md
+/annotate path/to/folder
 ```
 
-The command waits for any active agent response to finish, finds the latest non-empty assistant message on the current session branch, and opens it in Plannotator's last-message annotation UI. Pi remains available while the browser session is open.
+With no path, the command finds the latest non-empty assistant message on the current session branch and opens it in Plannotator's last-message annotation UI. A file path opens that file directly, including supported Markdown-like, plain-text, configuration, and HTML files. A directory opens Plannotator's folder browser. Paths are resolved relative to Pi's working directory and may be quoted when they contain spaces.
+
+The command waits for any active agent response to finish before opening. Pi remains available while the browser session is open.
 
 - Submitted feedback is sent directly to the agent while preserving its original Markdown.
 - If the agent is already busy, feedback is queued as a follow-up.
