@@ -30,7 +30,7 @@ The command waits for any active agent response to finish before opening. Pi rem
 - Browser sessions are stopped when Pi exits or switches sessions, including `/new`, `/resume`, and `/fork`.
 - The command is available only in TUI mode.
 
-Browser launching follows Plannotator configuration, including `PLANNOTATOR_BROWSER`, `PLANNOTATOR_REMOTE`, and `PLANNOTATOR_PORT`. Printed URLs use Pi's accent color and underline styling.
+Browser launching follows Plannotator configuration, including `PLANNOTATOR_BROWSER`, `PLANNOTATOR_REMOTE`, and `PLANNOTATOR_PORT`. Unless `PLANNOTATOR_PORT` is set, each annotation uses an OS-assigned free port so multiple browser sessions can remain open concurrently. An explicit fixed port or port range is honored. Printed URLs use Pi's accent color and underline styling.
 
 Set `PLANNOTATOR_TAILSCALE=1` to publish every Plannotator session over `tailscale serve`. The browser server remains bound to loopback, while Tailscale provides a tailnet-only HTTPS URL and a terminal QR code. The mapping is removed when the review ends. This mode takes precedence over `PLANNOTATOR_REMOTE`.
 

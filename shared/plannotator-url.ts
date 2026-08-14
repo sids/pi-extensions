@@ -64,6 +64,11 @@ export function isPlannotatorTailscaleEnabled(env: NodeJS.ProcessEnv = process.e
 }
 
 function configurePlannotatorNetworkMode(env: NodeJS.ProcessEnv): void {
+	if (!env.PLANNOTATOR_PORT?.trim()) {
+		// Port 0 asks the OS to allocate a distinct free port for each server,
+		// allowing multiple browser sessions to remain open concurrently.
+		env.PLANNOTATOR_PORT = "0";
+	}
 	if (isPlannotatorTailscaleEnabled(env)) {
 		// tailscale serve proxies to this process over loopback. Explicitly
 		// disable Plannotator remote mode so the review server is never exposed

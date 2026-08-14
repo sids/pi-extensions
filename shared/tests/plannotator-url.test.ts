@@ -88,6 +88,19 @@ describe("Plannotator URL notifications", () => {
 		]);
 	});
 
+	test("uses an OS-assigned port unless PLANNOTATOR_PORT is explicitly configured", async () => {
+		const automaticEnv: NodeJS.ProcessEnv = { PLANNOTATOR_REMOTE: "1" };
+		await preparePlannotatorContext(createContext().ctx, { env: automaticEnv });
+		expect(automaticEnv.PLANNOTATOR_PORT).toBe("0");
+
+		const fixedEnv: NodeJS.ProcessEnv = {
+			PLANNOTATOR_REMOTE: "1",
+			PLANNOTATOR_PORT: "43123",
+		};
+		await preparePlannotatorContext(createContext().ctx, { env: fixedEnv });
+		expect(fixedEnv.PLANNOTATOR_PORT).toBe("43123");
+	});
+
 	test("fetches Tailscale status only in explicit remote mode", async () => {
 		const remote = createContext();
 		let calls = 0;
@@ -128,6 +141,7 @@ describe("first-class Tailscale sessions", () => {
 		const { ctx, notifications } = createContext();
 		const preparedCtx = await preparePlannotatorContext(ctx, { env });
 		expect(env.PLANNOTATOR_REMOTE).toBe("0");
+		expect(env.PLANNOTATOR_PORT).toBe("0");
 		expect(env.PLANNOTATOR_URL_HOST).toBe("");
 
 		const calls: string[][] = [];

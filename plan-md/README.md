@@ -52,7 +52,7 @@ When `set_plan` runs in interactive mode, the current model turn finishes before
 - The browser review runs asynchronously, so pi remains responsive while it is open.
 - Requested changes can be submitted at any time, are displayed persistently in the transcript, and are sent to the agent as steering so it can revise the plan and call `set_plan` again.
 
-Plannotator is included as a runtime dependency; it does not need to be installed as a separate pi extension. Browser launching follows Plannotator configuration, including `PLANNOTATOR_BROWSER`, `PLANNOTATOR_REMOTE`, and `PLANNOTATOR_PORT`. Printed review URLs use the accent color and underline styling.
+Plannotator is included as a runtime dependency; it does not need to be installed as a separate pi extension. Browser launching follows Plannotator configuration, including `PLANNOTATOR_BROWSER`, `PLANNOTATOR_REMOTE`, and `PLANNOTATOR_PORT`. Unless `PLANNOTATOR_PORT` is set, each review uses an OS-assigned free port so multiple browser sessions can remain open concurrently. An explicit fixed port or port range is honored. Printed review URLs use the accent color and underline styling.
 
 Set `PLANNOTATOR_TAILSCALE=1` to keep the review server bound to loopback and publish it through `tailscale serve` with a tailnet-only HTTPS URL and terminal QR code. The mapping is removed when the review ends, and this mode takes precedence over `PLANNOTATOR_REMOTE`. Without it, `PLANNOTATOR_REMOTE=1` retains the direct-bind behavior and prints a reachable Tailscale URL when one can be detected.
 

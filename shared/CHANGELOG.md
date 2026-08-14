@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Added shared Plannotator URL styling, Tailscale host discovery, and managed `tailscale serve` session publishing.
+- Added shared Plannotator URL styling, concurrent automatic port selection, Tailscale host discovery, and managed `tailscale serve` session publishing.
 - Added shared Plannotator decision handling and custom feedback rendering that preserves raw model input while avoiding dim blockquote styling.
 - Added shared Git diff-target parsing, interactive selection, and untracked-file patch synthesis.
 
