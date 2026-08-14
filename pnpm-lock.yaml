@@ -75,24 +75,6 @@ importers:
         specifier: 0.84.0
         version: 0.84.0(ws@8.20.1)(zod@4.4.3)
 
-  diff-meat:
-    dependencies:
-      '@earendil-works/pi-ai':
-        specifier: 0.84.0
-        version: 0.84.0(ws@8.20.1)(zod@4.4.3)
-      '@earendil-works/pi-coding-agent':
-        specifier: 0.84.0
-        version: 0.84.0(ws@8.20.1)(zod@4.4.3)
-      '@plannotator/pi-extension':
-        specifier: ^0.27.3
-        version: 0.27.3(@earendil-works/pi-coding-agent@0.84.0(ws@8.20.1)(zod@4.4.3))(@shikijs/themes@3.23.0)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
-      '@siddr/pi-shared-qna':
-        specifier: workspace:^
-        version: link:../shared
-      typebox:
-        specifier: '*'
-        version: 1.3.10
-
   diff-review:
     dependencies:
       '@earendil-works/pi-coding-agent':
