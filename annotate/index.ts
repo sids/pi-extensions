@@ -69,6 +69,73 @@ type AnnotationOrigin = {
 	assistantEntryId?: string;
 };
 
+type ActiveRuntime = {
+	pi: ExtensionAPI;
+	ctx: ExtensionContext;
+	token: symbol;
+	sessionId: string;
+};
+
+type PendingAnnotation = {
+	origin: AnnotationOrigin;
+	request: AnnotationRequest;
+	session: AnnotationSession;
+	stopping: boolean;
+};
+
+type ReloadTransition = {
+	sessionId: string;
+	promise: Promise<void>;
+	resolve: () => void;
+};
+
+type AnnotationRuntimeState = {
+	activeRuntime?: ActiveRuntime;
+	pending: Set<PendingAnnotation>;
+	reload?: ReloadTransition;
+};
+
+const ANNOTATION_RUNTIME_STATE = Symbol.for("@siddr/pi-annotate/runtime-state");
+
+function getRuntimeState(): AnnotationRuntimeState {
+	const globalState = globalThis as typeof globalThis & {
+		[ANNOTATION_RUNTIME_STATE]?: AnnotationRuntimeState;
+	};
+	globalState[ANNOTATION_RUNTIME_STATE] ??= { pending: new Set() };
+	return globalState[ANNOTATION_RUNTIME_STATE];
+}
+
+function setActiveRuntime(pi: ExtensionAPI, ctx: ExtensionContext, token: symbol): void {
+	const state = getRuntimeState();
+	const sessionId = ctx.sessionManager.getSessionId();
+	state.activeRuntime = { pi, ctx, token, sessionId };
+	if (state.reload?.sessionId === sessionId) {
+		state.reload.resolve();
+		state.reload = undefined;
+	}
+}
+
+function beginReload(sessionId: string, token: symbol): void {
+	const state = getRuntimeState();
+	if (state.activeRuntime?.token !== token) return;
+	let resolve!: () => void;
+	const promise = new Promise<void>((done) => {
+		resolve = done;
+	});
+	state.activeRuntime = undefined;
+	state.reload = { sessionId, promise, resolve };
+}
+
+async function getActiveRuntime(origin: AnnotationOrigin): Promise<ActiveRuntime | undefined> {
+	const state = getRuntimeState();
+	if (state.activeRuntime?.sessionId === origin.sessionId) return state.activeRuntime;
+	if (state.reload?.sessionId === origin.sessionId) {
+		await state.reload.promise;
+		return state.activeRuntime?.sessionId === origin.sessionId ? state.activeRuntime : undefined;
+	}
+	return undefined;
+}
+
 export async function startAnnotationInBrowser(
 	ctx: ExtensionContext,
 	request: AnnotationRequest,
@@ -220,34 +287,40 @@ export function createAnnotateExtension(overrides: Partial<AnnotateExtensionDepe
 	} satisfies AnnotateExtensionDependencies;
 
 	return function annotateExtension(pi: ExtensionAPI): void {
-		const activeSessions = new Set<AnnotationSession>();
-		let shuttingDown = false;
-		const handleSession = async (
-			session: AnnotationSession,
-			ctx: ExtensionContext,
-			origin: AnnotationOrigin,
-			request: AnnotationRequest,
-		) => {
+		const runtimeToken = Symbol("pi-annotate-runtime");
+
+		const handleSession = async (pending: PendingAnnotation) => {
 			try {
-				const decision = await session.waitForDecision();
-				if (!isCurrentOrigin(ctx, origin)) {
-					notify(ctx, "Annotation feedback was not sent because the conversation moved.", "warning");
+				const decision = await pending.session.waitForDecision();
+				const runtime = await getActiveRuntime(pending.origin);
+				if (!runtime) return;
+				if (!isCurrentOrigin(runtime.ctx, pending.origin)) {
+					notify(runtime.ctx, "Annotation feedback was not sent because the conversation moved.", "warning");
 					return;
 				}
-				await handlePlannotatorDecision(pi, ctx, prepareDecision(request, decision), {
-					notifications: decisionNotifications(request),
-				});
+				await handlePlannotatorDecision(
+					runtime.pi,
+					runtime.ctx,
+					prepareDecision(pending.request, decision),
+					{ notifications: decisionNotifications(pending.request) },
+				);
 			} catch (error) {
-				if (!shuttingDown && isCurrentOrigin(ctx, origin)) {
-					const message = error instanceof Error ? error.message : "Annotation session failed.";
-					notify(ctx, message, "error");
+				if (!pending.stopping) {
+					const runtime = await getActiveRuntime(pending.origin);
+					if (runtime && isCurrentOrigin(runtime.ctx, pending.origin)) {
+						const message = error instanceof Error ? error.message : "Annotation session failed.";
+						notify(runtime.ctx, message, "error");
+					}
 				}
 			} finally {
-				activeSessions.delete(session);
+				getRuntimeState().pending.delete(pending);
 			}
 		};
 
 		registerPlannotatorFeedbackRenderer(pi);
+		pi.on("session_start", (_event, ctx) => {
+			setActiveRuntime(pi, ctx, runtimeToken);
+		});
 		pi.registerCommand("annotate", {
 			description: "Annotate the last assistant message, a file, or a folder in Plannotator",
 			handler: async (args, ctx) => {
@@ -257,6 +330,7 @@ export function createAnnotateExtension(overrides: Partial<AnnotateExtensionDepe
 				}
 
 				await ctx.waitForIdle();
+				setActiveRuntime(pi, ctx, runtimeToken);
 				let request: AnnotationRequest;
 				try {
 					const pathRequest = resolveAnnotationRequest(ctx, args);
@@ -280,8 +354,9 @@ export function createAnnotateExtension(overrides: Partial<AnnotateExtensionDepe
 						...(request.kind === "message" ? { assistantEntryId: request.assistantEntryId } : {}),
 					};
 					const session = await dependencies.startAnnotation(ctx, request);
-					activeSessions.add(session);
-					void handleSession(session, ctx, origin, request);
+					const pending: PendingAnnotation = { origin, request, session, stopping: false };
+					getRuntimeState().pending.add(pending);
+					void handleSession(pending);
 				} catch (error) {
 					const message = error instanceof Error ? error.message : "Failed to open annotation.";
 					notify(ctx, message, "error");
@@ -289,12 +364,20 @@ export function createAnnotateExtension(overrides: Partial<AnnotateExtensionDepe
 			},
 		});
 
-		pi.on("session_shutdown", () => {
-			shuttingDown = true;
-			for (const session of activeSessions) {
-				session.stop();
+		pi.on("session_shutdown", (event, ctx) => {
+			const sessionId = ctx.sessionManager.getSessionId();
+			if (event.reason === "reload") {
+				beginReload(sessionId, runtimeToken);
+				return;
 			}
-			activeSessions.clear();
+			const state = getRuntimeState();
+			if (state.activeRuntime?.token === runtimeToken) state.activeRuntime = undefined;
+			for (const pending of [...state.pending]) {
+				if (pending.origin.sessionId !== sessionId) continue;
+				pending.stopping = true;
+				pending.session.stop();
+				state.pending.delete(pending);
+			}
 		});
 	};
 }

@@ -20,7 +20,8 @@ afterEach(async () => {
 });
 
 type CommandHandler = (args: string, ctx: ExtensionCommandContext) => Promise<void> | void;
-type ShutdownHandler = () => Promise<void> | void;
+type SessionStartHandler = (event: { reason: string }, ctx: ExtensionCommandContext) => Promise<void> | void;
+type ShutdownHandler = (event: { reason: string }, ctx: ExtensionCommandContext) => Promise<void> | void;
 type SentMessageCall = {
 	message: {
 		customType: string;
@@ -62,6 +63,7 @@ function createHarness(options: {
 	startError?: Error;
 } = {}) {
 	let handler: CommandHandler | undefined;
+	let sessionStartHandler: SessionStartHandler | undefined;
 	let shutdownHandler: ShutdownHandler | undefined;
 	let sessionId = "session-1";
 	const decision = deferred<AnnotationDecision>();
@@ -72,37 +74,38 @@ function createHarness(options: {
 	let stopCalls = 0;
 	const entries = options.entries ?? [assistantEntry("The latest response.")];
 	let leafId = (entries.at(-1) as { id?: string } | undefined)?.id ?? null;
-	const extension = createAnnotateExtension({
-		startAnnotation: async (_ctx, request) => {
-			openedRequests.push(request);
-			if (options.startError) {
-				throw options.startError;
-			}
-			return {
-				url: "http://localhost:19432/annotate/test",
-				waitForDecision: () => decision.promise,
-				stop() {
-					stopCalls += 1;
-					decision.reject(new Error("Annotation stopped"));
-				},
-			};
-		},
-	});
-	const pi = {
-		on(name: string, eventHandler: ShutdownHandler) {
-			if (name === "session_shutdown") {
-				shutdownHandler = eventHandler;
-			}
-		},
-		registerCommand(name: string, command: { handler: CommandHandler }) {
-			if (name === "annotate") {
-				handler = command.handler;
-			}
-		},
-		registerMessageRenderer() {},
-		sendMessage(message: SentMessageCall["message"], sendOptions?: SentMessageCall["options"]) {
-			sentMessages.push({ message, options: sendOptions });
-		},
+	const loadExtension = (reason: "startup" | "reload" = "startup") => {
+		const extension = createAnnotateExtension({
+			startAnnotation: async (_ctx, request) => {
+				openedRequests.push(request);
+				if (options.startError) {
+					throw options.startError;
+				}
+				return {
+					url: "http://localhost:19432/annotate/test",
+					waitForDecision: () => decision.promise,
+					stop() {
+						stopCalls += 1;
+						decision.reject(new Error("Annotation stopped"));
+					},
+				};
+			},
+		});
+		const pi = {
+			on(name: string, eventHandler: SessionStartHandler | ShutdownHandler) {
+				if (name === "session_start") sessionStartHandler = eventHandler as SessionStartHandler;
+				if (name === "session_shutdown") shutdownHandler = eventHandler as ShutdownHandler;
+			},
+			registerCommand(name: string, command: { handler: CommandHandler }) {
+				if (name === "annotate") handler = command.handler;
+			},
+			registerMessageRenderer() {},
+			sendMessage(message: SentMessageCall["message"], sendOptions?: SentMessageCall["options"]) {
+				sentMessages.push({ message, options: sendOptions });
+			},
+		};
+		extension(pi as unknown as ExtensionAPI);
+		void sessionStartHandler?.({ reason }, ctx);
 	};
 	const ctx = {
 		mode: options.mode ?? "tui",
@@ -122,7 +125,7 @@ function createHarness(options: {
 		},
 	} as ExtensionCommandContext;
 
-	extension(pi as unknown as ExtensionAPI);
+	loadExtension();
 
 	return {
 		async run(args = "") {
@@ -143,11 +146,16 @@ function createHarness(options: {
 		switchSession() {
 			sessionId = "session-2";
 		},
-		async shutdown() {
+		async shutdown(reason: "quit" | "reload" | "new" = "quit") {
 			if (!shutdownHandler) {
 				throw new Error("Missing session_shutdown handler");
 			}
-			await shutdownHandler();
+			await shutdownHandler({ reason }, ctx);
+			await settleBackgroundWork();
+		},
+		async reload() {
+			await this.shutdown("reload");
+			loadExtension("reload");
 			await settleBackgroundWork();
 		},
 		openedRequests,
@@ -260,6 +268,30 @@ describe("annotate extension", () => {
 			message: "Annotation stopped",
 			level: "error",
 		});
+	});
+
+	test("keeps the browser session and delivers feedback through the reloaded runtime", async () => {
+		const harness = createHarness();
+		await harness.run();
+		await harness.reload();
+
+		expect(harness.stopCalls).toBe(0);
+		harness.resolveDecision({ feedback: "Feedback submitted after reload." });
+		await settleBackgroundWork();
+
+		expect(harness.sentMessages).toEqual([{
+			message: expect.objectContaining({ content: "Feedback submitted after reload." }),
+			options: { triggerTurn: true },
+		}]);
+	});
+
+	test("stops the browser session when starting a new session", async () => {
+		const harness = createHarness();
+		await harness.run();
+		await harness.shutdown("new");
+
+		expect(harness.stopCalls).toBe(1);
+		expect(harness.sentMessages).toEqual([]);
 	});
 
 	test("reports failures that occur after the browser opens", async () => {

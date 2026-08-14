@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Accepted file and folder paths in `/annotate` while retaining last-message annotation with no arguments.
+- Kept active annotation sessions and feedback delivery alive across `/reload`, while stopping them on session replacement.
 - Added tailnet-only HTTPS publishing and QR codes through global `PLANNOTATOR_TAILSCALE` mode.
 
 ## 0.1.0

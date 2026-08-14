@@ -26,7 +26,8 @@ The command waits for any active agent response to finish before opening. Pi rem
 - If the agent is already busy, feedback is queued as a follow-up.
 - Approval and closing the annotation without feedback do not send anything.
 - Feedback is not delivered if the session or conversation branch moves while the browser is open.
-- Open browser sessions are stopped when the Pi session shuts down or reloads.
+- Browser sessions and feedback delivery survive `/reload`.
+- Browser sessions are stopped when Pi exits or switches sessions, including `/new`, `/resume`, and `/fork`.
 - The command is available only in TUI mode.
 
 Browser launching follows Plannotator configuration, including `PLANNOTATOR_BROWSER`, `PLANNOTATOR_REMOTE`, and `PLANNOTATOR_PORT`. Printed URLs use Pi's accent color and underline styling.
