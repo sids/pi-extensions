@@ -49,6 +49,8 @@ Results are cached by patch, conversation or commit context, model, reasoning le
 
 Plannotator provides the browser, annotations, approval flow, and feedback handoff to the agent. Diff abridgement remains a blocking, cancellable generation step. Once it completes, the Plannotator review runs asynchronously so pi remains responsive while the browser is open. Requested changes can be submitted at any time and are sent to the agent as steering. Browser launching follows `PLANNOTATOR_BROWSER`, `PLANNOTATOR_REMOTE`, and `PLANNOTATOR_PORT`.
 
+Set `PLANNOTATOR_TAILSCALE=1` to keep the review server bound to loopback and publish it through `tailscale serve` with a tailnet-only HTTPS URL and terminal QR code. The mapping is removed when the review ends, and this mode takes precedence over `PLANNOTATOR_REMOTE`.
+
 ## Configuration
 
 Defaults use `openai-codex/gpt-5.6-luna` with high reasoning.

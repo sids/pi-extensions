@@ -25,4 +25,8 @@ The command waits for any active agent response to finish, finds the latest non-
 - Open browser sessions are stopped when the Pi session shuts down or reloads.
 - The command is available only in TUI mode.
 
-Browser launching follows Plannotator configuration, including `PLANNOTATOR_BROWSER`, `PLANNOTATOR_REMOTE`, and `PLANNOTATOR_PORT`. Printed URLs use Pi's accent color and underline styling. With `PLANNOTATOR_REMOTE=1`, the extension also reads `tailscale status --json` and prints a Tailscale URL when a host is available.
+Browser launching follows Plannotator configuration, including `PLANNOTATOR_BROWSER`, `PLANNOTATOR_REMOTE`, and `PLANNOTATOR_PORT`. Printed URLs use Pi's accent color and underline styling.
+
+Set `PLANNOTATOR_TAILSCALE=1` to publish every Plannotator session over `tailscale serve`. The browser server remains bound to loopback, while Tailscale provides a tailnet-only HTTPS URL and a terminal QR code. The mapping is removed when the review ends. This mode takes precedence over `PLANNOTATOR_REMOTE`.
+
+Without first-class Tailscale mode, `PLANNOTATOR_REMOTE=1` retains the direct-bind behavior and prints a reachable Tailscale URL when `tailscale status --json` reports a host.

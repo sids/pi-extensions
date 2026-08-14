@@ -1,5 +1,5 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { openCodeReview } from "@plannotator/pi-extension/plannotator-events.ts";
+import { startCodeReviewBrowserSession } from "@plannotator/pi-extension/plannotator-events.ts";
 import {
 	handlePlannotatorDecision,
 	registerPlannotatorFeedbackRenderer,
@@ -10,7 +10,10 @@ import {
 	resolveDiffTargetFromArgs,
 	type DiffTarget,
 } from "@siddr/pi-shared-qna/diff-target";
-import { preparePlannotatorContext } from "@siddr/pi-shared-qna/plannotator-url";
+import {
+	preparePlannotatorBrowserSession,
+	preparePlannotatorContext,
+} from "@siddr/pi-shared-qna/plannotator-url";
 import { openUnbornRepoReview } from "./unborn-review";
 
 export type CodeReviewResult = {
@@ -55,6 +58,15 @@ export function buildCodeReviewOptions(cwd: string, target: DiffTarget): Paramet
 		case "commit":
 			return { cwd, diffType: `commit:${target.sha}`, vcsType: "git" };
 	}
+}
+
+async function openCodeReview(
+	ctx: ExtensionContext,
+	options: Parameters<OpenCodeReview>[1],
+): Promise<CodeReviewResult> {
+	const session = await startCodeReviewBrowserSession(ctx, options);
+	const preparedSession = await preparePlannotatorBrowserSession(ctx, session);
+	return await preparedSession.waitForDecision();
 }
 
 function createDefaultDependencies(): DiffReviewExtensionDependencies {

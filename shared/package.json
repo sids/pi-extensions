@@ -38,6 +38,9 @@
     "url": "https://github.com/sids/pi-extensions/issues"
   },
   "homepage": "https://github.com/sids/pi-extensions/tree/main/shared#readme",
+  "dependencies": {
+    "uqr": "^0.1.3"
+  },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": ">=0.83.0",
     "@earendil-works/pi-tui": ">=0.83.0"

@@ -4,7 +4,7 @@
 
 - Replaced the bundled diff viewer and local server with Plannotator's browser code review.
 - Removed the cmux and Glimpse launch picker; browser launching now follows Plannotator configuration.
-- Styled printed review URLs as underlined accent text and added a Tailscale URL in explicit remote mode.
+- Styled printed review URLs as underlined accent text, added a Tailscale URL in explicit remote mode, and added managed tailnet-only HTTPS publishing.
 - Forced Git-backed targets to remain on Plannotator's Git provider in colocated repositories.
 - Preserved staged and untracked files when reviewing an unborn Git repository.
 - Sent requested-change browser review feedback directly to the agent instead of prefilling the editor.

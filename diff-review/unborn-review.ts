@@ -1,5 +1,6 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { buildUnbornFilesPatch } from "@siddr/pi-shared-qna/git-patch";
+import { preparePlannotatorBrowserSession } from "@siddr/pi-shared-qna/plannotator-url";
 import type { CodeReviewResult } from "./index";
 
 export function buildUnbornRepoPatch(pi: ExtensionAPI, cwd: string): Promise<string> {
@@ -31,5 +32,6 @@ export async function openUnbornRepoReview(
 		agentCwd: cwd,
 	}));
 	const session = browserModule.startBrowserDecisionSession(server, ctx, server.waitForDecision);
-	return await session.waitForDecision();
+	const preparedSession = await preparePlannotatorBrowserSession(ctx, session);
+	return await preparedSession.waitForDecision();
 }

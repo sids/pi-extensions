@@ -5,7 +5,7 @@
 - Opened each saved plan in Plannotator after the model turn completes, keeping the final response above the review URL.
 - Exited plan mode directly on the current planning branch after browser approval.
 - Preserved approval notes in the implementation prompt when plan mode exits.
-- Styled printed review URLs as underlined accent text and added a Tailscale URL in explicit remote mode.
+- Styled printed review URLs as underlined accent text, added a Tailscale URL in explicit remote mode, and added managed tailnet-only HTTPS publishing.
 - Displayed requested plan changes persistently and rendered model feedback without dim blockquote styling.
 - Kept pi responsive while browser reviews are open and delivered requested changes as steering.
 

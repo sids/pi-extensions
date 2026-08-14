@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Added tailnet-only HTTPS publishing and QR codes through global `PLANNOTATOR_TAILSCALE` mode.
+
 ## 0.1.0
 
 - Added `/annotate` to review the latest assistant message in Plannotator.

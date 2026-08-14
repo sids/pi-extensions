@@ -12,7 +12,10 @@ import {
 	handlePlannotatorDecision,
 	registerPlannotatorFeedbackRenderer,
 } from "@siddr/pi-shared-qna/plannotator-feedback";
-import { preparePlannotatorContext } from "@siddr/pi-shared-qna/plannotator-url";
+import {
+	preparePlannotatorBrowserSession,
+	preparePlannotatorContext,
+} from "@siddr/pi-shared-qna/plannotator-url";
 
 export type AnnotationSession = Awaited<ReturnType<typeof startLastMessageAnnotationSession>>;
 export type AnnotationDecision = Awaited<ReturnType<AnnotationSession["waitForDecision"]>>;
@@ -38,7 +41,8 @@ export async function startAnnotationInBrowser(
 ): Promise<AnnotationSession> {
 	try {
 		const plannotatorCtx = await preparePlannotatorContext(ctx);
-		return await startLastMessageAnnotationSession(plannotatorCtx, message);
+		const session = await startLastMessageAnnotationSession(plannotatorCtx, message);
+		return await preparePlannotatorBrowserSession(plannotatorCtx, session);
 	} catch (error) {
 		throw new Error(`Failed to open annotation: ${getStartupErrorMessage(error)}`);
 	}
