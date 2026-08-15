@@ -1,5 +1,6 @@
 import os from "node:os";
 import path from "node:path";
+import { visibleWidth } from "@earendil-works/pi-tui";
 import { describe, expect, test } from "vitest";
 import {
 	activeAgentDurationMs,
@@ -83,9 +84,11 @@ describe("formatOpenAIParamsLabel", () => {
 	test("formats fast-only, verbosity-only, and combined labels", () => {
 		expect(formatOpenAIParamsLabel({ fast: true, longCache: false, verbosity: null })).toBe("/fast");
 		expect(formatOpenAIParamsLabel({ fast: false, longCache: true, verbosity: null })).toBe("cache:24h");
-		expect(formatOpenAIParamsLabel({ fast: false, longCache: false, verbosity: "low" })).toBe("🗣️low");
+		const verbosityLabel = formatOpenAIParamsLabel({ fast: false, longCache: false, verbosity: "low" });
+		expect(verbosityLabel).toBe("🗣low");
+		expect(visibleWidth(verbosityLabel ?? "")).toBe(4);
 		expect(formatOpenAIParamsLabel({ fast: true, longCache: true, verbosity: "high" })).toBe(
-			"/fast cache:24h 🗣️high",
+			"/fast cache:24h 🗣high",
 		);
 	});
 });

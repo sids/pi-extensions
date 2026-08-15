@@ -12,7 +12,7 @@ Below the editor:
 
 - Current model (without the provider)
 - Current thinking level
-- Current OpenAI fast/cache/verbosity indicators from `openai-params` when non-default, shown inside the thinking parentheses (`/fast`, `cache:24h`, `🗣️low`, `🗣️medium`, `🗣️high`)
+- Current OpenAI fast/cache/verbosity indicators from `openai-params` when non-default, shown inside the thinking parentheses (`/fast`, `cache:24h`, `🗣low`, `🗣medium`, `🗣high`)
 - Context usage percent plus model context length (`<percent>/<context-length>`)
 - Current/last agent time plus cumulative turn total and session time (`<agent> agent · <turn total> turn total · <session> session`)
 

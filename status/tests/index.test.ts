@@ -273,7 +273,7 @@ describe("status extension", () => {
 		try {
 			await harness.emit("session_start", {}, ctx);
 			const initialLine = normalizeLine(harness.renderLatestWidget()[0] ?? "");
-			expect(initialLine).not.toContain("🗣️");
+			expect(initialLine).not.toContain("🗣");
 
 			const initialHeaderCount = harness.setWidgetCalls.filter((call) => call.key === "pi-status.header").length;
 			const initialDetailsCount = harness.setWidgetCalls.filter((call) => call.key === "pi-status.details").length;
@@ -292,7 +292,7 @@ describe("status extension", () => {
 				initialDetailsCount + 1,
 			);
 			expect(harness.execCalls).toHaveLength(initialExecCount);
-			expect(updatedLine).toContain("gpt-5.4 (high /fast cache:24h 🗣️low) 43%/128k");
+			expect(updatedLine).toContain("gpt-5.4 (high /fast cache:24h 🗣low) 43%/128k");
 			expect(updatedLine).not.toContain("openai/");
 		} finally {
 			await harness.emit("session_shutdown", {}, ctx);
@@ -355,8 +355,8 @@ describe("status extension", () => {
 
 			const line = harness.renderLatestWidget(200, (name, text) => `<${name}>${text}</${name}>`)[0] ?? "";
 			expect(line).toContain("<thinkingHigh>high</thinkingHigh>");
-			expect(line).toContain("<muted>/fast cache:24h 🗣️low</muted>");
-			expect(line).not.toContain("<thinkingHigh>/fast cache:24h 🗣️low</thinkingHigh>");
+			expect(line).toContain("<muted>/fast cache:24h 🗣low</muted>");
+			expect(line).not.toContain("<thinkingHigh>/fast cache:24h 🗣low</thinkingHigh>");
 		} finally {
 			await harness.emit("session_shutdown", {}, ctx);
 		}

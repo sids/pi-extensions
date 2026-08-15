@@ -14,7 +14,7 @@ const taggedTheme = {
 const detailsPayload: StatusDetailsPayload = {
 	modelLabel: "gpt-5.4",
 	thinkingLevel: "high",
-	openAIParamsLabel: "/fast 🗣️low",
+	openAIParamsLabel: "/fast 🗣low",
 	contextLabel: "43%/128k",
 	contextUsage: 42.6,
 	agentMinutesLabel: "1m",
@@ -55,7 +55,7 @@ describe("renderStatusDetails", () => {
 	test("renders model details on the left and timing on the right", () => {
 		const line = renderStatusDetails(detailsPayload, plainTheme, 120)[0] ?? "";
 
-		expect(line.trimStart()).toMatch(/^gpt-5\.4 \(high \/fast 🗣️low\) 43%\/128k/);
+		expect(line.trimStart()).toMatch(/^gpt-5\.4 \(high \/fast 🗣low\) 43%\/128k/);
 		expect(line.trimEnd()).toMatch(/1m agent · 2m turn total · 3m session$/);
 	});
 
@@ -63,7 +63,7 @@ describe("renderStatusDetails", () => {
 		const width = 48;
 		const line = renderStatusDetails(detailsPayload, plainTheme, width)[0] ?? "";
 
-		expect(line).toContain("gpt-5.4 (high /fast 🗣️low) 43%/128k");
+		expect(line).toContain("gpt-5.4 (high /fast 🗣low) 43%/128k");
 		expect(visibleWidth(line)).toBeLessThanOrEqual(width);
 	});
 });

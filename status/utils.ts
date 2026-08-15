@@ -80,7 +80,7 @@ export function formatOpenAIParamsLabel(
 		labels.push("cache:24h");
 	}
 	if (params.verbosity) {
-		labels.push(`🗣️${params.verbosity}`);
+		labels.push(`🗣${params.verbosity}`);
 	}
 	return labels.length > 0 ? labels.join(" ") : null;
 }
