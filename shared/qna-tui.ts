@@ -647,25 +647,30 @@ export class QnATuiComponent<TQuestion extends QnAQuestion> implements Component
 		}
 
 		const lines: string[] = [];
-		const boxWidth = Math.max(40, Math.min(width - 4, 120));
-		const contentWidth = boxWidth - 4;
+		const boxWidth = Math.max(2, Math.min(width - 4, 120));
+		const contentWidth = Math.max(1, boxWidth - 4);
 
 		const horizontalLine = (count: number) => "─".repeat(count);
 
 		const boxLine = (content: string, leftPad: number = 2): string => {
-			const paddedContent = " ".repeat(leftPad) + content;
+			const paddedContent = truncateToWidth(
+				" ".repeat(leftPad) + content,
+				Math.max(0, boxWidth - 2),
+				"",
+			);
 			const contentLen = visibleWidth(paddedContent);
 			const rightPad = Math.max(0, boxWidth - contentLen - 2);
 			return this.dim("│") + paddedContent + " ".repeat(rightPad) + this.dim("│");
 		};
 
 		const emptyBoxLine = (): string => {
-			return this.dim("│") + " ".repeat(boxWidth - 2) + this.dim("│");
+			return this.dim("│") + " ".repeat(Math.max(0, boxWidth - 2)) + this.dim("│");
 		};
 
 		const padToWidth = (line: string): string => {
-			const len = visibleWidth(line);
-			return line + " ".repeat(Math.max(0, width - len));
+			const boundedLine = truncateToWidth(line, Math.max(0, width), "");
+			const len = visibleWidth(boundedLine);
+			return boundedLine + " ".repeat(Math.max(0, width - len));
 		};
 
 		const question = this.getCurrentQuestion();
