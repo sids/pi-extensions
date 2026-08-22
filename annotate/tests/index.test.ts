@@ -8,6 +8,7 @@ import type {
 import { afterEach, describe, expect, test } from "vitest";
 import {
 	createAnnotateExtension,
+	resolveAnnotationRequest,
 	type AnnotationDecision,
 } from "../index";
 
@@ -371,5 +372,105 @@ describe("annotate extension", () => {
 			message: "Browser unavailable",
 			level: "error",
 		});
+	});
+});
+
+describe("annotation URL resolution", () => {
+	function createResolutionContext() {
+		const notifications: Array<{ message: string; level?: string }> = [];
+		return {
+			ctx: {
+				hasUI: true,
+				cwd: "/tmp/project",
+				ui: {
+					notify: (message: string, level?: string) => notifications.push({ message, level }),
+				},
+			} as ExtensionCommandContext,
+			notifications,
+		};
+	}
+
+	test("opens a reachable loopback HTML page as a live app", async () => {
+		const { ctx, notifications } = createResolutionContext();
+		const request = await resolveAnnotationRequest(ctx, "http://localhost:5173/dashboard", {
+			probeLiveAppTarget: async () => ({
+				liveEligible: true,
+				probeError: null,
+				probeRedirectedTo: null,
+			}),
+			isRemoteSession: () => false,
+		});
+
+		expect(request).toEqual({
+			kind: "url",
+			url: "http://localhost:5173/dashboard",
+			markdown: "",
+			sourceConverted: false,
+			live: true,
+		});
+		expect(notifications).toContainEqual({
+			message: "Live app: http://localhost:5173/dashboard",
+			level: "info",
+		});
+	});
+
+	test("uses static conversion when requested", async () => {
+		const { ctx } = createResolutionContext();
+		const conversions: Array<{ url: string; useJina: boolean }> = [];
+		const request = await resolveAnnotationRequest(
+			ctx,
+			"https://example.com/docs --static --no-jina",
+			{
+				urlToMarkdown: async (url, options) => {
+					conversions.push({ url, useJina: options.useJina });
+					return { markdown: "# Documentation", source: "fetch+turndown" };
+				},
+			},
+		);
+
+		expect(conversions).toEqual([{ url: "https://example.com/docs", useJina: false }]);
+		expect(request).toEqual({
+			kind: "url",
+			url: "https://example.com/docs",
+			markdown: "# Documentation",
+			sourceConverted: true,
+			live: false,
+		});
+	});
+
+	test("reports why forced live mode cannot start", async () => {
+		const { ctx } = createResolutionContext();
+
+		await expect(resolveAnnotationRequest(ctx, "http://localhost:5173 --app", {
+			probeLiveAppTarget: async () => ({
+				liveEligible: false,
+				probeError: "connect ECONNREFUSED",
+				probeRedirectedTo: null,
+			}),
+		})).rejects.toThrow(
+			"--app: could not reach http://localhost:5173: connect ECONNREFUSED",
+		);
+	});
+
+	test("refuses live app annotation in remote mode", async () => {
+		const { ctx } = createResolutionContext();
+
+		await expect(resolveAnnotationRequest(ctx, "http://localhost:5173", {
+			probeLiveAppTarget: async () => ({
+				liveEligible: true,
+				probeError: null,
+				probeRedirectedTo: null,
+			}),
+			isRemoteSession: () => true,
+		})).rejects.toThrow("Live app annotation is unavailable in remote mode");
+	});
+
+	test("rejects conflicting live and static flags", async () => {
+		const { ctx } = createResolutionContext();
+
+		await expect(resolveAnnotationRequest(
+			ctx,
+			"http://localhost:5173 --app --static",
+		)).rejects.toThrow("--app and --static are mutually exclusive");
 	});
 });

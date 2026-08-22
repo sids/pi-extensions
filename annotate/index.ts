@@ -5,7 +5,21 @@ import type {
 	ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
 import { getLastAssistantMessageSnapshot } from "@plannotator/pi-extension/assistant-message.ts";
-import { loadConfig } from "@plannotator/pi-extension/generated/config.ts";
+import {
+	loadConfig,
+	resolveUseJina,
+} from "@plannotator/pi-extension/generated/config.ts";
+import { parseAnnotateArgs } from "@plannotator/pi-extension/generated/annotate-args.ts";
+import {
+	buildForceAppFailureMessage,
+	buildLiveProbeFallbackNotice,
+	classifyLiveAppCandidate,
+	LIVE_APP_REMOTE_MESSAGE,
+	LIVE_APP_REQUIRES_HTTP_MESSAGE,
+	LIVE_APP_REQUIRES_LOOPBACK_MESSAGE,
+	LIVE_APP_REQUIRES_URL_MESSAGE,
+	probeLiveAppTarget,
+} from "@plannotator/pi-extension/generated/live-probe.ts";
 import {
 	getAnnotateFileFeedbackPrompt,
 } from "@plannotator/pi-extension/generated/prompts.ts";
@@ -19,10 +33,15 @@ import {
 	resolveUserPath,
 } from "@plannotator/pi-extension/generated/resolve-file.ts";
 import {
+	isConvertedSource,
+	urlToMarkdown,
+} from "@plannotator/pi-extension/generated/url-to-markdown.ts";
+import {
 	getStartupErrorMessage,
 	startLastMessageAnnotationSession,
 	startMarkdownAnnotationSession,
 } from "@plannotator/pi-extension/plannotator-events.ts";
+import { isRemoteSession } from "@plannotator/pi-extension/server/network.ts";
 import { isTuiMode } from "@siddr/pi-shared-qna/extension-mode";
 import {
 	handlePlannotatorDecision,
@@ -52,6 +71,13 @@ export type AnnotationRequest =
 	| {
 		kind: "folder";
 		folderPath: string;
+	}
+	| {
+		kind: "url";
+		url: string;
+		markdown: string;
+		sourceConverted: boolean;
+		live: boolean;
 	};
 
 export type StartAnnotation = (
@@ -152,18 +178,34 @@ export async function startAnnotationInBrowser(
 					"annotate-folder",
 					request.folderPath,
 				)
-				: await startMarkdownAnnotationSession(
-					plannotatorCtx,
-					request.filePath,
-					request.markdown,
-					"annotate",
-					undefined,
-					request.sourceInfo,
-					false,
-					undefined,
-					request.rawHtml,
-					request.rawHtml !== undefined,
-				);
+				: request.kind === "url"
+					? await startMarkdownAnnotationSession(
+						plannotatorCtx,
+						request.url,
+						request.markdown,
+						request.live ? "annotate-app" : "annotate",
+						undefined,
+						request.url,
+						request.sourceConverted,
+						undefined,
+						undefined,
+						false,
+						undefined,
+						undefined,
+						request.live ? request.url : undefined,
+					)
+					: await startMarkdownAnnotationSession(
+						plannotatorCtx,
+						request.filePath,
+						request.markdown,
+						"annotate",
+						undefined,
+						request.sourceInfo,
+						false,
+						undefined,
+						request.rawHtml,
+						request.rawHtml !== undefined,
+					);
 		return await preparePlannotatorBrowserSession(plannotatorCtx, session);
 	} catch (error) {
 		throw new Error(`Failed to open annotation: ${getStartupErrorMessage(error)}`);
@@ -202,12 +244,71 @@ function resolvePathInput(args: string, cwd: string): string {
 	return resolveUserPath(input.slice(1), cwd);
 }
 
-export function resolveAnnotationRequest(
+type ResolveAnnotationRequestOptions = {
+	probeLiveAppTarget?: typeof probeLiveAppTarget;
+	urlToMarkdown?: typeof urlToMarkdown;
+	isRemoteSession?: typeof isRemoteSession;
+};
+
+export async function resolveAnnotationRequest(
 	ctx: ExtensionContext,
 	args: string,
-): AnnotationRequest | undefined {
+	options: ResolveAnnotationRequestOptions = {},
+): Promise<AnnotationRequest | undefined> {
 	if (!args.trim()) return undefined;
-	const targetPath = resolvePathInput(args, ctx.cwd);
+	const parsedArgs = parseAnnotateArgs(args, { liveFlags: true });
+	const { app, static: forceStatic, noJina } = parsedArgs;
+	if (app && forceStatic) {
+		throw new Error("--app and --static are mutually exclusive");
+	}
+	if (!parsedArgs.filePath) {
+		throw new Error(app ? LIVE_APP_REQUIRES_URL_MESSAGE : "A URL target is required when using annotation flags.");
+	}
+
+	const target = parsedArgs.filePath;
+	const isUrl = /^https?:\/\//i.test(target);
+	if (!isUrl && app) {
+		throw new Error(LIVE_APP_REQUIRES_URL_MESSAGE);
+	}
+	if (isUrl) {
+		const { parsed, loopback } = classifyLiveAppCandidate(target);
+		if (app && !loopback) {
+			throw new Error(LIVE_APP_REQUIRES_LOOPBACK_MESSAGE);
+		}
+		if (app && parsed?.protocol === "https:") {
+			throw new Error(LIVE_APP_REQUIRES_HTTP_MESSAGE);
+		}
+
+		if (loopback && parsed?.protocol === "http:" && !forceStatic) {
+			const probe = await (options.probeLiveAppTarget ?? probeLiveAppTarget)(target, parsed);
+			if (probe.liveEligible) {
+				if ((options.isRemoteSession ?? isRemoteSession)()) {
+					throw new Error(LIVE_APP_REMOTE_MESSAGE);
+				}
+				notify(ctx, `Live app: ${target}`);
+				return { kind: "url", url: target, markdown: "", sourceConverted: false, live: true };
+			}
+			if (app) {
+				throw new Error(buildForceAppFailureMessage(target, probe));
+			}
+			if (probe.probeError !== null) {
+				notify(ctx, buildLiveProbeFallbackNotice(target, probe.probeError));
+			}
+		}
+
+		const useJina = resolveUseJina(noJina, loadConfig());
+		notify(ctx, `Fetching: ${target}${useJina ? " (via Jina Reader)" : " (via fetch+Turndown)"}...`);
+		const result = await (options.urlToMarkdown ?? urlToMarkdown)(target, { useJina });
+		return {
+			kind: "url",
+			url: target,
+			markdown: result.markdown,
+			sourceConverted: isConvertedSource(result.source),
+			live: false,
+		};
+	}
+
+	const targetPath = resolvePathInput(parsedArgs.rawFilePath, ctx.cwd);
 	if (!existsSync(targetPath)) {
 		throw new Error(`File or folder not found: ${targetPath}`);
 	}
@@ -253,11 +354,12 @@ function prepareDecision(request: AnnotationRequest, decision: AnnotationDecisio
 	const feedback = decision.feedback?.trim();
 	if (!feedback || request.kind === "message") return decision;
 	const isFolder = request.kind === "folder";
-	const filePath = isFolder ? request.folderPath : request.filePath;
+	const isUrl = request.kind === "url";
+	const filePath = isFolder ? request.folderPath : isUrl ? request.url : request.filePath;
 	return {
 		...decision,
 		feedback: getAnnotateFileFeedbackPrompt("pi", loadConfig(), {
-			fileHeader: isFolder ? "Folder" : "File",
+			fileHeader: isFolder ? "Folder" : isUrl ? "URL" : "File",
 			filePath,
 			feedback,
 		}),
@@ -322,7 +424,7 @@ export function createAnnotateExtension(overrides: Partial<AnnotateExtensionDepe
 			setActiveRuntime(pi, ctx, runtimeToken);
 		});
 		pi.registerCommand("annotate", {
-			description: "Annotate the last assistant message, a file, or a folder in Plannotator",
+			description: "Annotate the last assistant message, a path, or a URL in Plannotator",
 			handler: async (args, ctx) => {
 				if (!isTuiMode(ctx)) {
 					notify(ctx, "Annotation is only available in TUI mode.", "error");
@@ -333,7 +435,7 @@ export function createAnnotateExtension(overrides: Partial<AnnotateExtensionDepe
 				setActiveRuntime(pi, ctx, runtimeToken);
 				let request: AnnotationRequest;
 				try {
-					const pathRequest = resolveAnnotationRequest(ctx, args);
+					const pathRequest = await resolveAnnotationRequest(ctx, args);
 					if (pathRequest) {
 						request = pathRequest;
 					} else {

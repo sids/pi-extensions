@@ -16,9 +16,13 @@ Plannotator is included as a runtime dependency and does not need to be installe
 /annotate
 /annotate path/to/file.md
 /annotate path/to/folder
+/annotate http://localhost:5173
+/annotate https://example.com/page --static
 ```
 
-With no path, the command finds the latest non-empty assistant message on the current session branch and opens it in Plannotator's last-message annotation UI. A file path opens that file directly, including supported Markdown-like, plain-text, configuration, and HTML files. A directory opens Plannotator's folder browser. Paths are resolved relative to Pi's working directory and may be quoted when they contain spaces.
+With no target, the command finds the latest non-empty assistant message on the current session branch and opens it in Plannotator's last-message annotation UI. A file path opens that file directly, including supported Markdown-like, plain-text, configuration, and HTML files. A directory opens Plannotator's folder browser. Paths are resolved relative to Pi's working directory and may be quoted when they contain spaces.
+
+A reachable `http://` loopback URL opens as a live app, preserving interactions and updates from the running development server. Use `--app` to require live mode and report why it cannot start, or `--static` to annotate a converted snapshot instead. Other HTTP(S) URLs use static conversion automatically. Add `--no-jina` to fetch and convert a static URL directly instead of using Jina Reader. Live app annotation is unavailable when Plannotator is in remote mode.
 
 The command waits for any active agent response to finish before opening. Pi remains available while the browser session is open.
 
