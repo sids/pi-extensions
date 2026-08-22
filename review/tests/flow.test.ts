@@ -86,6 +86,7 @@ function createRegisteredReviewHandler(options: {
 	const registeredHandler = handler;
 	const wrappedHandler = (args: string, ctx: any) =>
 		registeredHandler(args, {
+			isIdle: () => true,
 			...ctx,
 			ui: {
 				custom: (factory: any) => runCustomUi(factory),
@@ -111,6 +112,57 @@ describe("registerReviewCommand", () => {
 });
 
 describe("/review inactive", () => {
+	test("notifies immediately when review startup is waiting for the current agent run", async () => {
+		const notifications: Array<{ message: string; level: string }> = [];
+		let finishWaiting: (() => void) | undefined;
+		let waitingStarted: (() => void) | undefined;
+		const waitUntilIdle = new Promise<void>((resolve) => {
+			finishWaiting = resolve;
+		});
+		const startedWaiting = new Promise<void>((resolve) => {
+			waitingStarted = resolve;
+		});
+		const { handler } = createRegisteredReviewHandler({
+			stateManager: {
+				getState: () => ({ version: 1, active: false }),
+				setState: () => {},
+				startReviewMode: () => {},
+			},
+			flow: {
+				isGitRepository: async () => true,
+				resolveTarget: async () => null,
+			},
+		});
+
+		const result = handler("", {
+			hasUI: true,
+			cwd: "/tmp/project",
+			isIdle: () => false,
+			waitForIdle: async () => {
+				waitingStarted?.();
+				await waitUntilIdle;
+			},
+			sessionManager: {
+				getLeafId: () => "leaf-1",
+				getEntries: () => [{ id: "leaf-1", type: "message", message: { role: "user" } }],
+			},
+			ui: {
+				notify: (message: string, level: string) => notifications.push({ message, level }),
+			},
+		});
+
+		await startedWaiting;
+		expect(notifications).toEqual([
+			{
+				message: "Review mode will start after the current agent run finishes.",
+				level: "info",
+			},
+		]);
+
+		finishWaiting?.();
+		await result;
+	});
+
 	test("asks start location first, then starts review and prefills editor", async () => {
 		const startCalls: any[] = [];
 		const notifications: Array<{ message: string; level: string }> = [];

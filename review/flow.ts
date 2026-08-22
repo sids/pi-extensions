@@ -375,6 +375,9 @@ export async function startReviewMode(
 		return;
 	}
 
+	if (!ctx.isIdle()) {
+		ctx.ui.notify("Review mode will start after the current agent run finishes.", "info");
+	}
 	await ctx.waitForIdle();
 
 	const rawArgs = args.trim();

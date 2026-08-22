@@ -190,6 +190,7 @@ describe("automatic review exit", () => {
 			mode: "tui",
 			hasUI: true,
 			cwd: "/tmp",
+			isIdle: () => true,
 			waitForIdle: async () => {},
 			getSystemPromptOptions: () => ({}),
 			navigateTree: async (entryId: string) => {
