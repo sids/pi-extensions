@@ -95,6 +95,37 @@ describe("createReviewModeStateManager", () => {
 		expect(setActiveToolsCalls).toEqual([["read", "bash", "add_review_comment"]]);
 	});
 
+	test("shows a pending banner until review startup continues", () => {
+		const manager = createReviewModeStateManager({
+			appendEntry: () => {},
+			getActiveTools: () => ["read", "bash"],
+			setActiveTools: () => {},
+		} as any);
+		const { ctx, widgetCalls } = createContext([], true);
+
+		manager.setReviewStartPending(ctx as any, true);
+
+		const widgetFactory = widgetCalls.at(-1)?.widget;
+		expect(typeof widgetFactory).toBe("function");
+		const component = (widgetFactory as any)(
+			{},
+			{
+				fg: (_token: string, text: string) => text,
+				bold: (text: string) => text,
+			},
+		);
+		expect(component.render(200)).toEqual([
+			" Review mode pending; waiting for the current agent run to finish.",
+		]);
+
+		manager.setReviewStartPending(ctx as any, false);
+		expect(widgetCalls.at(-1)).toEqual({
+			key: "review-mode-banner",
+			widget: undefined,
+			placement: "aboveEditor",
+		});
+	});
+
 	test("refresh removes review tool and clears banner when inactive", () => {
 		let activeTools = ["read", "add_review_comment"];
 		const setActiveToolsCalls: string[][] = [];

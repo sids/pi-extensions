@@ -26,6 +26,7 @@ import { formatReviewSummaryMessage, createReviewRunId, REVIEW_MODE_START_OPTION
 type ReviewModeStateManager = {
 	getState: () => ReviewModeState;
 	setState: (ctx: ExtensionContext, nextState: ReviewModeState) => void;
+	setReviewStartPending: (ctx: ExtensionContext, pending: boolean) => void;
 	startReviewMode: (
 		ctx: ExtensionContext,
 		options: {
@@ -375,9 +376,6 @@ export async function startReviewMode(
 		return;
 	}
 
-	if (!ctx.isIdle()) {
-		ctx.ui.notify("Review mode will start after the current agent run finishes.", "info");
-	}
 	await ctx.waitForIdle();
 
 	const rawArgs = args.trim();
@@ -704,10 +702,17 @@ export function registerReviewCommand(
 				return;
 			}
 
+			const reviewStartPending = !ctx.isIdle();
+			if (reviewStartPending) {
+				dependencies.stateManager.setReviewStartPending(ctx, true);
+			}
 			flowDependencies.setLifecyclePhase("selecting");
 			try {
 				await startReviewMode(pi, ctx, args.trim(), dependencies.stateManager, flowDependencies);
 			} finally {
+				if (reviewStartPending) {
+					dependencies.stateManager.setReviewStartPending(ctx, false);
+				}
 				if (!dependencies.stateManager.getState().active) {
 					flowDependencies.setLifecyclePhase("inactive");
 				}

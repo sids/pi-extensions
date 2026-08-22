@@ -79,6 +79,7 @@ export function getFirstUserMessageId(ctx: ExtensionContext): string | undefined
 
 export function createReviewModeStateManager(pi: ExtensionAPI) {
 	let state: ReviewModeState = createInactiveReviewModeState();
+	let reviewStartPending = false;
 
 	const persistState = () => {
 		pi.appendEntry(STATE_ENTRY_TYPE, state);
@@ -125,7 +126,7 @@ export function createReviewModeStateManager(pi: ExtensionAPI) {
 			return;
 		}
 
-		if (!state.active) {
+		if (!state.active && !reviewStartPending) {
 			ctx.ui.setWidget(BANNER_WIDGET_KEY, undefined, { placement: "aboveEditor" });
 			return;
 		}
@@ -135,12 +136,10 @@ export function createReviewModeStateManager(pi: ExtensionAPI) {
 			(_tui, theme) => ({
 				render: (width: number) => {
 					const { truncateToWidth } = getPiTui();
-					return [
-						truncateToWidth(
-							`${theme.fg("warning", theme.bold(" Review mode active"))}${theme.fg("muted", "; /review to exit.")}`,
-							Math.max(1, width),
-						),
-					];
+					const banner = state.active
+						? `${theme.fg("warning", theme.bold(" Review mode active"))}${theme.fg("muted", "; /review to exit.")}`
+						: `${theme.fg("warning", theme.bold(" Review mode pending"))}${theme.fg("muted", "; waiting for the current agent run to finish.")}`;
+					return [truncateToWidth(banner, Math.max(1, width))];
 				},
 				invalidate: () => {},
 			}),
@@ -194,7 +193,13 @@ export function createReviewModeStateManager(pi: ExtensionAPI) {
 		});
 	};
 
+	const setReviewStartPending = (ctx: ExtensionContext, pending: boolean) => {
+		reviewStartPending = pending;
+		applyBanner(ctx);
+	};
+
 	const refresh = (ctx: ExtensionContext) => {
+		reviewStartPending = false;
 		state = getLatestState(ctx);
 		if (state.active && state.activeToolsBeforeReviewMode) {
 			activeToolsBeforeReviewMode = state.activeToolsBeforeReviewMode;
@@ -207,6 +212,7 @@ export function createReviewModeStateManager(pi: ExtensionAPI) {
 		getState: () => state,
 		setState,
 		startReviewMode,
+		setReviewStartPending,
 		refresh,
 		syncTools: syncReviewTools,
 		applyBanner,

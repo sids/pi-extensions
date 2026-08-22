@@ -45,6 +45,7 @@ function createRegisteredReviewHandler(options: {
 	stateManager: {
 		getState: () => any;
 		setState: (ctx: any, nextState: any) => void;
+		setReviewStartPending?: (ctx: any, pending: boolean) => void;
 		startReviewMode: (ctx: any, opts: any) => void;
 	};
 	flow?: Record<string, unknown>;
@@ -70,7 +71,10 @@ function createRegisteredReviewHandler(options: {
 	} as any;
 
 	const reviewCommand = registerReviewCommand(pi, {
-		stateManager: options.stateManager,
+		stateManager: {
+			setReviewStartPending: () => {},
+			...options.stateManager,
+		},
 		flow: {
 			runPromptCountdown: async () => "edit",
 			selectStartLocation: async (ctx: any) =>
@@ -112,8 +116,9 @@ describe("registerReviewCommand", () => {
 });
 
 describe("/review inactive", () => {
-	test("notifies immediately when review startup is waiting for the current agent run", async () => {
+	test("shows a persistent banner while review startup waits for the current agent run", async () => {
 		const notifications: Array<{ message: string; level: string }> = [];
+		const pendingCalls: boolean[] = [];
 		let finishWaiting: (() => void) | undefined;
 		let waitingStarted: (() => void) | undefined;
 		const waitUntilIdle = new Promise<void>((resolve) => {
@@ -126,6 +131,7 @@ describe("/review inactive", () => {
 			stateManager: {
 				getState: () => ({ version: 1, active: false }),
 				setState: () => {},
+				setReviewStartPending: (_ctx, pending) => pendingCalls.push(pending),
 				startReviewMode: () => {},
 			},
 			flow: {
@@ -152,15 +158,12 @@ describe("/review inactive", () => {
 		});
 
 		await startedWaiting;
-		expect(notifications).toEqual([
-			{
-				message: "Review mode will start after the current agent run finishes.",
-				level: "info",
-			},
-		]);
+		expect(pendingCalls).toEqual([true]);
+		expect(notifications).toEqual([]);
 
 		finishWaiting?.();
 		await result;
+		expect(pendingCalls).toEqual([true, false]);
 	});
 
 	test("asks start location first, then starts review and prefills editor", async () => {
