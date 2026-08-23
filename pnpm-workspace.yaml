@@ -43,3 +43,6 @@ onlyBuiltDependencies:
 peerDependencyRules:
   allowedVersions:
     '@pierre/theme': '2'
+
+patchedDependencies:
+  '@plannotator/pi-extension@0.27.6': patches/@plannotator__pi-extension@0.27.6.patch

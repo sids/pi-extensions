@@ -1,0 +1,44 @@
+diff --git a/server/helpers.ts b/server/helpers.ts
+index 565653aeea4c04a62f5929b275db80a021eb3e81..456c8f5787569f29811c797a9854fdf474916869 100644
+--- a/server/helpers.ts
++++ b/server/helpers.ts
+@@ -54,12 +54,38 @@ export function handleApiNotFound(
+ 	json(res, { error: "Not found", path }, 404);
+ }
+ 
++const PLANNOTATOR_UPDATE_URL = "https://api.github.com/repos/backnotprop/plannotator/releases/latest";
++const LOCAL_RELEASE_METADATA_URL = "data:application/json,%7B%22tag_name%22%3A%220.27.6%22%2C%22html_url%22%3A%22%22%7D";
++const ONBOARDING_BOOTSTRAP = `<script>
++(() => {
++	const onboardingCookies = {
++		"plannotator-plan-look-choice-resolved": "true",
++		"plannotator-look-feel-announcement-seen": "2",
++		"plannotator-guide-intro-seen": "2",
++		"plannotator-guide-hint-acked": "true",
++		"plannotator-review-setup-seen": "true",
++		"plannotator-edit-mode-announcement-seen": "3",
++		"plannotator-review-dest-spotlight-seen": "1",
++	};
++	for (const [name, value] of Object.entries(onboardingCookies)) {
++		document.cookie = \`\${name}=\${value}; path=/; max-age=31536000; SameSite=Lax\`;
++	}
++})();
++</script>`;
++
++function prepareBrowserHtml(content: string): string {
++	if (!content.includes(PLANNOTATOR_UPDATE_URL)) return content;
++	return content
++		.replace(PLANNOTATOR_UPDATE_URL, LOCAL_RELEASE_METADATA_URL)
++		.replace("<head>", `<head>\n${ONBOARDING_BOOTSTRAP}`);
++}
++
+ export function html(
+ 	res: import("node:http").ServerResponse,
+ 	content: string,
+ ): void {
+ 	res.writeHead(200, { "Content-Type": "text/html" });
+-	res.end(content);
++	res.end(prepareBrowserHtml(content));
+ }
+ 
+ export function send(

@@ -62,22 +62,17 @@ export type AnnotationRequest =
 		assistantEntryId: string;
 	}
 	| {
-		kind: "file";
+		kind: "file" | "url";
 		filePath: string;
 		markdown: string;
 		sourceInfo?: string;
+		sourceConverted?: boolean;
 		rawHtml?: string;
+		liveTargetUrl?: string;
 	}
 	| {
 		kind: "folder";
 		folderPath: string;
-	}
-	| {
-		kind: "url";
-		url: string;
-		markdown: string;
-		sourceConverted: boolean;
-		live: boolean;
 	};
 
 export type StartAnnotation = (
@@ -178,34 +173,21 @@ export async function startAnnotationInBrowser(
 					"annotate-folder",
 					request.folderPath,
 				)
-				: request.kind === "url"
-					? await startMarkdownAnnotationSession(
-						plannotatorCtx,
-						request.url,
-						request.markdown,
-						request.live ? "annotate-app" : "annotate",
-						undefined,
-						request.url,
-						request.sourceConverted,
-						undefined,
-						undefined,
-						false,
-						undefined,
-						undefined,
-						request.live ? request.url : undefined,
-					)
-					: await startMarkdownAnnotationSession(
-						plannotatorCtx,
-						request.filePath,
-						request.markdown,
-						"annotate",
-						undefined,
-						request.sourceInfo,
-						false,
-						undefined,
-						request.rawHtml,
-						request.rawHtml !== undefined,
-					);
+				: await startMarkdownAnnotationSession(
+					plannotatorCtx,
+					request.filePath,
+					request.markdown,
+					request.liveTargetUrl ? "annotate-app" : "annotate",
+					undefined,
+					request.kind === "url" ? request.filePath : request.sourceInfo,
+					request.sourceConverted,
+					undefined,
+					request.rawHtml,
+					request.rawHtml !== undefined,
+					undefined,
+					undefined,
+					request.liveTargetUrl,
+				);
 		return await preparePlannotatorBrowserSession(plannotatorCtx, session);
 	} catch (error) {
 		throw new Error(`Failed to open annotation: ${getStartupErrorMessage(error)}`);
@@ -258,6 +240,9 @@ export async function resolveAnnotationRequest(
 	if (!args.trim()) return undefined;
 	const parsedArgs = parseAnnotateArgs(args, { liveFlags: true });
 	const { app, static: forceStatic, noJina } = parsedArgs;
+	const probe = options.probeLiveAppTarget ?? probeLiveAppTarget;
+	const convertUrl = options.urlToMarkdown ?? urlToMarkdown;
+	const isRemote = options.isRemoteSession ?? isRemoteSession;
 	if (app && forceStatic) {
 		throw new Error("--app and --static are mutually exclusive");
 	}
@@ -280,31 +265,30 @@ export async function resolveAnnotationRequest(
 		}
 
 		if (loopback && parsed?.protocol === "http:" && !forceStatic) {
-			const probe = await (options.probeLiveAppTarget ?? probeLiveAppTarget)(target, parsed);
-			if (probe.liveEligible) {
-				if ((options.isRemoteSession ?? isRemoteSession)()) {
+			const probeResult = await probe(target, parsed);
+			if (probeResult.liveEligible) {
+				if (isRemote()) {
 					throw new Error(LIVE_APP_REMOTE_MESSAGE);
 				}
 				notify(ctx, `Live app: ${target}`);
-				return { kind: "url", url: target, markdown: "", sourceConverted: false, live: true };
+				return { kind: "url", filePath: target, markdown: "", liveTargetUrl: target };
 			}
 			if (app) {
-				throw new Error(buildForceAppFailureMessage(target, probe));
+				throw new Error(buildForceAppFailureMessage(target, probeResult));
 			}
-			if (probe.probeError !== null) {
-				notify(ctx, buildLiveProbeFallbackNotice(target, probe.probeError));
+			if (probeResult.probeError !== null) {
+				notify(ctx, buildLiveProbeFallbackNotice(target, probeResult.probeError));
 			}
 		}
 
 		const useJina = resolveUseJina(noJina, loadConfig());
 		notify(ctx, `Fetching: ${target}${useJina ? " (via Jina Reader)" : " (via fetch+Turndown)"}...`);
-		const result = await (options.urlToMarkdown ?? urlToMarkdown)(target, { useJina });
+		const result = await convertUrl(target, { useJina });
 		return {
 			kind: "url",
-			url: target,
+			filePath: target,
 			markdown: result.markdown,
 			sourceConverted: isConvertedSource(result.source),
-			live: false,
 		};
 	}
 
@@ -355,7 +339,7 @@ function prepareDecision(request: AnnotationRequest, decision: AnnotationDecisio
 	if (!feedback || request.kind === "message") return decision;
 	const isFolder = request.kind === "folder";
 	const isUrl = request.kind === "url";
-	const filePath = isFolder ? request.folderPath : isUrl ? request.url : request.filePath;
+	const filePath = isFolder ? request.folderPath : request.filePath;
 	return {
 		...decision,
 		feedback: getAnnotateFileFeedbackPrompt("pi", loadConfig(), {

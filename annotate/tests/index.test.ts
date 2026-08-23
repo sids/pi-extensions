@@ -403,10 +403,9 @@ describe("annotation URL resolution", () => {
 
 		expect(request).toEqual({
 			kind: "url",
-			url: "http://localhost:5173/dashboard",
+			filePath: "http://localhost:5173/dashboard",
 			markdown: "",
-			sourceConverted: false,
-			live: true,
+			liveTargetUrl: "http://localhost:5173/dashboard",
 		});
 		expect(notifications).toContainEqual({
 			message: "Live app: http://localhost:5173/dashboard",
@@ -431,10 +430,9 @@ describe("annotation URL resolution", () => {
 		expect(conversions).toEqual([{ url: "https://example.com/docs", useJina: false }]);
 		expect(request).toEqual({
 			kind: "url",
-			url: "https://example.com/docs",
+			filePath: "https://example.com/docs",
 			markdown: "# Documentation",
 			sourceConverted: true,
-			live: false,
 		});
 	});
 
