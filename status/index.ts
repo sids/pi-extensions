@@ -326,7 +326,7 @@ export default function (pi: ExtensionAPI) {
 		}
 		const usage = ctx.getContextUsage();
 		const timings = getTimingMinutes();
-		const openAIParamsLabel = formatOpenAIParamsLabel(openAIParamsByCwd.get(ctx.cwd));
+		const openAIParamsLabel = formatOpenAIParamsLabel(openAIParamsByCwd.get(ctx.cwd), ctx.model);
 		const payload: StatusDetailsPayload = {
 			modelLabel: formatModelLabel(ctx.model),
 			thinkingLevel: formatThinkingLevel(pi.getThinkingLevel()),

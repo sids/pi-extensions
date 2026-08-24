@@ -12,7 +12,7 @@ Below the editor:
 
 - Current model (without the provider)
 - Current thinking level
-- Current OpenAI fast/cache/verbosity indicators from `openai-params` when non-default, shown inside the thinking parentheses (`/fast`, `cache:24h`, `🗣low`, `🗣medium`, `🗣high`)
+- Current OpenAI fast/cache/verbosity indicators from `openai-params` when non-default, shown inside the thinking parentheses (`/fast`, `cache:24h`, `🗣low`, `🗣medium`, `🗣high`); fast mode and verbosity are omitted when the current model does not support them
 - Context usage percent plus model context length (`<percent>/<context-length>`)
 - Current/last agent time plus cumulative turn total and session time (`<agent> agent · <turn total> turn total · <session> session`)
 
@@ -28,7 +28,7 @@ pi install npm:@siddr/pi-status
 
 The status widget updates automatically during session events.
 
-If `openai-params` is installed, the widget also listens for its event-bus updates and shows the current non-default fast/cache/verbosity settings inside the thinking-level parentheses for the active workspace.
+If `openai-params` is installed, the widget also listens for its event-bus updates and shows the applicable non-default fast/cache/verbosity settings inside the thinking-level parentheses for the active workspace.
 
 PR detection requires GitHub CLI (`gh`) and valid auth (`gh auth status`). By default, the PR line is resolved only for `github.com`. You can allow additional GitHub Enterprise hosts with `PI_STATUS_ALLOWED_GITHUB_HOSTS` (comma-separated exact hostnames).
 

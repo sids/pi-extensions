@@ -5,6 +5,19 @@ const UNKNOWN_VALUE = "--";
 export const OPENAI_PARAMS_EVENT_CHANNEL = "pi:openai-params";
 
 type OpenAIParamsVerbosity = "low" | "medium" | "high";
+type OpenAIParamsModel = {
+	provider?: string;
+	id?: string;
+	api?: string;
+};
+
+const SUPPORTED_FAST_PROVIDERS = new Set(["openai", "openai-codex"]);
+const SUPPORTED_FAST_APIS = new Set(["openai-completions", "openai-responses", "openai-codex-responses"]);
+const SUPPORTED_VERBOSITY_APIS = new Set([
+	"openai-responses",
+	"openai-codex-responses",
+	"azure-openai-responses",
+]);
 
 export type OpenAIParamsEventPayload = {
 	source: "openai-params";
@@ -66,20 +79,26 @@ export function parseOpenAIParamsEvent(data: unknown): OpenAIParamsEventPayload 
 }
 
 export function formatOpenAIParamsLabel(
-	params?: Pick<OpenAIParamsEventPayload, "fast" | "longCache" | "verbosity"> | null,
+	params: Pick<OpenAIParamsEventPayload, "fast" | "longCache" | "verbosity"> | null | undefined,
+	model: OpenAIParamsModel | null | undefined,
 ): string | null {
 	if (!params) {
 		return null;
 	}
 
+	const supportsFastMode =
+		SUPPORTED_FAST_PROVIDERS.has(model?.provider ?? "") &&
+		/^gpt-/i.test(model?.id ?? "") &&
+		SUPPORTED_FAST_APIS.has(model?.api ?? "");
+	const supportsVerbosity = SUPPORTED_VERBOSITY_APIS.has(model?.api ?? "");
 	const labels: string[] = [];
-	if (params.fast) {
+	if (params.fast && supportsFastMode) {
 		labels.push("/fast");
 	}
 	if (params.longCache) {
 		labels.push("cache:24h");
 	}
-	if (params.verbosity) {
+	if (params.verbosity && supportsVerbosity) {
 		labels.push(`🗣${params.verbosity}`);
 	}
 	return labels.length > 0 ? labels.join(" ") : null;

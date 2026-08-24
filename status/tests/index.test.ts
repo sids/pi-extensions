@@ -76,7 +76,7 @@ function createHarness() {
 	const createCtx = (cwd: string) => ({
 		hasUI: true,
 		cwd,
-		model: { provider: "openai", id: "gpt-5.4" },
+		model: { provider: "openai", id: "gpt-5.4", api: "openai-responses" },
 		getContextUsage: () => ({ percent: 42.6, tokens: 54_321, contextWindow: 128_000 }),
 		ui: {
 			setWidget: (key: string, factory: WidgetCall["factory"], options?: unknown) => {
@@ -294,6 +294,35 @@ describe("status extension", () => {
 			expect(harness.execCalls).toHaveLength(initialExecCount);
 			expect(updatedLine).toContain("gpt-5.4 (high /fast cache:24h 🗣low) 43%/128k");
 			expect(updatedLine).not.toContain("openai/");
+		} finally {
+			await harness.emit("session_shutdown", {}, ctx);
+		}
+	});
+
+	test("hides configured fast mode and verbosity after switching to an unsupported model", async () => {
+		const harness = createHarness();
+		const ctx = harness.createCtx("/tmp/status-project");
+
+		try {
+			await harness.emit("session_start", {}, ctx);
+			await harness.emitExtensionEvent(OPENAI_PARAMS_EVENT_CHANNEL, {
+				source: "openai-params",
+				cwd: ctx.cwd,
+				fast: true,
+				longCache: true,
+				verbosity: "low",
+			});
+			expect(normalizeLine(harness.renderLatestWidget()[0] ?? "")).toContain(
+				"gpt-5.4 (high /fast cache:24h 🗣low)",
+			);
+
+			ctx.model = { provider: "anthropic", id: "claude-sonnet-4-6", api: "anthropic-messages" };
+			await harness.emit("model_select", { model: ctx.model }, ctx);
+
+			const updatedLine = normalizeLine(harness.renderLatestWidget()[0] ?? "");
+			expect(updatedLine).toContain("claude-sonnet-4-6 (high cache:24h)");
+			expect(updatedLine).not.toContain("/fast");
+			expect(updatedLine).not.toContain("🗣");
 		} finally {
 			await harness.emit("session_shutdown", {}, ctx);
 		}

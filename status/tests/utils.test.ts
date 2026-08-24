@@ -77,19 +77,39 @@ describe("parseOpenAIParamsEvent", () => {
 });
 
 describe("formatOpenAIParamsLabel", () => {
+	const responsesModel = { provider: "openai", id: "gpt-5.4", api: "openai-responses" };
+
 	test("omits default state", () => {
-		expect(formatOpenAIParamsLabel({ fast: false, longCache: false, verbosity: null })).toBeNull();
+		expect(formatOpenAIParamsLabel({ fast: false, longCache: false, verbosity: null }, responsesModel)).toBeNull();
 	});
 
 	test("formats fast-only, verbosity-only, and combined labels", () => {
-		expect(formatOpenAIParamsLabel({ fast: true, longCache: false, verbosity: null })).toBe("/fast");
-		expect(formatOpenAIParamsLabel({ fast: false, longCache: true, verbosity: null })).toBe("cache:24h");
-		const verbosityLabel = formatOpenAIParamsLabel({ fast: false, longCache: false, verbosity: "low" });
+		expect(formatOpenAIParamsLabel({ fast: true, longCache: false, verbosity: null }, responsesModel)).toBe("/fast");
+		expect(formatOpenAIParamsLabel({ fast: false, longCache: true, verbosity: null }, responsesModel)).toBe(
+			"cache:24h",
+		);
+		const verbosityLabel = formatOpenAIParamsLabel(
+			{ fast: false, longCache: false, verbosity: "low" },
+			responsesModel,
+		);
 		expect(verbosityLabel).toBe("🗣low");
 		expect(visibleWidth(verbosityLabel ?? "")).toBe(4);
-		expect(formatOpenAIParamsLabel({ fast: true, longCache: true, verbosity: "high" })).toBe(
+		expect(formatOpenAIParamsLabel({ fast: true, longCache: true, verbosity: "high" }, responsesModel)).toBe(
 			"/fast cache:24h 🗣high",
 		);
+	});
+
+	test("omits fast mode and verbosity when the model does not support them", () => {
+		const params = { fast: true, longCache: true, verbosity: "high" as const };
+		expect(formatOpenAIParamsLabel(params, { provider: "anthropic", id: "claude", api: "anthropic-messages" })).toBe(
+			"cache:24h",
+		);
+		expect(
+			formatOpenAIParamsLabel(params, { provider: "openai", id: "gpt-4o", api: "openai-completions" }),
+		).toBe("/fast cache:24h");
+		expect(
+			formatOpenAIParamsLabel(params, { provider: "github-copilot", id: "gpt-5.4", api: "openai-responses" }),
+		).toBe("cache:24h 🗣high");
 	});
 });
 
