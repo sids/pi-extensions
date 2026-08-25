@@ -120,10 +120,12 @@ export async function getTailscaleHost(
 			return undefined;
 		}
 		const status = JSON.parse(output) as TailscaleStatus;
-		return normalizeTailscaleHost(status.Self?.DNSName)
+		// Direct remote mode serves plain HTTP. Browsers may upgrade *.ts.net
+		// names to HTTPS, so prefer the tailnet IPv4 address for reachable URLs.
+		return normalizeTailscaleHost(status.Self?.TailscaleIPs?.find((address) => !address.includes(":")))
+			?? normalizeTailscaleHost(status.TailscaleIPs?.find((address) => !address.includes(":")))
 			?? normalizeTailscaleHost(status.Self?.HostName)
-			?? normalizeTailscaleHost(status.Self?.TailscaleIPs?.find((address) => !address.includes(":")))
-			?? normalizeTailscaleHost(status.TailscaleIPs?.find((address) => !address.includes(":")));
+			?? normalizeTailscaleHost(status.Self?.DNSName);
 	} catch {
 		return undefined;
 	}

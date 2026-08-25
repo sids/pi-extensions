@@ -41,13 +41,19 @@ describe("Tailscale host resolution", () => {
 		expect(isPlannotatorTailscaleEnabled({ PLANNOTATOR_TAILSCALE: "0" })).toBe(false);
 	});
 
-	test("prefers the Tailscale DNS name and removes its trailing dot", async () => {
+	test("prefers the Tailscale IPv4 address for direct HTTP access", async () => {
 		await expect(getTailscaleHost(async () => JSON.stringify({
 			Self: {
 				DNSName: "agentbox.example.ts.net.",
 				HostName: "agentbox",
 				TailscaleIPs: ["100.64.0.1"],
 			},
+		}))).resolves.toBe("100.64.0.1");
+	});
+
+	test("falls back to the normalized Tailscale DNS name", async () => {
+		await expect(getTailscaleHost(async () => JSON.stringify({
+			Self: { DNSName: "agentbox.example.ts.net." },
 		}))).resolves.toBe("agentbox.example.ts.net");
 	});
 
