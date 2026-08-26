@@ -172,7 +172,11 @@ async function resolveGitPullRequest(
 	}
 }
 
-export default function (pi: ExtensionAPI) {
+export function statusExtension(
+	pi: ExtensionAPI,
+	env: Record<string, string | undefined> = process.env,
+) {
+	const notificationsEnabled = env.HERDR_ENV !== "1";
 	let lastHeaderSignature = "";
 	let lastDetailsSignature = "";
 	let thinkingTimer: ReturnType<typeof setInterval> | null = null;
@@ -478,11 +482,17 @@ export default function (pi: ExtensionAPI) {
 			}
 			if (enabled) {
 				await applyEnabledState(ctx);
-				ctx.ui.notify("Custom status enabled", "info");
+				if (notificationsEnabled) {
+					ctx.ui.notify("Custom status enabled", "info");
+				}
 				return;
 			}
 			await applyEnabledState(ctx);
-			ctx.ui.notify("Custom status disabled", "info");
+			if (notificationsEnabled) {
+				ctx.ui.notify("Custom status disabled", "info");
+			}
 		},
 	});
 }
+
+export default statusExtension;

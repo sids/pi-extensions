@@ -1,4 +1,5 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { createHerdrReporter, type HerdrAgentState, type HerdrReporter } from "./herdr-client";
 import {
 	appendInputNeededInstruction,
 	hasInputNeededMarker,
@@ -7,7 +8,6 @@ import {
 	stripInputNeededMarker,
 } from "./utils";
 
-const HERDR_BLOCKED_EVENT = "herdr:blocked";
 const USER_INPUT_WAIT_EVENT = "pi:waiting-for-user-input";
 const BLOCKED_LABEL = "input needed";
 
@@ -37,16 +37,21 @@ function lastUnansweredAssistantText(ctx: ExtensionContext): string {
 
 export function createHerdrIntegrationExtension(
 	env: Record<string, string | undefined> = process.env,
+	createReporter: (env: Record<string, string | undefined>) => HerdrReporter = createHerdrReporter,
 ) {
 	return function herdrIntegrationExtension(pi: ExtensionAPI): void {
 		if (!isHerdrSession(env)) {
 			return;
 		}
 
+		const reporter = createReporter(env);
 		let rootSession = false;
 		let markerWaiting = false;
-		let blocked = false;
+		let agentActive = false;
+		let lastState: HerdrAgentState | undefined;
+		let lastMessage: string | undefined;
 		let restoreTimer: ReturnType<typeof setTimeout> | null = null;
+		let activeContext: ExtensionContext | null = null;
 		const runtimeWaits = new Set<string>();
 
 		const clearRestoreTimer = () => {
@@ -57,20 +62,24 @@ export function createHerdrIntegrationExtension(
 			restoreTimer = null;
 		};
 
-		const setBlocked = (active: boolean) => {
-			if (blocked === active) {
-				return;
+		const desiredState = (): { state: HerdrAgentState; message?: string } => {
+			if (markerWaiting || runtimeWaits.size > 0) {
+				return { state: "blocked", message: BLOCKED_LABEL };
 			}
-
-			blocked = active;
-			pi.events.emit(
-				HERDR_BLOCKED_EVENT,
-				active ? { active: true, label: BLOCKED_LABEL } : { active: false },
-			);
+			return { state: agentActive ? "working" : "idle" };
 		};
 
-		const syncBlocked = () => {
-			setBlocked(markerWaiting || runtimeWaits.size > 0);
+		const reportState = (force = false) => {
+			if (!rootSession || !activeContext) {
+				return;
+			}
+			const next = desiredState();
+			if (!force && next.state === lastState && next.message === lastMessage) {
+				return;
+			}
+			lastState = next.state;
+			lastMessage = next.message;
+			reporter.reportState(next.state, next.message, activeContext);
 		};
 
 		pi.registerMarkdownTransformer((markdown, context) =>
@@ -94,7 +103,7 @@ export function createHerdrIntegrationExtension(
 			} else {
 				runtimeWaits.delete(key);
 			}
-			syncBlocked();
+			reportState();
 		});
 
 		pi.on("before_agent_start", (event) => {
@@ -104,48 +113,60 @@ export function createHerdrIntegrationExtension(
 			return { systemPrompt: appendInputNeededInstruction(event.systemPrompt) };
 		});
 
-		pi.on("session_start", (_event, ctx) => {
+		pi.on("session_start", async (event, ctx) => {
 			clearRestoreTimer();
 			markerWaiting = false;
+			agentActive = false;
 			runtimeWaits.clear();
-			syncBlocked();
-			rootSession = ctx.hasUI === true;
+			lastState = undefined;
+			lastMessage = undefined;
+			activeContext = null;
+			rootSession = ctx.mode === "tui";
 			if (!rootSession) {
 				return;
 			}
 
-			// Herdr ignores blocked events until its own Pi integration has
-			// activated the root session, so restore after session_start drains.
+			activeContext = ctx;
+			await reporter.reportSession(ctx, event.reason);
+			agentActive = ctx.isIdle() === false;
+			reportState(true);
+
 			restoreTimer = setTimeout(() => {
 				restoreTimer = null;
 				markerWaiting = hasInputNeededMarker(lastUnansweredAssistantText(ctx));
-				syncBlocked();
+				reportState();
 			}, 0);
 			restoreTimer.unref?.();
 		});
 
-		pi.on("agent_start", () => {
+		pi.on("agent_start", (_event, ctx) => {
 			if (!rootSession) {
 				return;
 			}
 			clearRestoreTimer();
+			activeContext = ctx;
 			markerWaiting = false;
-			syncBlocked();
+			agentActive = true;
+			void reporter.reportSession(ctx);
+			reportState();
 		});
 
 		pi.on("agent_settled", (_event, ctx) => {
-			if (!rootSession) {
+			if (!rootSession || ctx.isIdle() !== true) {
 				return;
 			}
+			activeContext = ctx;
+			agentActive = false;
 			markerWaiting = hasInputNeededMarker(lastUnansweredAssistantText(ctx));
-			syncBlocked();
+			reportState();
 		});
 
 		pi.on("session_shutdown", () => {
 			clearRestoreTimer();
 			markerWaiting = false;
+			agentActive = false;
 			runtimeWaits.clear();
-			syncBlocked();
+			activeContext = null;
 			rootSession = false;
 		});
 	};

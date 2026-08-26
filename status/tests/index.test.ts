@@ -1,5 +1,5 @@
 import { describe, expect, test, vi } from "vitest";
-import statusExtension from "../index";
+import { statusExtension } from "../index";
 import { OPENAI_PARAMS_EVENT_CHANNEL } from "../utils";
 
 type Handler = (event: any, ctx: any) => Promise<void> | void;
@@ -14,10 +14,12 @@ function normalizeLine(line: string): string {
 	return line.replace(/\s+/g, " ").trim();
 }
 
-function createHarness() {
+function createHarness(env: Record<string, string | undefined> = {}) {
 	const handlers = new Map<string, Handler[]>();
+	const commands = new Map<string, (args: string, ctx: any) => Promise<void>>();
 	const eventHandlers = new Map<string, Array<(data: unknown) => void>>();
 	const setWidgetCalls: WidgetCall[] = [];
+	const notifications: Array<{ message: string; level: string }> = [];
 	const execCalls: Array<{ command: string; args: string[]; options?: { cwd?: string; timeout?: number } }> = [];
 	let thinkingLevel = "high";
 	let sessionName: string | undefined;
@@ -31,7 +33,9 @@ function createHarness() {
 			list.push(handler);
 			handlers.set(name, list);
 		},
-		registerCommand() {},
+		registerCommand(name: string, options: { handler: (args: string, ctx: any) => Promise<void> }) {
+			commands.set(name, options.handler);
+		},
 		getThinkingLevel() {
 			return thinkingLevel;
 		},
@@ -71,7 +75,7 @@ function createHarness() {
 		},
 	} as any;
 
-	statusExtension(pi);
+	statusExtension(pi, env);
 
 	const createCtx = (cwd: string) => ({
 		hasUI: true,
@@ -83,7 +87,9 @@ function createHarness() {
 				setWidgetCalls.push({ key, factory, options });
 			},
 			setFooter() {},
-			notify() {},
+			notify(message: string, level: string) {
+				notifications.push({ message, level });
+			},
 		},
 	});
 
@@ -99,6 +105,14 @@ function createHarness() {
 		createCtx,
 		setWidgetCalls,
 		execCalls,
+		notifications,
+		async runCommand(name: string, ctx: any) {
+			const handler = commands.get(name);
+			if (!handler) {
+				throw new Error(`Command not registered: ${name}`);
+			}
+			await handler("", ctx);
+		},
 		setThinkingLevel(level: string) {
 			thinkingLevel = level;
 		},
@@ -134,6 +148,19 @@ function createHarness() {
 }
 
 describe("status extension", () => {
+	test("suppresses toggle notifications when running in Herdr", async () => {
+		const regularHarness = createHarness();
+		const herdrHarness = createHarness({ HERDR_ENV: "1" });
+
+		await regularHarness.runCommand("custom-status", regularHarness.createCtx("/tmp/status-project"));
+		await herdrHarness.runCommand("custom-status", herdrHarness.createCtx("/tmp/status-project"));
+
+		expect(regularHarness.notifications).toEqual([
+			{ message: "Custom status disabled", level: "info" },
+		]);
+		expect(herdrHarness.notifications).toEqual([]);
+	});
+
 	test("shows agent and turn total timing in the widget", async () => {
 		const harness = createHarness();
 		const ctx = harness.createCtx("/tmp/status-project");

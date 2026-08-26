@@ -32,7 +32,7 @@ If `openai-params` is installed, the widget also listens for its event-bus updat
 
 PR detection requires GitHub CLI (`gh`) and valid auth (`gh auth status`). By default, the PR line is resolved only for `github.com`. You can allow additional GitHub Enterprise hosts with `PI_STATUS_ALLOWED_GITHUB_HOSTS` (comma-separated exact hostnames).
 
-Toggle the behavior with `/custom-status`.
+Toggle the behavior with `/custom-status`. The command toggles silently when `HERDR_ENV=1`.
 
 ## Tests
 

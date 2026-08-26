@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import type { HerdrAgentState, HerdrReporter } from "../herdr-client";
 import { createHerdrIntegrationExtension } from "../index";
 import { INPUT_NEEDED_INSTRUCTION } from "../utils";
 
@@ -33,12 +34,23 @@ function userEntry(text: string) {
 function createHarness(env: Record<string, string | undefined> = HERDR_ENV) {
 	const handlers = new Map<string, Handler[]>();
 	const extensionEventHandlers = new Map<string, Array<(data: unknown) => void>>();
-	const emittedEvents: Array<{ channel: string; data: unknown }> = [];
+	const stateReports: Array<{ state: HerdrAgentState; message?: string }> = [];
+	const sessionReports: Array<{ source?: string }> = [];
 	let markdownTransformer:
 		| ((markdown: string, context: { messageType: string; isStreaming: boolean }) => string)
 		| undefined;
 	let branch: unknown[] = [];
-	let hasUI = true;
+	let mode = "tui";
+	let idle = true;
+
+	const reporter: HerdrReporter = {
+		async reportSession(_ctx, source) {
+			sessionReports.push({ source });
+		},
+		reportState(state, message) {
+			stateReports.push({ state, message });
+		},
+	};
 
 	const pi = {
 		on(name: string, handler: Handler) {
@@ -61,7 +73,6 @@ function createHarness(env: Record<string, string | undefined> = HERDR_ENV) {
 				extensionEventHandlers.set(channel, current);
 			},
 			emit(channel: string, data: unknown) {
-				emittedEvents.push({ channel, data });
 				for (const handler of extensionEventHandlers.get(channel) ?? []) {
 					handler(data);
 				}
@@ -69,27 +80,34 @@ function createHarness(env: Record<string, string | undefined> = HERDR_ENV) {
 		},
 	} as any;
 
-	createHerdrIntegrationExtension(env)(pi);
+	createHerdrIntegrationExtension(env, () => reporter)(pi);
 
 	const ctx = {
-		get hasUI() {
-			return hasUI;
+		get mode() {
+			return mode;
 		},
+		isIdle: () => idle,
 		sessionManager: {
 			getBranch: () => branch,
+			getSessionFile: () => "/tmp/session.jsonl",
+			getSessionId: () => "session-1",
 		},
 	} as any;
 
 	return {
-		emittedEvents,
+		stateReports,
+		sessionReports,
 		getHandlerCount(name: string) {
 			return handlers.get(name)?.length ?? 0;
 		},
 		transformMarkdown(markdown: string, messageType: string, isStreaming = false) {
 			return markdownTransformer?.(markdown, { messageType, isStreaming }) ?? markdown;
 		},
-		setHasUI(value: boolean) {
-			hasUI = value;
+		setMode(value: string) {
+			mode = value;
+		},
+		setIdle(value: boolean) {
+			idle = value;
 		},
 		setBranch(entries: unknown[]) {
 			branch = entries;
@@ -125,19 +143,19 @@ describe("herdr-integration extension", () => {
 
 	test("appends the input-needed instruction to the system prompt", async () => {
 		const harness = createHarness();
-		await harness.emit("session_start");
+		await harness.emit("session_start", { reason: "startup" });
 
 		const [result] = await harness.emit("before_agent_start", { systemPrompt: "base prompt" });
 
 		expect(result).toEqual({ systemPrompt: `base prompt\n\n${INPUT_NEEDED_INSTRUCTION}` });
 	});
 
-	test("does not modify prompts or report blocked state without a root UI session", async () => {
+	test("does not modify prompts or report state outside a root TUI session", async () => {
 		const harness = createHarness();
-		harness.setHasUI(false);
+		harness.setMode("rpc");
 		harness.setBranch([assistantEntry("Choose one.\n:input_needed:")]);
 
-		await harness.emit("session_start");
+		await harness.emit("session_start", { reason: "startup" });
 		const [result] = await harness.emit("before_agent_start", { systemPrompt: "base prompt" });
 		await harness.emit("agent_settled");
 		harness.emitExtensionEvent("pi:waiting-for-user-input", {
@@ -150,12 +168,13 @@ describe("herdr-integration extension", () => {
 		expect(harness.transformMarkdown("Choose one.\n:input_needed:", "assistant")).toBe(
 			"Choose one.\n:input_needed:",
 		);
-		expect(harness.emittedEvents.filter((event) => event.channel === "herdr:blocked")).toEqual([]);
+		expect(harness.sessionReports).toEqual([]);
+		expect(harness.stateReports).toEqual([]);
 	});
 
 	test("hides complete and streaming marker prefixes from assistant rendering", async () => {
 		const harness = createHarness();
-		await harness.emit("session_start");
+		await harness.emit("session_start", { reason: "startup" });
 		const response = "Which runtime should I use?\n\n:input_needed:";
 
 		for (let length = 1; length <= ":input_needed:".length; length += 1) {
@@ -168,41 +187,41 @@ describe("herdr-integration extension", () => {
 		expect(harness.transformMarkdown(response, "user", true)).toBe(response);
 	});
 
-	test("marks Herdr blocked after a final assistant marker and clears it on the next run", async () => {
+	test("reports session identity and direct lifecycle state", async () => {
 		const harness = createHarness();
-		await harness.emit("session_start");
+		await harness.emit("session_start", { reason: "startup" });
+		harness.setIdle(false);
 		await harness.emit("agent_start");
 		harness.setBranch([assistantEntry("Which runtime should I use?\n\n:input_needed:")]);
-
+		harness.setIdle(true);
 		await harness.emit("agent_settled");
-		await harness.emit("agent_settled");
+		harness.setIdle(false);
 		await harness.emit("agent_start");
 
-		expect(harness.emittedEvents).toEqual([
-			{
-				channel: "herdr:blocked",
-				data: { active: true, label: "input needed" },
-			},
-			{
-				channel: "herdr:blocked",
-				data: { active: false },
-			},
+		expect(harness.sessionReports).toEqual([
+			{ source: "startup" },
+			{ source: undefined },
+			{ source: undefined },
+		]);
+		expect(harness.stateReports).toEqual([
+			{ state: "idle", message: undefined },
+			{ state: "working", message: undefined },
+			{ state: "blocked", message: "input needed" },
+			{ state: "working", message: undefined },
 		]);
 	});
 
-	test("restores a persisted blocked state after session startup handlers finish", async () => {
+	test("restores a persisted blocked state after session startup", async () => {
 		const harness = createHarness();
 		harness.setBranch([assistantEntry("Please choose.\n:input_needed:")]);
 
-		await harness.emit("session_start");
-		expect(harness.emittedEvents).toEqual([]);
+		await harness.emit("session_start", { reason: "resume" });
+		expect(harness.stateReports).toEqual([{ state: "idle", message: undefined }]);
 		await vi.runAllTimersAsync();
 
-		expect(harness.emittedEvents).toEqual([
-			{
-				channel: "herdr:blocked",
-				data: { active: true, label: "input needed" },
-			},
+		expect(harness.stateReports).toEqual([
+			{ state: "idle", message: undefined },
+			{ state: "blocked", message: "input needed" },
 		]);
 	});
 
@@ -213,15 +232,16 @@ describe("herdr-integration extension", () => {
 			userEntry("Use Bun."),
 		]);
 
-		await harness.emit("session_start");
+		await harness.emit("session_start", { reason: "resume" });
 		await vi.runAllTimersAsync();
 
-		expect(harness.emittedEvents).toEqual([]);
+		expect(harness.stateReports).toEqual([{ state: "idle", message: undefined }]);
 	});
 
-	test("aggregates structural waiting events without unbalanced Herdr events", async () => {
+	test("aggregates structural waits into absolute state", async () => {
 		const harness = createHarness();
-		await harness.emit("session_start");
+		await harness.emit("session_start", { reason: "startup" });
+		harness.setIdle(false);
 		await harness.emit("agent_start");
 
 		harness.emitExtensionEvent("pi:waiting-for-user-input", {
@@ -245,23 +265,21 @@ describe("herdr-integration extension", () => {
 			waiting: false,
 		});
 
-		expect(harness.emittedEvents.filter((event) => event.channel === "herdr:blocked")).toEqual([
-			{
-				channel: "herdr:blocked",
-				data: { active: true, label: "input needed" },
-			},
-			{
-				channel: "herdr:blocked",
-				data: { active: false },
-			},
+		expect(harness.stateReports).toEqual([
+			{ state: "idle", message: undefined },
+			{ state: "working", message: undefined },
+			{ state: "blocked", message: "input needed" },
+			{ state: "working", message: undefined },
 		]);
 	});
 
-	test("keeps Herdr blocked until both marker and structural waits clear", async () => {
+	test("keeps direct state blocked until marker and structural waits clear", async () => {
 		const harness = createHarness();
-		await harness.emit("session_start");
+		await harness.emit("session_start", { reason: "startup" });
+		harness.setIdle(false);
 		await harness.emit("agent_start");
 		harness.setBranch([assistantEntry("Need a decision.\n:input_needed:")]);
+		harness.setIdle(true);
 		await harness.emit("agent_settled");
 		harness.emitExtensionEvent("pi:waiting-for-user-input", {
 			source: "plan-md:request_user_input",
@@ -269,23 +287,15 @@ describe("herdr-integration extension", () => {
 			waiting: true,
 		});
 
+		harness.setIdle(false);
 		await harness.emit("agent_start");
-		expect(harness.emittedEvents).toHaveLength(2);
+		expect(harness.stateReports.at(-1)).toEqual({ state: "blocked", message: "input needed" });
 		harness.emitExtensionEvent("pi:waiting-for-user-input", {
 			source: "plan-md:request_user_input",
 			id: "call-1",
 			waiting: false,
 		});
 
-		expect(harness.emittedEvents.filter((event) => event.channel === "herdr:blocked")).toEqual([
-			{
-				channel: "herdr:blocked",
-				data: { active: true, label: "input needed" },
-			},
-			{
-				channel: "herdr:blocked",
-				data: { active: false },
-			},
-		]);
+		expect(harness.stateReports.at(-1)).toEqual({ state: "working", message: undefined });
 	});
 });

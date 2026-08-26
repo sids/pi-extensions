@@ -2,7 +2,7 @@
   "name": "@siddr/pi-herdr-integration",
   "version": "0.1.0",
   "type": "module",
-  "description": "Herdr blocked-state integration for pi",
+  "description": "Herdr lifecycle, session, and blocked-state integration for pi",
   "license": "MIT",
   "keywords": [
     "pi-package"
