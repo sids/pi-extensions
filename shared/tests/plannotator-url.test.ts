@@ -183,6 +183,26 @@ describe("first-class Tailscale sessions", () => {
 		expect(stopped).toBe(0);
 	});
 
+	test("renders the URL and QR code together in a TUI notification", async () => {
+		const env: NodeJS.ProcessEnv = { PLANNOTATOR_TAILSCALE: "1" };
+		const { ctx, notifications } = createContext();
+		const runTailscale = (args: string[]) => {
+			if (args[1] === "status") return { status: 0, stdout: "{}", stderr: "" };
+			if (args.includes("off")) return { status: 0, stdout: "", stderr: "" };
+			return { status: 0, stdout: "https://agentbox.example.ts.net:43123/\n", stderr: "" };
+		};
+		await preparePlannotatorBrowserSession(ctx, {
+			url: "http://localhost:43123/annotate/test",
+			waitForDecision: async () => "done",
+			stop() {},
+		}, { env, runTailscale });
+
+		expect(notifications.at(-1)).toMatchObject({ level: "info" });
+		expect(notifications.at(-1)?.message).toContain("[Plannotator] Tailscale:");
+		expect(notifications.at(-1)?.message).toContain("https://agentbox.example.ts.net:43123/annotate/test");
+		expect(notifications.at(-1)?.message).toContain("█");
+	});
+
 	test("stops the browser session when Tailscale cannot publish it", async () => {
 		const { ctx } = createContext();
 		let stopped = 0;

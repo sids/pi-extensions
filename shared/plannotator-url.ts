@@ -1,4 +1,5 @@
 import { execFile, spawnSync } from "node:child_process";
+import type { ExtensionUIContext } from "@earendil-works/pi-coding-agent";
 import { renderUnicodeCompact } from "uqr";
 
 const URL_PATTERN = /https?:\/\/[^\s]+/g;
@@ -7,13 +8,7 @@ const TAILSCALE_SERVE_TIMEOUT_MS = 10_000;
 const TAILSCALE_STATE_KEY = Symbol.for("@siddr/pi-extensions/plannotator-tailscale");
 
 type PlannotatorNotificationContext = {
-	ui: {
-		notify: (message: string, level?: "info" | "warning" | "error") => void;
-		theme: {
-			fg: (color: "accent", text: string) => string;
-			underline: (text: string) => string;
-		};
-	};
+	ui: Pick<ExtensionUIContext, "notify" | "theme">;
 };
 
 type PlannotatorBrowserSession<T> = {
@@ -282,16 +277,17 @@ function enableTailscaleServe(port: number, run: RunTailscale): string {
 	return url;
 }
 
-function writeUrlQr(url: string): void {
-	if (!process.stderr.isTTY) return;
+function notifyPublishedUrl(ctx: PlannotatorNotificationContext, url: string): void {
+	const message = `[Plannotator] Tailscale: ${url}`;
 	try {
 		const qr = renderUnicodeCompact(url)
 			.split("\n")
 			.map((line) => `  ${line}`)
 			.join("\n");
-		process.stderr.write(`${qr}\n\n`);
+		ctx.ui.notify(`${message}\n\n${qr}`, "info");
 	} catch {
 		// A QR code is a convenience and must not break a review session.
+		ctx.ui.notify(message, "info");
 	}
 }
 
@@ -386,8 +382,12 @@ export async function preparePlannotatorBrowserSession<
 	publishedUrl.search = localUrl.search;
 	publishedUrl.hash = localUrl.hash;
 	const url = publishedUrl.toString().replace(/\/$/, localUrl.pathname === "/" ? "" : "/");
-	ctx.ui.notify(`[Plannotator] Tailscale: ${url}`, "info");
-	(options.writeQr ?? writeUrlQr)(url);
+	if (options.writeQr) {
+		ctx.ui.notify(`[Plannotator] Tailscale: ${url}`, "info");
+		options.writeQr(url);
+	} else {
+		notifyPublishedUrl(ctx, url);
+	}
 
 	let cleanedUp = false;
 	const cleanup = () => {
