@@ -11,7 +11,7 @@ overrides:
   '@earendil-works/pi-tui': 0.84.0
 
 patchedDependencies:
-  '@plannotator/pi-extension@0.27.6': dc102dafe93988800eb0c18acf4d3b695397a35804cac1d445395230e77630a8
+  '@plannotator/pi-extension@0.27.6': 84ccf7be9245ba771f533a2bf831cacf240022d4071da77836aca088360373e7
 
 importers:
 
@@ -43,7 +43,7 @@ importers:
         version: 0.84.0(ws@8.21.3)(zod@4.4.3)
       '@plannotator/pi-extension':
         specifier: ^0.27.6
-        version: 0.27.6(patch_hash=dc102dafe93988800eb0c18acf4d3b695397a35804cac1d445395230e77630a8)(@earendil-works/pi-coding-agent@0.84.0(ws@8.21.3)(zod@4.4.3))(@shikijs/themes@4.4.3)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
+        version: 0.27.6(patch_hash=84ccf7be9245ba771f533a2bf831cacf240022d4071da77836aca088360373e7)(@earendil-works/pi-coding-agent@0.84.0(ws@8.21.3)(zod@4.4.3))(@shikijs/themes@4.4.3)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
       '@siddr/pi-shared-qna':
         specifier: workspace:^
         version: link:../shared
@@ -85,7 +85,7 @@ importers:
         version: 0.84.0(ws@8.21.3)(zod@4.4.3)
       '@plannotator/pi-extension':
         specifier: ^0.27.6
-        version: 0.27.6(patch_hash=dc102dafe93988800eb0c18acf4d3b695397a35804cac1d445395230e77630a8)(@earendil-works/pi-coding-agent@0.84.0(ws@8.21.3)(zod@4.4.3))(@shikijs/themes@4.4.3)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
+        version: 0.27.6(patch_hash=84ccf7be9245ba771f533a2bf831cacf240022d4071da77836aca088360373e7)(@earendil-works/pi-coding-agent@0.84.0(ws@8.21.3)(zod@4.4.3))(@shikijs/themes@4.4.3)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
       '@siddr/pi-shared-qna':
         specifier: workspace:^
         version: link:../shared
@@ -154,7 +154,7 @@ importers:
         version: 0.84.0
       '@plannotator/pi-extension':
         specifier: ^0.27.6
-        version: 0.27.6(patch_hash=dc102dafe93988800eb0c18acf4d3b695397a35804cac1d445395230e77630a8)(@earendil-works/pi-coding-agent@0.84.0(ws@8.21.3)(zod@4.4.3))(@shikijs/themes@4.4.3)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
+        version: 0.27.6(patch_hash=84ccf7be9245ba771f533a2bf831cacf240022d4071da77836aca088360373e7)(@earendil-works/pi-coding-agent@0.84.0(ws@8.21.3)(zod@4.4.3))(@shikijs/themes@4.4.3)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
       '@siddr/pi-shared-qna':
         specifier: workspace:^
         version: link:../shared
@@ -2361,7 +2361,7 @@ snapshots:
       react-dom: 19.2.6(react@19.2.6)
       shiki: 4.4.3
 
-  '@plannotator/pi-extension@0.27.6(patch_hash=dc102dafe93988800eb0c18acf4d3b695397a35804cac1d445395230e77630a8)(@earendil-works/pi-coding-agent@0.84.0(ws@8.21.3)(zod@4.4.3))(@shikijs/themes@4.4.3)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)':
+  '@plannotator/pi-extension@0.27.6(patch_hash=84ccf7be9245ba771f533a2bf831cacf240022d4071da77836aca088360373e7)(@earendil-works/pi-coding-agent@0.84.0(ws@8.21.3)(zod@4.4.3))(@shikijs/themes@4.4.3)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)':
     dependencies:
       '@earendil-works/pi-coding-agent': 0.84.0(ws@8.21.3)(zod@4.4.3)
       '@joplin/turndown-plugin-gfm': 1.0.67

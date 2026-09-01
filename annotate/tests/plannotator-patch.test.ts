@@ -10,6 +10,21 @@ const packageDir = dirname(require.resolve("@plannotator/pi-extension/package.js
 const htmlFiles = ["plannotator.html", "review-editor.html"];
 const releaseUrl = "https://api.github.com/repos/backnotprop/plannotator/releases/latest";
 
+const browserShortcutTokens = {
+	"plannotator.html": {
+		handler: "Ze.key!==\"Enter\"||!(Ze.metaKey||Ze.ctrlKey)",
+		patchedHandler: "Ze.key!==\"Enter\"||!(Ze.metaKey||Ze.ctrlKey)||!Ze.altKey",
+		hint: "keys:[$o,L9]",
+		patchedHint: "keys:[$o,DT,L9]",
+	},
+	"review-editor.html": {
+		handler: "me.key!==\"Enter\"||!(me.metaKey||me.ctrlKey)",
+		patchedHandler: "me.key!==\"Enter\"||!(me.metaKey||me.ctrlKey)||!me.altKey",
+		hint: "keys:[or,Ih]",
+		patchedHint: "keys:[or,u0,Ih]",
+	},
+} as const;
+
 const onboardingCookies = [
 	'"plannotator-plan-look-choice-resolved": "true"',
 	'"plannotator-look-feel-announcement-seen": "2"',
@@ -34,9 +49,12 @@ function renderHtml(content: string): string {
 
 describe("patched Plannotator browser responses", () => {
 	for (const htmlFile of htmlFiles) {
-		test(`${htmlFile} suppresses onboarding and remote release checks`, () => {
+		test(`${htmlFile} applies local browser customizations`, () => {
 			const source = readFileSync(join(packageDir, htmlFile), "utf8");
+			const shortcut = browserShortcutTokens[htmlFile as keyof typeof browserShortcutTokens];
 			expect(source).toContain(releaseUrl);
+			expect(source).toContain(`if(${shortcut.handler})return;`);
+			expect(source).toContain(shortcut.hint);
 
 			const html = renderHtml(source);
 			const bootstrapEnd = html.indexOf('<script type="module" crossorigin>');
@@ -48,6 +66,10 @@ describe("patched Plannotator browser responses", () => {
 			}
 			expect(html).not.toContain(releaseUrl);
 			expect(html).toContain("data:application/json,%7B%22tag_name%22%3A%220.27.6%22");
+			expect(html).not.toContain(`if(${shortcut.handler})return;`);
+			expect(html).toContain(`if(${shortcut.patchedHandler})return;`);
+			expect(html).not.toContain(shortcut.hint);
+			expect(html).toContain(shortcut.patchedHint);
 			expect(html).not.toContain("window.fetch =");
 		});
 	}

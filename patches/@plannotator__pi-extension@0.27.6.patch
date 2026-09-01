@@ -2,12 +2,18 @@ diff --git a/server/helpers.ts b/server/helpers.ts
 index 565653aeea4c04a62f5929b275db80a021eb3e81..456c8f5787569f29811c797a9854fdf474916869 100644
 --- a/server/helpers.ts
 +++ b/server/helpers.ts
-@@ -54,12 +54,38 @@ export function handleApiNotFound(
+@@ -54,12 +54,46 @@
  	json(res, { error: "Not found", path }, 404);
  }
  
 +const PLANNOTATOR_UPDATE_URL = "https://api.github.com/repos/backnotprop/plannotator/releases/latest";
 +const LOCAL_RELEASE_METADATA_URL = "data:application/json,%7B%22tag_name%22%3A%220.27.6%22%2C%22html_url%22%3A%22%22%7D";
++const BROWSER_HTML_REPLACEMENTS = [
++	["Ze.key!==\"Enter\"||!(Ze.metaKey||Ze.ctrlKey)", "Ze.key!==\"Enter\"||!(Ze.metaKey||Ze.ctrlKey)||!Ze.altKey"],
++	["me.key!==\"Enter\"||!(me.metaKey||me.ctrlKey)", "me.key!==\"Enter\"||!(me.metaKey||me.ctrlKey)||!me.altKey"],
++	["keys:[$o,L9]", "keys:[$o,DT,L9]"],
++	["keys:[or,Ih]", "keys:[or,u0,Ih]"],
++] as const;
 +const ONBOARDING_BOOTSTRAP = `<script>
 +(() => {
 +	const onboardingCookies = {
@@ -27,9 +33,11 @@ index 565653aeea4c04a62f5929b275db80a021eb3e81..456c8f5787569f29811c797a9854fdf4
 +
 +function prepareBrowserHtml(content: string): string {
 +	if (!content.includes(PLANNOTATOR_UPDATE_URL)) return content;
-+	return content
-+		.replace(PLANNOTATOR_UPDATE_URL, LOCAL_RELEASE_METADATA_URL)
-+		.replace("<head>", `<head>\n${ONBOARDING_BOOTSTRAP}`);
++	let prepared = content.replace(PLANNOTATOR_UPDATE_URL, LOCAL_RELEASE_METADATA_URL);
++	for (const [from, to] of BROWSER_HTML_REPLACEMENTS) {
++		prepared = prepared.replaceAll(from, to);
++	}
++	return prepared.replace("<head>", `<head>\n${ONBOARDING_BOOTSTRAP}`);
 +}
 +
  export function html(
